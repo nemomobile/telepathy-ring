@@ -1,0 +1,111 @@
+DTMF Tones, Telepathy and GSM/3G Signaling
+==========================================
+
+Telepathy-Ring provides two interfaces for sending DTMF digits,
+DTMF interface used to send single DTMF tones (mainly intended for
+interactive use) and another for predefined dial strings.
+Telepathy-Ring indicates that the DTMF transmission takes place
+with SendingDialString and StoppedDialString signals. The
+individual tones are played by ToneGenerator, Telepathy-Ring
+controls the playback with StartEventTone() and StopTone()
+methods.
+
+The traffic channel normally used to transmit audio is taken over
+by signaling messages during the transmission of DTMF tones on
+GSM/3G cellular network. As the downlink media is also taken over,
+Telepathy-Ring uses the ToneGenerator daemon to locally
+generate the tones sent via signaling messages.
+
+
+DTMF Playback in Telepathy-Ring 0.7
+===================================
+
+A local playback of sent DTMF digits was driven by the modem
+events indicating when it starts to send the dialstring and when
+each DTMF digit is signaled via the radio channel. Telepathy-Ring
+relayed these events as Telepathy signals to the Call-UI and the
+media policy daemon.
+
+Call-UI  Policy ToneGen      Tp-Ring            Modem
+   |       |       |            |                 |
+   |---------StartTone--------->|                 |
+   |       |       |            |----StartDTMF--->|
+   |       |       |            |                 |
+   |       |       |            |                 |
+   |       |       |            |<==SendingDTMF===|
+   |       |<=SendingDialString=|                 |
+   |       |       |            |                 |
+   |       |       |            |                 |
+   |       |       |            |<==DTMFTone(*)===|
+   |       |       |<-StartTone-|                 |
+   |       |       |            |                 |
+   ¦       ¦       ¦            ¦                 ¦
+   |       |       |            |                 |
+   |---------StopTone---------->|                 |
+   |       |       |            |----StopDTMF---->|
+   |       |       |            |                 |
+   |       |       |            |<==DTMFTone(-)===|
+   |       |       |<-StopTone--|                 |
+   |       |       |            |                 |
+   |       |       |            |<==StoppedDTMF===|
+   |       |<=StoppedDialString=|                 |
+   |       |       |            |                 |
+
+Based on a very rough estimate there is also ~100..200 millisecond
+delay from the StartTone to the moment when the playback tone is
+actually played from the device speakers. Similar delay occurs
+when tone is stopped. The playback continues some time after
+StopTone method gets invoked. The echo cancellation does not work
+efficiently enough in all cases and the locally played DTMF tones
+can be captured and sent as encoded audio, too.
+
+In order to avoid the leakage, the media policy daemon follows the
+SendingDialString and StoppedDialString signal and mutes and
+unmutes the microphone respectively.
+
+
+DTMF Playback in Telepathy-Ring 1.0
+===================================
+
+The playback for the individial DTMF tones has been changed in
+version 1.0.0, however. The tone generator is driven by the
+requests from UI, not by the indications from the modem:
+
+Call-UI  Policy ToneGen      Tp-Ring            Modem
+   |       |       |            |                 |
+   |---------StartTone--------->|                 |
+   |       |       |            |----StartDTMF--->|
+   |       |<=SendingDialString=|                 |
+   |       |       |<-StartTone-|                 |
+   |       |       |            |                 |
+   |       |       |            |<==SendingDTMF===|
+   ¦       ¦       ¦            ¦                 ¦
+   |       |       |            |                 |
+   |---------StopTone---------->|                 |
+   |       |       |            |----StopDTMF---->|
+   |       |       |<-StopTone--|                 |
+   |       |       |            |                 |
+   ¦       ¦       ¦            ¦                 ¦
+   |       |       |            |                 |
+   |       |       |            |<==DTMFTone(*)===|
+   |       |       |            |                 |
+   |       |       |            |                 |
+   |       |       |            |<==DTMFTone(-)===|
+   |       |       |            |                 |
+   |       |       |            |<==StoppedDTMF===|
+   |       |<=StoppedDialString=|                 |
+
+
+This scenario has different potential DTMF leakage problem.
+
+The main difference with previous is much tighter timing between
+SendingDialString signal and the StartTone method. There is delay
+of roughly ~240 milliseconds between SendingDTMF and DTMFTone
+signals from the modem, which controlled sending of
+SendingDialString signal and StartTone method call.
+
+However in this case, the initial SendingDialString signal and
+StartTone request are sent back-to-back without any delay. There
+might be a duration when the DTMF playback has already started but
+the microphone has not been muted nor the DTMF signaling
+transmission has taken over the radio traffic channel.

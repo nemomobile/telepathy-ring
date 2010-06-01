@@ -1,0 +1,82 @@
+GENERAL
+=======
+
+Telepathy-Ring is a Telepathy connection manager for GSM and similar mobile
+telephony.
+
+Telepathy-Ring is named after Douglas H. Ring, one of the inventors of
+cellular mobile phone system.
+
+Currently, Telephathy-Ring implements Connection Manager and Connection
+functionality, StreamedMedia channels for voice calls and Text channels for
+SMS messaging.
+
+
+ENVIRONMENT VARIABLES AND DEBUGGING
+===================================
+
+The following environment variables are used:
+
+- RING_PERSIST - if set, keep running even if no connection is active
+- RING_REALTIME - if set, try to use realtime priority
+- RING_MEMLOCK - if set, use mmlockall()
+- RING_LOGFILE - redirect debugging output (stdout/stderr) to named file
+- RING_DEBUG - if set, determine what kind of debugging output to print
+  - all - everything
+  - connection - connection-related
+  - media - call and media-related
+  - text - SMS-related
+- MODEM_DEBUG - determine what kind of debugging output to print from modem libraries
+  - all - print everything
+  - call - print call-related messages
+  - sms  - print sms-related messages
+  - sim  - print sim-related messages
+  - dbus - print dbus-related messages
+- SMS_DEBUG - determine what kind of debugging output to print from sms-glib
+  - all - print everything
+  - submit - encoding SMS-SUBMIT
+  - deliver - decoding SMS-DELIVER
+  - status-report - decoding and handling SMS-STATUS-REPORT
+
+
+REQUIRED LIBRARIES
+==================
+
+Telepathy-Ring is based on telepathy-glib (0.7.19), and rtcom-telepathy-glib
+(0.1.18)
+
+
+RUNNING WITH ELEVATED PRIORITY
+==============================
+
+Telepathy-Ring can be launched with RING_REALTIME and RING_MEMLOCK
+environment variables set. If they are not set, the priorities are read from
+/var/lib/telepathy-ring/realtime and /var/lib/telepathy-ring/memlock
+instead.
+
+Telepathy can be launched with, e.g., following shell script (run with root
+privileges after the user login session D-Bus has been launched):
+
+--8<----8<----8<----8<----8<----8<----8<----8<----8<----8<----8<----8<--
+#! /bin/sh
+
+# obtain session bus address for Ring
+. /tmp/session_bus_address.user
+
+test -x /usr/bin/waitdbus &&
+/usr/bin/waitdbus session
+
+export RING_REALTIME=10
+export RING_MEMLOCK=1
+
+# Uncomment to obtain debug output
+# RING_DEBUG=all
+# CALL_DEBUG=all
+# SMS_DEBUG=all
+# MODEM_DEBUG=all
+
+# Make ring wait for
+export RING_PERSIST=1
+
+exec /usr/lib/telepathy/telepathy-ring
+--8<----8<----8<----8<----8<----8<----8<----8<----8<----8<----8<----8<--

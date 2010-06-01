@@ -1,0 +1,59 @@
+<?xml version="1.0" ?>
+<node name="/Channel_Interface_Emergency" xmlns:tp="http://telepathy.freedesktop.org/wiki/DbusSpec#extensions-v0">
+  <tp:copyright>Copyright (C) 2005-2008 Nokia Corporation </tp:copyright>
+  <tp:license xmlns="http://www.w3.org/1999/xhtml">
+  This library is confidential and proprietary source code of Nokia Corporation.
+  </tp:license>
+
+  <interface name="com.nokia.Telepathy.Channel.Interface.Emergency"
+    tp:causes-havoc='not yet API-stable'>
+    <tp:requires interface="org.freedesktop.Telepathy.Channel.Type.StreamedMedia"/>
+
+    <tp:docstring xmlns="http://www.w3.org/1999/xhtml">
+      <p>Interface for indicating that the channel is connected to an
+         emergency answering point.</p>
+
+      <p>The emergency answering points are identified using a
+      'urn:service:sos' service urn, specified by
+       <a href="http://www.rfc-editor.org/rfc/rfc5031.txt">RFC 5031</a>.
+      </p>
+    </tp:docstring>
+
+    <method name="GetEmergencyService">
+      <tp:docstring>
+         Return the emergency service associated with the channel.
+      </tp:docstring>
+      <arg direction="out" name="service" type="s">
+         <tp:docstring xmlns="http://www.w3.org/1999/xhtml">
+         <p>The service urn corresponding to the emergency contact,
+         e.g., "urn:service:sos.fire".</p>
+
+         <p>The generic 'sos' service urn urn:service:sos indicates an
+         unknown or generic public safety answering point (PSAP).</p>
+
+         <p>An error indicates that the call is not considered as an
+         emergency call by the connection manager.
+         </p>
+        </tp:docstring>
+      </arg>
+    </method>
+
+    <signal name="EmergencyService">
+      <arg direction="out" name="service" type="s">
+        <tp:docstring xmlns="http://www.w3.org/1999/xhtml">
+         <p>The service urn corresponding to the emergency contact,
+         e.g., "urn:service:sos.fire".</p>
+
+         <p>The generic 'sos' service urn urn:service:sos indicates an
+         unknown or generic public safety answering point (PSAP).</p>
+        </tp:docstring>
+      </arg>
+      <tp:docstring>
+        Emitted to indicate when the channel is being connected with an
+        emergency service.
+      </tp:docstring>
+    </signal>
+
+  </interface>
+</node>
+<!-- vim:set sw=2 sts=2 et ft=xml: -->
