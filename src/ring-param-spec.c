@@ -29,9 +29,8 @@ GParamSpec *ring_param_spec_imsi(void)
     g_param_spec_string("imsi",
       "IMSI",
       "Internation Mobile Subscriber Identifer",
-      "none", /* default value */
-      G_PARAM_READWRITE | G_PARAM_CONSTRUCT_ONLY |
-      G_PARAM_STATIC_STRINGS);
+      "", /* default value */
+      G_PARAM_READABLE | G_PARAM_STATIC_STRINGS);
 }
 
 GParamSpec *ring_param_spec_privacy(void)

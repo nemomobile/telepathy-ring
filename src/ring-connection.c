@@ -66,7 +66,6 @@
 struct _RingConnectionPrivate
 {
   /* Properties */
-  char *imsi;
   char *privacy;
   char *smsc;
   guint sms_valid;
@@ -79,6 +78,7 @@ struct _RingConnectionPrivate
 
   struct {
     gulong sim_connected, modem_connected;
+    gulong imsi_notify;
   } signals;
 
   unsigned sms_reduced_charset:1;
@@ -171,6 +171,17 @@ ring_connection_init(RingConnection *self)
 }
 
 static void
+on_imsi_changed(GObject *object, GParamSpec *pspec,
+  gpointer user_data)
+{
+  char const *imsi;
+  RingConnection *self = RING_CONNECTION(user_data);
+
+  imsi = modem_sim_get_imsi(MODEM_SIM_SERVICE(object));
+  ring_svc_connection_interface_cellular_emit_imsi_changed(self, imsi);
+}
+
+static void
 ring_connection_constructed(GObject *object)
 {
   RingConnection *self = RING_CONNECTION(object);
@@ -229,7 +240,6 @@ ring_connection_finalize(GObject *object)
 
   /* Free any data held directly by the object here */
   g_free(priv->privacy);
-  g_free(priv->imsi);
   g_free(priv->smsc);
 
   G_OBJECT_CLASS(ring_connection_parent_class)->finalize(object);
@@ -245,9 +255,6 @@ ring_connection_set_property(GObject *obj,
   RingConnectionPrivate *priv = self->priv;
 
   switch (property_id) {
-    case PROP_IMSI:
-      priv->imsi = g_value_dup_string(value);
-      break;
     case PROP_PRIVACY:
       priv->privacy = g_value_dup_string(value);
       if (priv->media)
@@ -289,7 +296,7 @@ ring_connection_get_property(GObject *obj,
       if (priv->sim && modem_sim_service_is_connected(priv->sim))
         g_object_get_property(G_OBJECT(priv->sim), "imsi", value);
       else
-        g_value_set_string(value, priv->imsi);
+        g_value_set_string(value, "");
       break;
     case PROP_PRIVACY:
       g_value_set_string(value, priv->privacy);
@@ -420,6 +427,7 @@ typedef struct {
   char *password;              /* Ignored */
 } RingConnectionParams;
 
+#if nomore
 /**
  * param_filter_tokens:
  * @paramspec: The parameter specification for a string parameter
@@ -451,6 +459,7 @@ param_filter_tokens(TpCMParamSpec const *paramspec,
     paramspec->name);
   return FALSE;
 }
+#endif
 
 /* Validate ISDN number */
 static gboolean
@@ -490,30 +499,6 @@ param_filter_isdn(TpCMParamSpec const *paramspec,
   return TRUE;
 }
 
-/* Validate IMSI  */
-static gboolean
-param_filter_imsi(TpCMParamSpec const *paramspec,
-  GValue *value,
-  GError **error)
-{
-  const char *str = g_value_get_string(value);
-
-  if (str == NULL) /* Empty is OK */
-    return TRUE;
-
-  if (strcmp(str, "none") == 0)
-    return TRUE;
-
-  if (strlen(str) != strspn(str, "0123456789")) {
-    g_set_error (error, TP_ERRORS, TP_ERROR_INVALID_ARGUMENT,
-      "Account parameter '%s' with invalid IMSI",
-      paramspec->name);
-    return FALSE;
-  }
-
-  return TRUE;
-}
-
 /* Validate SMS validity period  */
 static gboolean
 param_filter_validity(TpCMParamSpec const *paramspec,
@@ -542,7 +527,7 @@ TpCMParamSpec const ring_connection_params[] = {
     TP_CONN_MGR_PARAM_FLAG_DBUS_PROPERTY,
     "",
     G_STRUCT_OFFSET(RingConnectionParams, imsi),
-    param_filter_imsi,
+    NULL,
   },
 
 #define CELLULAR_SMS_VALIDITY_PERIOD_PARAM_SPEC (ring_connection_params + 1)
@@ -615,7 +600,6 @@ ring_connection_new(TpIntSet *params_present,
 
   return (RingConnection *) g_object_new(RING_TYPE_CONNECTION,
     "protocol", "tel",
-    "imsi", params->imsi ? params->imsi : "",
     "privacy", params->privacy ? params->privacy : "",
     "sms-service-centre", sms_service_centre ? sms_service_centre : "",
     "sms-validity-period", sms_validity_period,
@@ -835,6 +819,11 @@ ring_connection_shut_down(TpBaseConnection *base)
     priv->signals.modem_connected = 0;
   }
 
+  if (priv->signals.imsi_notify) {
+    g_signal_handler_disconnect(priv->sim, priv->signals.imsi_notify);
+    priv->signals.imsi_notify = 0;
+  }
+
   tp_base_connection_finish_shutdown(base);
 }
 
@@ -886,6 +875,10 @@ ring_connection_modem_connected(ModemService *modem,
     priv->signals.sim_connected =
       g_signal_connect(priv->sim, "connected",
         G_CALLBACK(ring_connection_sim_connected), self);
+
+    priv->signals.imsi_notify =
+      g_signal_connect(self->priv->sim, "notify::imsi",
+        G_CALLBACK(on_imsi_changed), self);
 
     if (!modem_sim_service_connect(priv->sim))
       DEBUG("modem_sim_service_connect failed");
@@ -1022,7 +1015,7 @@ ring_connection_validate_initial_members(RingConnection *self,
 /* org.freedesktop.Telepathy.Connection.Interface.Cellular */
 static TpDBusPropertiesMixinPropImpl
 ring_connection_cellular_properties[] = {
-  { "IMSI", "imsi" },
+  { "IMSI", "imsi", "imsi" },
   { "MessageValidityPeriod", "sms-validity-period", "sms-validity-period" },
   { "MessageServiceCentre", "sms-service-centre", "sms-service-centre" },
 #if notyet /* non-existent */
