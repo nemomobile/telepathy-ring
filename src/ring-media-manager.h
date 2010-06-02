@@ -73,7 +73,7 @@ TpConnectionStatus ring_media_manager_get_status(RingMediaManager *);
 RingMediaChannel *ring_media_manager_lookup(RingMediaManager *self,
   char const *object_path);
 
-RingEmergencyServiceList *ring_media_manager_emergency_services(
+RingEmergencyServiceInfoList *ring_media_manager_emergency_services(
   RingMediaManager *self);
 
 void ring_media_manager_add_capabilities(RingMediaManager *,

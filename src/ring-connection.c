@@ -94,9 +94,9 @@ enum {
   PROP_SMS_VALID,               /**< SMS validity period in seconds */
   PROP_SMS_REDUCED_CHARSET,     /**< SMS reduced charset support */
 
-  PROP_EMERGENCY_SERVICES,      /**< List of known emergency services */
-
   PROP_STORED_MESSAGES,         /**< List of stored messages */
+
+  PROP_KNOWN_SERVICE_POINTS,    /**< List of emergency service points */
   N_PROPS
 };
 
@@ -104,11 +104,9 @@ static void ring_connection_class_init_base_connection(TpBaseConnectionClass *);
 static void ring_connection_capabilities_iface_init(gpointer, gpointer);
 static void ring_connection_add_contact_capabilities(GObject *object,
   GArray const *handles, GHashTable *returns);
-static void ring_connection_emergency_iface_init(gpointer, gpointer);
 static void ring_connection_stored_messages_iface_init(gpointer, gpointer);
 
-static TpDBusPropertiesMixinPropImpl
-ring_connection_emergency_properties[],
+static TpDBusPropertiesMixinPropImpl ring_connection_service_point_properties[],
   ring_connection_gsm_properties[],
   ring_connection_stored_messages_properties[];
 
@@ -133,19 +131,19 @@ G_DEFINE_TYPE_WITH_CODE(
     tp_contacts_mixin_iface_init);
   G_IMPLEMENT_INTERFACE (TP_TYPE_SVC_CONNECTION_INTERFACE_CAPABILITIES,
     ring_connection_capabilities_iface_init);
-  G_IMPLEMENT_INTERFACE(RTCOM_TYPE_TP_SVC_CONNECTION_INTERFACE_EMERGENCY,
-    ring_connection_emergency_iface_init)
+  G_IMPLEMENT_INTERFACE(RING_TYPE_SVC_CONNECTION_INTERFACE_SERVICE_POINT,
+    NULL);
   G_IMPLEMENT_INTERFACE(RTCOM_TYPE_TP_SVC_CONNECTION_INTERFACE_GSM,
-    NULL)
+    NULL);
   G_IMPLEMENT_INTERFACE(RTCOM_TYPE_TP_SVC_CONNECTION_INTERFACE_STORED_MESSAGES,
-    ring_connection_stored_messages_iface_init)
+    ring_connection_stored_messages_iface_init);
   );
 
 static char const * const ring_connection_interfaces_always_present[] = {
   TP_IFACE_CONNECTION_INTERFACE_REQUESTS,
   TP_IFACE_CONNECTION_INTERFACE_CONTACTS,
   TP_IFACE_CONNECTION_INTERFACE_CAPABILITIES,
-  RTCOM_TP_IFACE_CONNECTION_INTERFACE_EMERGENCY,
+  RING_IFACE_CONNECTION_INTERFACE_SERVICE_POINT,
   RTCOM_TP_IFACE_CONNECTION_INTERFACE_GSM,
   RTCOM_TP_IFACE_CONNECTION_INTERFACE_STORED_MESSAGES,
   NULL
@@ -305,13 +303,14 @@ ring_connection_get_property(GObject *obj,
     case PROP_SMS_REDUCED_CHARSET:
       g_value_set_boolean(value, priv->sms_reduced_charset);
       break;
-    case PROP_EMERGENCY_SERVICES:
-      g_value_take_boxed(value, ring_media_manager_emergency_services(priv->media));
-      break;
     case PROP_STORED_MESSAGES:
 #if nomore
       g_value_take_boxed(value, ring_text_manager_list_stored_messages(priv->text));
 #endif
+      break;
+
+    case PROP_KNOWN_SERVICE_POINTS:
+      g_value_take_boxed(value, ring_media_manager_emergency_services(priv->media));
       break;
 
     default:
@@ -350,23 +349,21 @@ ring_connection_class_init(RingConnectionClass *ring_connection_class)
     ring_param_spec_sms_reduced_charset());
 
   g_object_class_install_property(
-    object_class, PROP_EMERGENCY_SERVICES,
-    g_param_spec_boxed("emergency-services",
-      "List of emergency services",
-      "List of emergency services, "
-      "corresponding handles "
-      "and aliases.",
-      RTCOM_TP_ARRAY_TYPE_EMERGENCY_SERVICE_LIST,
-      G_PARAM_READABLE |
-      G_PARAM_STATIC_STRINGS));
-
-  g_object_class_install_property(
     object_class, PROP_STORED_MESSAGES,
     g_param_spec_boxed("stored-messages",
       "Stored messages",
       "List of messages "
       "in permanent storage.",
       G_TYPE_STRV,
+      G_PARAM_READABLE |
+      G_PARAM_STATIC_STRINGS));
+
+  g_object_class_install_property(
+    object_class, PROP_KNOWN_SERVICE_POINTS,
+    g_param_spec_boxed("known-service-points",
+      "Known service points",
+      "List of known emergency service points",
+      RING_ARRAY_TYPE_SERVICE_POINT_INFO_LIST,
       G_PARAM_READABLE |
       G_PARAM_STATIC_STRINGS));
 
@@ -389,16 +386,16 @@ ring_connection_class_init(RingConnectionClass *ring_connection_class)
 static TpDBusPropertiesMixinIfaceImpl
 ring_connection_dbus_property_interfaces[] = {
   {
+    RING_IFACE_CONNECTION_INTERFACE_SERVICE_POINT,
+    tp_dbus_properties_mixin_getter_gobject_properties,
+    NULL,
+    ring_connection_service_point_properties,
+  },
+  {
     RTCOM_TP_IFACE_CONNECTION_INTERFACE_GSM,
     tp_dbus_properties_mixin_getter_gobject_properties,
     ring_connection_gsm_properties_setter,
     ring_connection_gsm_properties,
-  },
-  {
-    RTCOM_TP_IFACE_CONNECTION_INTERFACE_EMERGENCY,
-    tp_dbus_properties_mixin_getter_gobject_properties,
-    NULL,
-    ring_connection_emergency_properties,
   },
   {
     RTCOM_TP_IFACE_CONNECTION_INTERFACE_STORED_MESSAGES,
@@ -1034,44 +1031,6 @@ ring_connection_validate_initial_members(RingConnection *self,
 }
 
 /* ---------------------------------------------------------------------- */
-/* Connection.Interface.Emergency */
-
-static TpDBusPropertiesMixinPropImpl
-ring_connection_emergency_properties[] = {
-  { "EmergencyServices", "emergency-services" },
-  { NULL }
-};
-
-
-static void
-ring_connection_get_emergency_services(
-  RTComTpSvcConnectionInterfaceEmergency *iface,
-  DBusGMethodInvocation *context)
-{
-  RingConnection *self = RING_CONNECTION(iface);
-  RingConnectionPrivate *priv = self->priv;
-  RingEmergencyServiceList *list;
-
-  list = ring_media_manager_emergency_services(priv->media);
-
-  rtcom_tp_svc_connection_interface_emergency_return_from_get_emergency_services(
-    context, list);
-
-  ring_emergency_service_list_free(list);
-}
-
-static void
-ring_connection_emergency_iface_init(gpointer g_iface, gpointer iface_data)
-{
-  RTComTpSvcConnectionInterfaceEmergencyClass *klass = g_iface;
-
-#define IMPLEMENT(x) rtcom_tp_svc_connection_interface_emergency_implement_##x( \
-    klass, ring_connection_ ## x)
-  IMPLEMENT(get_emergency_services);
-#undef IMPLEMENT
-}
-
-/* ---------------------------------------------------------------------- */
 /* com.nokia.Telepathy.Connection.Interface.GSM */
 static TpDBusPropertiesMixinPropImpl
 ring_connection_gsm_properties[] = {
@@ -1129,6 +1088,15 @@ ring_connection_gsm_properties_setter(GObject *object,
 
   return TRUE;
 }
+
+/* ---------------------------------------------------------------------- */
+/* Connection.Interface.ServicePoint */
+
+static TpDBusPropertiesMixinPropImpl
+ring_connection_service_point_properties[] = {
+  { "KnownServicePoints", "known-service-points" },
+  { NULL}
+};
 
 /* ---------------------------------------------------------------------- */
 /* Connection.Interface.StoredMessages */

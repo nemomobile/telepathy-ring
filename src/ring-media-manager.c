@@ -435,19 +435,16 @@ ring_media_manager_get_status(RingMediaManager *self)
 
 /* ---------------------------------------------------------------------- */
 
-RingEmergencyServiceList *
+RingEmergencyServiceInfoList *
 ring_media_manager_emergency_services(RingMediaManager *self)
 {
   RingMediaManagerPrivate *priv = RING_MEDIA_MANAGER(self)->priv;
   char const * const * numbers;
-  guint soshandle;
 
   g_assert(priv->call_service != NULL);
 
-  soshandle = priv->connection->sos_handle;
   numbers = modem_call_get_emergency_numbers(priv->call_service);
-
-  return ring_emergency_service_list_default(soshandle, numbers);
+  return ring_emergency_service_info_list_default(numbers);
 }
 
 static void
@@ -456,17 +453,14 @@ on_modem_call_emergency_numbers_changed(ModemCallService *call_service,
   RingMediaManager *self)
 {
   RingMediaManagerPrivate *priv = RING_MEDIA_MANAGER(self)->priv;
-  guint soshandle;
-  RingEmergencyServiceList *services;
+  RingEmergencyServiceInfoList *services;
 
-  soshandle = priv->connection->sos_handle;
+  services = ring_emergency_service_info_list_default(numbers);
 
-  services = ring_emergency_service_list_default(soshandle, numbers);
+  ring_svc_connection_interface_service_point_emit_service_points_changed(
+      priv->connection, services);
 
-  rtcom_tp_svc_connection_interface_emergency_emit_emergency_services_changed(
-    priv->connection, services);
-
-  ring_emergency_service_list_free(services);
+  ring_emergency_service_info_list_free(services);
 }
 
 /* ---------------------------------------------------------------------- */

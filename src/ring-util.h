@@ -29,6 +29,8 @@
 
 G_BEGIN_DECLS
 
+#define RING_STR_EMPTY(s) (s == NULL || s[0] == '\0')
+
 char *ring_str_starts_with(char const *string, char const *prefix);
 
 char *ring_str_starts_with_case(char const *string, char const *prefix);

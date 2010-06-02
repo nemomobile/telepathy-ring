@@ -23,32 +23,33 @@
 #define RING_EMERGENCY_SERVICE_H
 
 #include <glib-object.h>
-#include <rtcom-telepathy-glib/extensions.h>
-#include <modem/call.h>
+#include <ring-extensions/ring-extensions.h>
+#include <ring-extensions/gtypes.h>
 
 G_BEGIN_DECLS
 
+#define RING_EMERGENCY_SERVICE_URN "urn:service:sos"
+
 /* Boxed struct describing RingEmergencyService */
 typedef GValueArray RingEmergencyService;
-typedef GPtrArray RingEmergencyServiceList;
+typedef GValueArray RingEmergencyServiceInfo;
+typedef GPtrArray RingEmergencyServiceInfoList;
 
-#define RING_TYPE_EMERGENCY_SERVICE RTCOM_TP_STRUCT_TYPE_EMERGENCY_SERVICE
-
-RingEmergencyService *ring_emergency_service_new(char const *service,
-  guint handle,
-  char const * const *aliases);
-
+RingEmergencyService *ring_emergency_service_new(char const *service);
 void ring_emergency_service_free(RingEmergencyService *service);
 
-RingEmergencyServiceList *ring_emergency_service_list_new(RingEmergencyService *, ...)
-G_GNUC_NULL_TERMINATED;
+RingEmergencyServiceInfo *ring_emergency_service_info_new(char const *service,
+  char const * const *aliases);
 
-void ring_emergency_service_list_free(RingEmergencyServiceList *);
+void ring_emergency_service_info_free(RingEmergencyServiceInfo *service);
 
-RingEmergencyServiceList *ring_emergency_service_list_default(
-  guint sos_handle, char const * const *numbers);
+RingEmergencyServiceInfoList *ring_emergency_service_info_list_new(
+  RingEmergencyServiceInfo *, ...) G_GNUC_NULL_TERMINATED;
 
-#define RING_EMERGENCY_SERVICE_URN "urn:service:sos"
+void ring_emergency_service_info_list_free(RingEmergencyServiceInfoList *);
+
+RingEmergencyServiceInfoList *ring_emergency_service_info_list_default(
+  char const * const *numbers);
 
 G_END_DECLS
 

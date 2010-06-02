@@ -26,26 +26,30 @@
 #include "ring-util.h"
 #include "modem/call.h"
 
-#include <dbus/dbus-glib-lowlevel.h>
 #include <dbus/dbus-glib.h>
 
 #include <string.h>
 
-/* Return a pointer to a boxed service struct */
 RingEmergencyService *
-ring_emergency_service_new(char const *service,
-  guint handle,
-  char const * const *aliases)
+ring_emergency_service_new(char const *service)
 {
   GValue value[1] = {{ 0 }};
-  GType gtype = RING_TYPE_EMERGENCY_SERVICE;
+  GType gtype = RING_STRUCT_TYPE_SERVICE_POINT;
+  TpServicePointType service_type;
+
+  if (service == NULL)
+    service = "";
+
+  if (service[0] == '\0')
+    service_type = TP_SERVICE_POINT_TYPE_NONE;
+  else
+    service_type = TP_SERVICE_POINT_TYPE_EMERGENCY;
 
   g_value_init(value, gtype);
   g_value_take_boxed(value, dbus_g_type_specialized_construct(gtype));
   dbus_g_type_struct_set(value,
-    0, service,
-    1, handle,
-    2, aliases,
+    0, service_type,
+    1, service,
     G_MAXUINT);
 
   return (RingEmergencyService *)g_value_get_boxed(value);
@@ -54,18 +58,48 @@ ring_emergency_service_new(char const *service,
 void
 ring_emergency_service_free(RingEmergencyService *service)
 {
-  g_boxed_free(RING_TYPE_EMERGENCY_SERVICE, (gpointer)service);
+  g_boxed_free(RING_STRUCT_TYPE_SERVICE_POINT, (gpointer)service);
 }
 
-RingEmergencyServiceList *
-ring_emergency_service_list_new(RingEmergencyService *service,
+/* Return a pointer to a boxed service struct */
+RingEmergencyServiceInfo *
+ring_emergency_service_info_new(char const *service,
+  char const * const *aliases)
+{
+  RingEmergencyService *es;
+  GValue value[1] = {{ 0 }};
+  GType gtype = RING_STRUCT_TYPE_SERVICE_POINT_INFO;
+
+  g_value_init(value, gtype);
+  g_value_take_boxed(value, dbus_g_type_specialized_construct(gtype));
+
+  es = ring_emergency_service_new(service);
+
+  dbus_g_type_struct_set(value,
+    0, es,
+    1, aliases,
+    G_MAXUINT);
+
+  ring_emergency_service_free(es);
+
+  return (RingEmergencyServiceInfo *)g_value_get_boxed(value);
+}
+
+void
+ring_emergency_service_info_free(RingEmergencyServiceInfo *info)
+{
+  g_boxed_free(RING_STRUCT_TYPE_SERVICE_POINT_INFO, info);
+}
+
+RingEmergencyServiceInfoList *
+ring_emergency_service_info_list_new(RingEmergencyServiceInfo *info,
   ...)
 {
-  RingEmergencyServiceList *self = g_ptr_array_sized_new(1);
+  RingEmergencyServiceInfoList *self = g_ptr_array_sized_new(1);
   va_list ap;
 
-  for (va_start(ap, service); service; service = va_arg(ap, gpointer)) {
-    g_ptr_array_add(self, service);
+  for (va_start(ap, info); info; info = va_arg(ap, gpointer)) {
+    g_ptr_array_add(self, info);
   }
   va_end(ap);
 
@@ -73,7 +107,7 @@ ring_emergency_service_list_new(RingEmergencyService *service,
 }
 
 void
-ring_emergency_service_list_free(RingEmergencyServiceList *list)
+ring_emergency_service_info_list_free(RingEmergencyServiceInfoList *list)
 {
   guint i;
   for (i = 0; i < list->len; i++)
@@ -81,12 +115,11 @@ ring_emergency_service_list_free(RingEmergencyServiceList *list)
   g_ptr_array_free(list, TRUE);
 }
 
-RingEmergencyServiceList *
-ring_emergency_service_list_default(guint sos_handle,
-  char const * const * numbers)
+RingEmergencyServiceInfoList *
+ring_emergency_service_info_list_default(char const * const * numbers)
 {
-  return ring_emergency_service_list_new(
-    ring_emergency_service_new(RING_EMERGENCY_SERVICE_URN,
-      sos_handle, numbers),
+  return ring_emergency_service_info_list_new(
+    ring_emergency_service_info_new(RING_EMERGENCY_SERVICE_URN,
+      numbers),
     NULL);
 }

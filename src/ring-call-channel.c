@@ -134,10 +134,13 @@ enum
 
   PROP_PRIVACY,
 
-  PROP_EMERGENCY_SERVICE,     /* c.n.T.Channel.Interface.Emergency.EmergencyService */
-  PROP_INITIAL_EMERGENCY_SERVICE,
+  PROP_CURRENT_SERVICE_POINT, /* o.f.T.C.I.ServicePoint.CurrentServicePoint */
+  PROP_INITIAL_SERVICE_POINT, /* o.f.T.C.I.ServicePoint.InitialServicePoint */
 
   /* ring-specific properties */
+  PROP_EMERGENCY_SERVICE,
+  PROP_INITIAL_EMERGENCY_SERVICE,
+
   PROP_TERMINATING,
   PROP_ORIGINATING,
 
@@ -156,7 +159,6 @@ static void ring_call_channel_implement_media_channel(RingMediaChannelClass *);
 static TpDBusPropertiesMixinIfaceImpl
 ring_call_channel_dbus_property_interfaces[];
 static void ring_channel_call_state_iface_init(gpointer, gpointer);
-static void ring_channel_emergency_iface_init(gpointer, gpointer);
 static void ring_channel_splittable_iface_init(gpointer, gpointer);
 
 static gboolean ring_call_channel_add_member(
@@ -181,8 +183,8 @@ G_DEFINE_TYPE_WITH_CODE(
     tp_group_mixin_iface_init)
   G_IMPLEMENT_INTERFACE(TP_TYPE_SVC_CHANNEL_INTERFACE_CALL_STATE,
     ring_channel_call_state_iface_init)
-  G_IMPLEMENT_INTERFACE(RTCOM_TYPE_TP_SVC_CHANNEL_INTERFACE_EMERGENCY,
-    ring_channel_emergency_iface_init)
+  G_IMPLEMENT_INTERFACE(RING_TYPE_SVC_CHANNEL_INTERFACE_SERVICE_POINT,
+    NULL);
   G_IMPLEMENT_INTERFACE(RING_TYPE_SVC_CHANNEL_INTERFACE_SPLITTABLE,
     ring_channel_splittable_iface_init));
 
@@ -190,7 +192,7 @@ const char *ring_call_channel_interfaces[] = {
   RING_MEDIA_CHANNEL_INTERFACES,
   TP_IFACE_CHANNEL_INTERFACE_GROUP,
   TP_IFACE_CHANNEL_INTERFACE_CALL_STATE,
-  RTCOM_TP_IFACE_CHANNEL_INTERFACE_EMERGENCY,
+  RING_IFACE_CHANNEL_INTERFACE_SERVICE_POINT,
   RING_IFACE_CHANNEL_INTERFACE_SPLITTABLE,
   NULL
 };
@@ -333,7 +335,6 @@ ring_call_channel_emit_initial(RingMediaChannel *_self)
   if (remote_pending_set) tp_intset_destroy(remote_pending_set);
 }
 
-
 static void
 ring_call_channel_get_property(GObject *obj,
   guint property_id,
@@ -387,17 +388,25 @@ ring_call_channel_get_property(GObject *obj,
         value, ring_member_channel_get_handlemap(RING_MEMBER_CHANNEL(self)));
       break;
     case PROP_CONFERENCE:
-    {
-      char *object_path = NULL;
-      if (priv->member.conference) {
-        g_object_get(priv->member.conference, "object-path", &object_path, NULL);
+      {
+        char *object_path = NULL;
+        if (priv->member.conference) {
+          g_object_get(priv->member.conference, "object-path", &object_path, NULL);
+        }
+        else {
+          object_path = strdup("/");
+        }
+        g_value_take_boxed(value, object_path);
       }
-      else {
-        object_path = strdup("/");
-      }
-      g_value_take_boxed(value, object_path);
-    }
-    break;
+      break;
+    case PROP_INITIAL_SERVICE_POINT:
+      g_value_take_boxed(value,
+        ring_emergency_service_new(priv->initial_emergency_service));
+      break;
+    case PROP_CURRENT_SERVICE_POINT:
+      g_value_take_boxed(value,
+        ring_emergency_service_new(priv->emergency_service));
+      break;
     case PROP_EMERGENCY_SERVICE:
       g_value_set_string(value, priv->emergency_service);
       break;
@@ -448,22 +457,6 @@ ring_call_channel_set_property(GObject *obj,
     case PROP_MEMBER:
       priv->member.handle = g_value_get_uint(value);
       break;
-    case PROP_EMERGENCY_SERVICE:
-    {
-      char *old_service = priv->emergency_service;
-      priv->emergency_service = g_value_dup_string(value);
-      if (priv->constructed &&
-        old_service &&
-        strcmp(priv->emergency_service, old_service)) {
-        DEBUG("emitting %s(%s)", "EmergencyServiceChanged",
-          priv->emergency_service);
-        rtcom_tp_svc_channel_interface_emergency_emit_emergency_service_changed(
-          (RTComTpSvcChannelInterfaceEmergency *)self,
-          priv->emergency_service);
-      }
-      g_free(old_service);
-    }
-    break;
     case PROP_INITIAL_EMERGENCY_SERVICE:
       priv->initial_emergency_service = g_value_dup_string(value);
       break;
@@ -576,13 +569,28 @@ ring_call_channel_class_init(RingCallChannelClass *klass)
     object_class, PROP_PRIVACY, ring_param_spec_privacy());
 
   g_object_class_install_property(
+    object_class, PROP_INITIAL_SERVICE_POINT,
+    g_param_spec_boxed("initial-service-point",
+      "Initial Service Point",
+      "The service point initially associated with this channel",
+      RING_STRUCT_TYPE_SERVICE_POINT,
+      G_PARAM_READABLE | G_PARAM_STATIC_STRINGS));
+
+  g_object_class_install_property(
+    object_class, PROP_CURRENT_SERVICE_POINT,
+    g_param_spec_boxed("current-service-point",
+      "Current Service Point",
+      "The service point currently associated with this channel",
+      RING_STRUCT_TYPE_SERVICE_POINT,
+      G_PARAM_READABLE | G_PARAM_STATIC_STRINGS));
+
+  g_object_class_install_property(
     object_class, PROP_EMERGENCY_SERVICE,
     g_param_spec_string("emergency-service",
       "Emergency Service",
       "Emergency service associated with this channel",
       "",
-      G_PARAM_READWRITE | G_PARAM_CONSTRUCT |
-      G_PARAM_STATIC_STRINGS));
+      G_PARAM_READABLE | G_PARAM_STATIC_STRINGS));
 
   g_object_class_install_property(
     object_class, PROP_INITIAL_EMERGENCY_SERVICE,
@@ -638,20 +646,20 @@ ring_call_channel_class_init(RingCallChannelClass *klass)
  * org.freedesktop.DBus properties
  */
 
-/* Properties for com.nokia.Telepathy.Channel.Interface.Emergency */
-static TpDBusPropertiesMixinPropImpl emergency_properties[] = {
-  { "EmergencyService", "emergency-service" },
-  { "InitialEmergencyService", "initial-emergency-service" },
+/* Properties for o.f.T.Channel.Interface.ServicePoint */
+static TpDBusPropertiesMixinPropImpl service_point_properties[] = {
+  { "InitialServicePoint", "initial-service-point" },
+  { "CurrentServicePoint", "current-service-point" },
   { NULL }
 };
 
 static TpDBusPropertiesMixinIfaceImpl
 ring_call_channel_dbus_property_interfaces[] = {
   {
-    RTCOM_TP_IFACE_CHANNEL_INTERFACE_EMERGENCY,
+    RING_IFACE_CHANNEL_INTERFACE_SERVICE_POINT,
     tp_dbus_properties_mixin_getter_gobject_properties,
     NULL,
-    emergency_properties,
+    service_point_properties,
   },
   { NULL }
 };
@@ -670,12 +678,14 @@ ring_call_channel_properties(RingCallChannel *self)
 
   properties = ring_media_channel_properties(RING_MEDIA_CHANNEL(self));
 
-  if (self->priv->initial_emergency_service &&
-    strlen(self->priv->initial_emergency_service)) {
+  ring_channel_add_properties(self, properties,
+    RING_IFACE_CHANNEL_INTERFACE_SERVICE_POINT, "CurrentServicePoint",
+    NULL);
+
+  if (!RING_STR_EMPTY(self->priv->initial_emergency_service))
     ring_channel_add_properties(self, properties,
-      RTCOM_TP_IFACE_CHANNEL_INTERFACE_EMERGENCY, "InitialEmergencyService",
+      RING_IFACE_CHANNEL_INTERFACE_SERVICE_POINT, "InitialServicePoint",
       NULL);
-  }
 
   return properties;
 }
@@ -689,8 +699,7 @@ static gboolean ring_call_channel_check_modem_state(RingCallChannel *self,
 
 /** Close channel */
 static gboolean
-ring_call_channel_close(RingMediaChannel *_self,
-  gboolean immediately)
+ring_call_channel_close(RingMediaChannel *_self, gboolean immediately)
 {
   RingCallChannel *self = RING_CALL_CHANNEL(_self);
   RingCallChannelPrivate *priv = RING_CALL_CHANNEL(self)->priv;
@@ -991,7 +1000,7 @@ ring_call_channel_create(RingCallChannel *self, GError **error)
 
   destination = ring_connection_inspect_contact(self->base.connection, handle);
 
-  if (destination == NULL || destination[0] == '\0') {
+  if (RING_STR_EMPTY(destination)) {
     g_set_error(error, TP_ERRORS, TP_ERROR_INVALID_ARGUMENT, "Invalid handle");
     return NULL;
   }
@@ -1192,39 +1201,30 @@ on_modem_call_multiparty(ModemCall *ci,
   /*ring_update_call_state(self, TP_CHANNEL_CALL_STATE_XXX, 0);*/
 }
 
-/* ---------------------------------------------------------------------- */
-/* Implement com.nokia.Telepathy.Channel.Interface.Emergency */
-
-static
-void get_emergency_service(RTComTpSvcChannelInterfaceEmergency *iface,
-  DBusGMethodInvocation *context)
-{
-  RingCallChannel *self = RING_CALL_CHANNEL(iface);
-  RingCallChannelPrivate *priv = self->priv;
-
-  rtcom_tp_svc_channel_interface_emergency_return_from_get_emergency_service
-    (context, priv->emergency_service);
-}
-
-static void
-ring_channel_emergency_iface_init(gpointer g_iface, gpointer iface_data)
-{
-  RTComTpSvcChannelInterfaceEmergencyClass *klass = g_iface;
-
-#define IMPLEMENT(x) rtcom_tp_svc_channel_interface_emergency_implement_##x( \
-    klass, x)
-  IMPLEMENT(get_emergency_service);
-#undef IMPLEMENT
-}
-
 /* Invoked when MO call targets an emergency service */
 static void
 on_modem_call_emergency(ModemCall *ci,
   char const *emergency_service,
   RingCallChannel *self)
 {
+  RingCallChannelPrivate *priv = self->priv;
+
   DEBUG("%s", emergency_service);
-  g_object_set(self, "emergency-service", emergency_service, NULL);
+
+  if (g_strcmp0 (emergency_service, priv->emergency_service) != 0) {
+    RingEmergencyService *esp;
+
+    g_free(priv->emergency_service);
+    priv->emergency_service = g_strdup(emergency_service);
+    g_object_notify(G_OBJECT(self), "emergency-service");
+
+    DEBUG("emitting ServicePointChanged");
+
+    esp = ring_emergency_service_new(emergency_service);
+    ring_svc_channel_interface_service_point_emit_service_point_changed(
+      (RingSvcChannelInterfaceServicePoint *)self, esp);
+    ring_emergency_service_free(esp);
+  }
 }
 
 /* ---------------------------------------------------------------------- */
