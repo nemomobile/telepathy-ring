@@ -11,11 +11,8 @@ param-org.freedesktop.Telepathy.Connection.Interface.Cellular.DRAFT.MessageServi
 param-org.freedesktop.Telepathy.Connection.Interface.Cellular.DRAFT.MessageValidityPeriod=u  dbus-property
 default-org.freedesktop.Telepathy.Connection.Interface.Cellular.DRAFT.MessageValidityPeriod=0
 
-# empty   - set by network - let network decide
-# "id"    - no - do not send caller id (by default)
-# "no-id" - yes - send caller id (by default)
-param-com.nokia.Telepathy.Connection.Interface.GSM.Privacy=s dbus-property
-default-com.nokia.Telepathy.Connection.Interface.GSM.Privacy=
+param-org.freedesktop.Telepathy.Connection.Interface.Anonymity.DRAFT.AnonymityModes=u dbus-property
+default-org.freedesktop.Telepathy.Connection.Interface.Anonymity.DRAFT.AnonymityModes=0
 
 # Deprecated
 param-account=s
