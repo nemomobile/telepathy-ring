@@ -76,7 +76,7 @@
 
 struct _RingCallChannelPrivate
 {
-  char *privacy;
+  guint anon_modes;
   char *dial2nd;
   char *emergency_service;
   char *initial_emergency_service;
@@ -132,7 +132,7 @@ enum
   PROP_INITIATOR,             /* o.f.T.Channel.InitiatorHandle */
   PROP_INITIATOR_ID,          /* o.f.T.Channel.InitiatorID */
 
-  PROP_PRIVACY,
+  PROP_ANON_MODES,
 
   PROP_CURRENT_SERVICE_POINT, /* o.f.T.C.I.ServicePoint.CurrentServicePoint */
   PROP_INITIAL_SERVICE_POINT, /* o.f.T.C.I.ServicePoint.InitialServicePoint */
@@ -371,8 +371,8 @@ ring_call_channel_get_property(GObject *obj,
       id = ring_connection_inspect_contact(self->base.connection, priv->initiator);
       g_value_set_static_string(value, id);
       break;
-    case PROP_PRIVACY:
-      g_value_set_string(value, priv->privacy);
+    case PROP_ANON_MODES:
+      g_value_set_uint(value, priv->anon_modes);
       break;
     case PROP_ORIGINATING:
       g_value_set_boolean(value, priv->originating);
@@ -435,8 +435,8 @@ ring_call_channel_set_property(GObject *obj,
   RingCallChannelPrivate *priv = self->priv;
 
   switch (property_id) {
-    case PROP_PRIVACY:
-      priv->privacy = g_value_dup_string(value);
+    case PROP_ANON_MODES:
+      priv->anon_modes = g_value_get_uint(value);
       break;
     case PROP_TARGET_TYPE:
       /* this property is writable in the interface, but not actually
@@ -503,7 +503,6 @@ ring_call_channel_finalize(GObject *object)
   g_free(priv->emergency_service);
   g_free(priv->initial_emergency_service);
   g_free(priv->dial2nd);
-  g_free(priv->privacy);
   g_free(priv->accepted);
   g_free(priv->release.message);
 
@@ -566,7 +565,7 @@ ring_call_channel_class_init(RingCallChannelClass *klass)
     object_class, PROP_INITIATOR_ID, "initiator-id");
 
   g_object_class_install_property(
-    object_class, PROP_PRIVACY, ring_param_spec_privacy());
+    object_class, PROP_ANON_MODES, ring_param_spec_anon_modes());
 
   g_object_class_install_property(
     object_class, PROP_INITIAL_SERVICE_POINT,
@@ -1005,10 +1004,10 @@ ring_call_channel_create(RingCallChannel *self, GError **error)
     return NULL;
   }
 
-  if (ring_str_has_token(priv->privacy, "no-id"))
-    clir = MODEM_CLIR_OVERRIDE_DISABLED;
-  else if (ring_str_has_token(priv->privacy, "id"))
+  if (priv->anon_modes & TP_ANONYMITY_MODE_CLIENT_INFO)
     clir = MODEM_CLIR_OVERRIDE_ENABLED;
+  else if (priv->anon_modes & TP_ANONYMITY_MODE_SHOW_CLIENT_INFO)
+    clir = MODEM_CLIR_OVERRIDE_DISABLED;
   else
     clir = MODEM_CLIR_OVERRIDE_DEFAULT;
 

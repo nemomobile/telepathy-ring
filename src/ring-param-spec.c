@@ -33,18 +33,6 @@ GParamSpec *ring_param_spec_imsi(void)
       G_PARAM_READABLE | G_PARAM_STATIC_STRINGS);
 }
 
-GParamSpec *ring_param_spec_privacy(void)
-{
-  return
-    g_param_spec_string("privacy",
-      "Privacy service",
-      "Privacy services: id (do not send caller id) or "
-      "no-id (send caller id)",
-      "", /* default value */
-      G_PARAM_READWRITE | G_PARAM_CONSTRUCT |
-      G_PARAM_STATIC_STRINGS);
-}
-
 GParamSpec *ring_param_spec_sms_valid(void)
 {
   return
@@ -159,4 +147,13 @@ ring_param_spec_type_specific_capability_flags(guint flags,
     "Capability flags for the channel type.",
     0, G_MAXUINT32, default_value,
     flags | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+}
+
+GParamSpec *ring_param_spec_anon_modes(void)
+{
+  return g_param_spec_uint("anon-modes",
+    "Anonymity modes",
+    "Specifies the active anonymity modes",
+    0, G_MAXUINT, 0,
+    G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 }

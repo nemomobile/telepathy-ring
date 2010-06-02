@@ -27,7 +27,6 @@
 G_BEGIN_DECLS
 
 GParamSpec *ring_param_spec_imsi(void);
-GParamSpec *ring_param_spec_privacy(void);
 GParamSpec *ring_param_spec_sms_valid(void);
 GParamSpec *ring_param_spec_smsc(void);
 GParamSpec *ring_param_spec_sms_reduced_charset(void);
@@ -45,6 +44,8 @@ GParamSpec *ring_param_spec_requested(guint flags);
 
 GParamSpec *ring_param_spec_type_specific_capability_flags(guint flags,
   guint default_value);
+
+GParamSpec *ring_param_spec_anon_modes(void);
 
 G_END_DECLS
 

@@ -66,9 +66,10 @@
 struct _RingConnectionPrivate
 {
   /* Properties */
-  char *privacy;
   char *smsc;
   guint sms_valid;
+  guint anon_modes;
+  guint anon_supported_modes;
 
   RingMediaManager *media;
   RingTextManager *text;
@@ -81,6 +82,7 @@ struct _RingConnectionPrivate
     gulong imsi_notify;
   } signals;
 
+  unsigned anon_mandatory:1;
   unsigned sms_reduced_charset:1;
   unsigned dispose_has_run:1;
 };
@@ -89,14 +91,17 @@ struct _RingConnectionPrivate
 enum {
   PROP_NONE,
   PROP_IMSI,                    /**< IMSI */
-  PROP_PRIVACY,                 /**< Privacy - id or no-id (or empty) */
   PROP_SMSC,                    /**< SMSC address */
   PROP_SMS_VALID,               /**< SMS validity period in seconds */
   PROP_SMS_REDUCED_CHARSET,     /**< SMS reduced charset support */
 
   PROP_STORED_MESSAGES,         /**< List of stored messages */
-
   PROP_KNOWN_SERVICE_POINTS,    /**< List of emergency service points */
+
+  PROP_ANON_SUPPORTED_MODES,
+  PROP_ANON_MANDATORY,
+  PROP_ANON_MODES,
+
   N_PROPS
 };
 
@@ -108,7 +113,8 @@ static void ring_connection_stored_messages_iface_init(gpointer, gpointer);
 
 static TpDBusPropertiesMixinPropImpl ring_connection_service_point_properties[],
   ring_connection_cellular_properties[],
-  ring_connection_stored_messages_properties[];
+  ring_connection_stored_messages_properties[],
+  ring_connection_anon_properties[];
 
 static gboolean ring_connection_cellular_properties_setter(GObject *object,
   GQuark interface, GQuark name, const GValue *value, gpointer setter_data,
@@ -135,6 +141,8 @@ G_DEFINE_TYPE_WITH_CODE(
     NULL);
   G_IMPLEMENT_INTERFACE(RING_TYPE_SVC_CONNECTION_INTERFACE_CELLULAR,
     NULL);
+  G_IMPLEMENT_INTERFACE(RING_TYPE_SVC_CONNECTION_INTERFACE_ANONYMITY,
+    NULL);
   G_IMPLEMENT_INTERFACE(RTCOM_TYPE_TP_SVC_CONNECTION_INTERFACE_STORED_MESSAGES,
     ring_connection_stored_messages_iface_init);
   );
@@ -145,6 +153,7 @@ static char const * const ring_connection_interfaces_always_present[] = {
   TP_IFACE_CONNECTION_INTERFACE_CAPABILITIES,
   RING_IFACE_CONNECTION_INTERFACE_SERVICE_POINT,
   RING_IFACE_CONNECTION_INTERFACE_CELLULAR,
+  RING_IFACE_CONNECTION_INTERFACE_ANONYMITY,
   RTCOM_TP_IFACE_CONNECTION_INTERFACE_STORED_MESSAGES,
   NULL
 };
@@ -174,11 +183,15 @@ static void
 on_imsi_changed(GObject *object, GParamSpec *pspec,
   gpointer user_data)
 {
-  char const *imsi;
   RingConnection *self = RING_CONNECTION(user_data);
+  TpBaseConnection *base = TP_BASE_CONNECTION(self);
 
-  imsi = modem_sim_get_imsi(MODEM_SIM_SERVICE(object));
-  ring_svc_connection_interface_cellular_emit_imsi_changed(self, imsi);
+  if (base->status == TP_CONNECTION_STATUS_CONNECTED) {
+    char const *imsi;
+
+    imsi = modem_sim_get_imsi(MODEM_SIM_SERVICE(object));
+    ring_svc_connection_interface_cellular_emit_imsi_changed(self, imsi);
+  }
 }
 
 static void
@@ -191,6 +204,10 @@ ring_connection_constructed(GObject *object)
 
   if (G_OBJECT_CLASS(ring_connection_parent_class)->constructed)
     G_OBJECT_CLASS(ring_connection_parent_class)->constructed(object);
+
+  self->priv->anon_supported_modes =
+    TP_ANONYMITY_MODE_CLIENT_INFO |
+    TP_ANONYMITY_MODE_SHOW_CLIENT_INFO,
 
   repo = tp_base_connection_get_handles(base, TP_HANDLE_TYPE_CONTACT);
   self_handle = tp_handle_ensure(repo, ring_self_handle_name, NULL, NULL);
@@ -239,7 +256,6 @@ ring_connection_finalize(GObject *object)
   DEBUG("enter %p", object);
 
   /* Free any data held directly by the object here */
-  g_free(priv->privacy);
   g_free(priv->smsc);
 
   G_OBJECT_CLASS(ring_connection_parent_class)->finalize(object);
@@ -251,15 +267,11 @@ ring_connection_set_property(GObject *obj,
   const GValue *value,
   GParamSpec *pspec)
 {
+  TpBaseConnection *base;
   RingConnection *self = RING_CONNECTION(obj);
   RingConnectionPrivate *priv = self->priv;
 
   switch (property_id) {
-    case PROP_PRIVACY:
-      priv->privacy = g_value_dup_string(value);
-      if (priv->media)
-        g_object_set(priv->media, "privacy", priv->privacy, NULL);
-      break;
     case PROP_SMSC:
       priv->smsc = ring_normalize_isdn(g_value_get_string(value));
       if (priv->text)
@@ -276,6 +288,23 @@ ring_connection_set_property(GObject *obj,
         g_object_set(priv->text, "sms-reduced-charset",
           priv->sms_reduced_charset, NULL);
       break;
+
+    case PROP_ANON_MANDATORY:
+      priv->anon_mandatory = g_value_get_boolean(value);
+      break;
+
+    case PROP_ANON_MODES:
+      base = TP_BASE_CONNECTION(self);
+
+      priv->anon_modes = g_value_get_uint(value);
+      if (priv->media)
+        g_object_set(priv->media, "anon-modes", priv->anon_modes, NULL);
+
+      if (base->status == TP_CONNECTION_STATUS_CONNECTED)
+        ring_svc_connection_interface_anonymity_emit_anonymity_modes_changed
+          (self, priv->anon_modes);
+      break;
+
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID(obj, property_id, pspec);
       break;
@@ -298,9 +327,6 @@ ring_connection_get_property(GObject *obj,
       else
         g_value_set_string(value, "");
       break;
-    case PROP_PRIVACY:
-      g_value_set_string(value, priv->privacy);
-      break;
     case PROP_SMSC:
       g_value_set_string(value, priv->smsc ? priv->smsc : "");
       break;
@@ -318,6 +344,16 @@ ring_connection_get_property(GObject *obj,
 
     case PROP_KNOWN_SERVICE_POINTS:
       g_value_take_boxed(value, ring_media_manager_emergency_services(priv->media));
+      break;
+
+    case PROP_ANON_MANDATORY:
+      g_value_set_boolean(value, priv->anon_mandatory);
+      break;
+    case PROP_ANON_SUPPORTED_MODES:
+      g_value_set_uint(value, priv->anon_supported_modes);
+      break;
+    case PROP_ANON_MODES:
+      g_value_set_uint(value, priv->anon_modes);
       break;
 
     default:
@@ -341,9 +377,6 @@ ring_connection_class_init(RingConnectionClass *ring_connection_class)
 
   g_object_class_install_property(
     object_class, PROP_IMSI, ring_param_spec_imsi());
-
-  g_object_class_install_property(
-    object_class, PROP_PRIVACY, ring_param_spec_privacy());
 
   g_object_class_install_property(
     object_class, PROP_SMSC, ring_param_spec_smsc());
@@ -373,6 +406,29 @@ ring_connection_class_init(RingConnectionClass *ring_connection_class)
       RING_ARRAY_TYPE_SERVICE_POINT_INFO_LIST,
       G_PARAM_READABLE |
       G_PARAM_STATIC_STRINGS));
+
+  g_object_class_install_property(
+    object_class, PROP_ANON_MANDATORY,
+    g_param_spec_boolean("anon-mandatory",
+      "Anonymity mandatory",
+      "Specifies whether or not the anonymity "
+      "settings should be respected",
+      FALSE,
+      G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+
+  g_object_class_install_property(
+    object_class, PROP_ANON_SUPPORTED_MODES,
+    g_param_spec_uint("anon-supported-modes",
+      "Supported anonymity modes",
+      "Specifies the supported anonymity modes",
+      0, G_MAXUINT,
+      TP_ANONYMITY_MODE_CLIENT_INFO |
+      TP_ANONYMITY_MODE_SHOW_CLIENT_INFO,
+      G_PARAM_READABLE | G_PARAM_STATIC_STRINGS));
+
+  g_object_class_install_property(
+    object_class, PROP_ANON_MODES,
+    ring_param_spec_anon_modes());
 
   ring_connection_class_init_base_connection(
     TP_BASE_CONNECTION_CLASS(ring_connection_class));
@@ -405,6 +461,12 @@ ring_connection_dbus_property_interfaces[] = {
     ring_connection_cellular_properties,
   },
   {
+    RING_IFACE_CONNECTION_INTERFACE_ANONYMITY,
+    tp_dbus_properties_mixin_getter_gobject_properties,
+    tp_dbus_properties_mixin_setter_gobject_properties,
+    ring_connection_anon_properties,
+  },
+  {
     RTCOM_TP_IFACE_CONNECTION_INTERFACE_STORED_MESSAGES,
     tp_dbus_properties_mixin_getter_gobject_properties,
     NULL,
@@ -417,10 +479,12 @@ ring_connection_dbus_property_interfaces[] = {
 
 typedef struct {
   char *imsi;                  /* Internation Mobile Subscriber Identifier */
-  char *privacy;               /* Currently "id" or "no-id" */
   char *sms_service_centre;    /* SMS Service Center address */
   guint  sms_validity_period;   /* SMS validity period, 0 if default */
   gboolean sms_reduced_charset; /* SMS reduced character set support */
+
+  gboolean anon_mandatory;      /* Whether anonymity modes are mandatory */
+  guint    anon_modes;          /* Required anonymity mode */
 
   /* Deprecated */
   char *account;               /* Ignored */
@@ -514,10 +578,31 @@ param_filter_validity(TpCMParamSpec const *paramspec,
   if (5 * 60 <= validity && validity <= 63 * 7 * 24 * 60 * 60)
     return TRUE;
 
-  g_set_error (error, TP_ERRORS, TP_ERROR_INVALID_ARGUMENT,
+  g_set_error(error, TP_ERRORS, TP_ERROR_INVALID_ARGUMENT,
     "Account parameter '%s' with invalid validity period - "
     "default (0), minimum 5 minutes (%u), maximum 63 weeks (%u)",
     paramspec->name, 5 * 60, 63 * 7 * 24 * 60 * 60);
+  return FALSE;
+}
+
+static gboolean
+param_filter_anon_modes(TpCMParamSpec const *paramspec,
+  GValue *value,
+  GError **error)
+{
+  guint modes = g_value_get_uint(value);
+
+  /* supported modes: 0, 1, 2, and 3 */
+  modes &= ~(TP_ANONYMITY_MODE_CLIENT_INFO |
+           TP_ANONYMITY_MODE_SHOW_CLIENT_INFO);
+
+  if (modes == 0)
+    return TRUE;
+
+  g_set_error(error, TP_ERRORS, TP_ERROR_INVALID_ARGUMENT,
+    "Account parameter '%s' with invalid value",
+    paramspec->name);
+
   return FALSE;
 }
 
@@ -557,6 +642,22 @@ TpCMParamSpec const ring_connection_params[] = {
     NULL,
   },
 
+  { RING_IFACE_CONNECTION_INTERFACE_ANONYMITY ".Mandatory",
+    DBUS_TYPE_BOOLEAN_AS_STRING, G_TYPE_BOOLEAN,
+    TP_CONN_MGR_PARAM_FLAG_DBUS_PROPERTY,
+    GUINT_TO_POINTER(FALSE),
+    G_STRUCT_OFFSET(RingConnectionParams, anon_mandatory),
+    NULL,
+  },
+
+  { RING_IFACE_CONNECTION_INTERFACE_ANONYMITY ".AnonymityModes",
+    DBUS_TYPE_UINT32_AS_STRING, G_TYPE_UINT,
+    TP_CONN_MGR_PARAM_FLAG_DBUS_PROPERTY,
+    GUINT_TO_POINTER(0),
+    G_STRUCT_OFFSET(RingConnectionParams, anon_modes),
+    param_filter_anon_modes,
+  },
+
   /* Deprecated... */
   { "account", DBUS_TYPE_STRING_AS_STRING, G_TYPE_STRING,
     0, NULL,
@@ -584,7 +685,6 @@ ring_connection_params_free(gpointer p)
 
   g_free(params->account);
   g_free(params->password);
-  g_free(params->privacy);
 
   g_slice_free(RingConnectionParams, params);
 }
@@ -595,15 +695,14 @@ ring_connection_new(TpIntSet *params_present,
 {
   RingConnectionParams *params = parsed_params;
   char *sms_service_centre = params->sms_service_centre;
-  guint sms_validity_period = params->sms_validity_period;
-  gboolean sms_reduced_charset = params->sms_reduced_charset;
 
   return (RingConnection *) g_object_new(RING_TYPE_CONNECTION,
     "protocol", "tel",
-    "privacy", params->privacy ? params->privacy : "",
     "sms-service-centre", sms_service_centre ? sms_service_centre : "",
-    "sms-validity-period", sms_validity_period,
-    "sms-reduced-charset", sms_reduced_charset,
+    "sms-validity-period", params->sms_validity_period,
+    "sms-reduced-charset", params->sms_reduced_charset,
+    "anon-modes", params->anon_modes,
+    "anon-mandatory", params->anon_mandatory,
     NULL);
 }
 
@@ -724,7 +823,7 @@ ring_connection_create_channel_managers(TpBaseConnection *base)
   priv->media =
     g_object_new(RING_TYPE_MEDIA_MANAGER,
       "connection", self,
-      "privacy", priv->privacy,
+      "anon-modes", priv->anon_modes,
       NULL);
   g_ptr_array_add(channel_managers, priv->media);
 
@@ -1010,6 +1109,16 @@ ring_connection_validate_initial_members(RingConnection *self,
   return ring_media_manager_validate_initial_members(
     self->priv->media, initial, error);
 }
+
+/* ---------------------------------------------------------------------- */
+/* org.freedesktop.Telepathy.Connection.Interface.Anonymity */
+static TpDBusPropertiesMixinPropImpl
+ring_connection_anon_properties[] = {
+  { "SupportedAnonymityModes", "anon-supported-modes", "anon-supported-modes" },
+  { "Mandatory", "anon-mandatory", "anon-mandatory" },
+  { "AnonymityModes", "anon-modes", "anon-modes" },
+  { NULL }
+};
 
 /* ---------------------------------------------------------------------- */
 /* org.freedesktop.Telepathy.Connection.Interface.Cellular */

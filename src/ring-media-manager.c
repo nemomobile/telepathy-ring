@@ -77,7 +77,7 @@ enum
 {
   PROP_NONE,
   PROP_CONNECTION,
-  PROP_PRIVACY,
+  PROP_ANON_MODES,
   PROP_CAPABILITY_FLAGS,
   N_PROPS
 };
@@ -155,7 +155,7 @@ static void on_modem_call_user_connection(ModemCallService *call_service,
 struct _RingMediaManagerPrivate
 {
   RingConnection *connection;
-  char *privacy;
+  guint anon_modes;
   guint capability_flags;
 
   /* Hash by object path */
@@ -228,10 +228,6 @@ ring_media_manager_dispose(GObject *object)
 static void
 ring_media_manager_finalize(GObject *object)
 {
-  RingMediaManager *self = RING_MEDIA_MANAGER(object);
-  RingMediaManagerPrivate *priv = self->priv;
-
-  g_free(priv->privacy);
 }
 
 static void
@@ -247,8 +243,8 @@ ring_media_manager_get_property(GObject *object,
     case PROP_CONNECTION:
       g_value_set_object(value, priv->connection);
       break;
-    case PROP_PRIVACY:
-      g_value_set_string(value, priv->privacy);
+    case PROP_ANON_MODES:
+      g_value_set_uint(value, priv->anon_modes);
       break;
     case PROP_CAPABILITY_FLAGS:
       g_value_set_uint(value, priv->capability_flags);
@@ -275,8 +271,8 @@ ring_media_manager_set_property(GObject *object,
       priv->connection = g_value_get_object(value);
       break;
 
-    case PROP_PRIVACY:
-      priv->privacy = g_value_dup_string(value);
+    case PROP_ANON_MODES:
+      priv->anon_modes = g_value_get_uint(value);
       break;
 
     case PROP_CAPABILITY_FLAGS:
@@ -303,8 +299,8 @@ ring_media_manager_class_init(RingMediaManagerClass *klass)
 
   g_object_class_install_property(object_class, PROP_CONNECTION,
     ring_param_spec_connection());
-  g_object_class_install_property(object_class, PROP_PRIVACY,
-    ring_param_spec_privacy());
+  g_object_class_install_property(object_class, PROP_ANON_MODES,
+    ring_param_spec_anon_modes());
   g_object_class_install_property(object_class, PROP_CAPABILITY_FLAGS,
     ring_param_spec_type_specific_capability_flags(G_PARAM_CONSTRUCT,
       RING_MEDIA_CHANNEL_CAPABILITY_FLAGS));
@@ -453,11 +449,13 @@ on_modem_call_emergency_numbers_changed(ModemCallService *call_service,
   RingMediaManager *self)
 {
   RingMediaManagerPrivate *priv = RING_MEDIA_MANAGER(self)->priv;
+  TpBaseConnection *base = TP_BASE_CONNECTION(priv->connection);
   RingEmergencyServiceInfoList *services;
 
   services = ring_emergency_service_info_list_default(numbers);
 
-  ring_svc_connection_interface_service_point_emit_service_points_changed(
+  if (base->status == TP_CONNECTION_STATUS_CONNECTED)
+    ring_svc_connection_interface_service_point_emit_service_points_changed(
       priv->connection, services);
 
   ring_emergency_service_info_list_free(services);
@@ -1011,7 +1009,7 @@ ring_media_manager_outgoing_call(RingMediaManager *self,
       "initial-remote", initial_remote,
       "requested", TRUE,
       "initial-audio", initial_audio,
-      "privacy", priv->privacy,
+      "anon-modes", priv->anon_modes,
       "initial-emergency-service", emergency,
       NULL);
 
@@ -1118,7 +1116,7 @@ on_modem_call_incoming(ModemCallService *call_service,
       "peer", handle,
       "requested", FALSE,
       "initial-audio", TRUE,
-      "privacy", priv->privacy,
+      "anon-modes", priv->anon_modes,
       "call-instance", modem_call,
       "terminating", TRUE,
       NULL);
@@ -1185,7 +1183,7 @@ on_modem_call_created(ModemCallService *call_service,
       "requested", TRUE,
       "initial-remote", handle,
       "initial-audio", TRUE,
-      "privacy", priv->privacy,
+      "anon-modes", priv->anon_modes,
       "call-instance", modem_call,
       "originating", TRUE,
       sos ? "initial-emergency-service" : NULL, sos,
