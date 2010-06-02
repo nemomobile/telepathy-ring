@@ -8,8 +8,10 @@ EXT_IFACES = \
     $(srcdir)/Channel_Interface_Conference_DRAFT.xml \
     $(srcdir)/Channel_Interface_Mergeable_Conference.xml \
     $(srcdir)/Channel_Interface_Service_Point.xml \
+    $(srcdir)/Channel_Interface_Anonymity.xml \
     $(srcdir)/Connection_Interface_Service_Point.xml \
-    $(srcdir)/Connection_Interface_Cellular.xml
+    $(srcdir)/Connection_Interface_Cellular.xml \
+    $(srcdir)/Connection_Interface_Anonymity.xml
 
 NOT_IFACES = \
     $(srcdir)/Channel_Interface_Messages.xml \
