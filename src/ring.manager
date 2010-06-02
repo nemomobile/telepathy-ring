@@ -3,25 +3,19 @@ BusName=org.freedesktop.Telepathy.ConnectionManager.ring
 ObjectPath=/org/freedesktop/Telepathy/ConnectionManager/ring
 
 [Protocol tel]
-param-com.nokia.Telepathy.Connection.Interface.GSM.IMSI=s dbus-property
-
-param-com.nokia.Telepathy.Connection.Interface.GSM.Privacy=s dbus-property
-# empty - set by network - let network decide
-# "id"    - no - do not send caller id (by default)
-# "no-id" - yes - send caller id (by default)
-default-com.nokia.Telepathy.Connection.Interface.GSM.Privacy=
-
-# SMS Service Centre
-param-com.nokia.Telepathy.Connection.Interface.GSM.SMSServiceCentre=s dbus-property
+param-org.freedesktop.Telepathy.Connection.Interface.Cellular.DRAFT.IMSI=s dbus-property
+param-org.freedesktop.Telepathy.Connection.Interface.Cellular.DRAFT.MessageServiceCentre=s dbus-property
 
 # SMS validity period in seconds
 # Range from 300 ... 38102400 (5 minutes to 63 weeks)
-param-com.nokia.Telepathy.Connection.Interface.GSM.SMSValidityPeriod=u  dbus-property
-default-com.nokia.Telepathy.Connection.Interface.GSM.SMSValidityPeriod=0
+param-org.freedesktop.Telepathy.Connection.Interface.Cellular.DRAFT.MessageValidityPeriod=u  dbus-property
+default-org.freedesktop.Telepathy.Connection.Interface.Cellular.DRAFT.MessageValidityPeriod=0
 
-# Whether SMSes should be sent using a 'reduced' character set
-param-com.nokia.Telepathy.Connection.Interface.GSM.SMSReducedCharacterSet=b dbus-property
-default-com.nokia.Telepathy.Connection.Interface.GSM.SMSReducedCharacterSet=false
+# empty   - set by network - let network decide
+# "id"    - no - do not send caller id (by default)
+# "no-id" - yes - send caller id (by default)
+param-com.nokia.Telepathy.Connection.Interface.GSM.Privacy=s dbus-property
+default-com.nokia.Telepathy.Connection.Interface.GSM.Privacy=
 
 # Deprecated
 param-account=s
