@@ -6,14 +6,13 @@ EXT_IFACES = \
     $(srcdir)/Channel_Future.xml \
     $(srcdir)/Channel_Interface_Splittable.xml \
     $(srcdir)/Channel_Interface_Conference_DRAFT.xml \
-    $(srcdir)/Channel_Interface_Mergeable_Conference.xml
+    $(srcdir)/Channel_Interface_Mergeable_Conference.xml \
+    $(srcdir)/Channel_Interface_Service_Point.xml \
+    $(srcdir)/Connection_Interface_Service_Point.xml
 
 NOT_IFACES = \
     $(srcdir)/Channel_Interface_Messages.xml \
-    $(srcdir)/Channel_Interface_Conference.xml \
-    $(srcdir)/Channel_Interface_Conference_Member.xml \
-    $(srcdir)/Channel_Interface_Emergency.xml \
-    $(srcdir)/Connection_Interface_Emergency.xml
+    $(srcdir)/Channel_Interface_Dialstrings.xml
 
 if HAVE_TP_EXTENSIONS
 
