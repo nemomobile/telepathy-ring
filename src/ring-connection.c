@@ -107,10 +107,10 @@ static void ring_connection_add_contact_capabilities(GObject *object,
 static void ring_connection_stored_messages_iface_init(gpointer, gpointer);
 
 static TpDBusPropertiesMixinPropImpl ring_connection_service_point_properties[],
-  ring_connection_gsm_properties[],
+  ring_connection_cellular_properties[],
   ring_connection_stored_messages_properties[];
 
-static gboolean ring_connection_gsm_properties_setter(GObject *object,
+static gboolean ring_connection_cellular_properties_setter(GObject *object,
   GQuark interface, GQuark name, const GValue *value, gpointer setter_data,
   GError **error);
 
@@ -133,7 +133,7 @@ G_DEFINE_TYPE_WITH_CODE(
     ring_connection_capabilities_iface_init);
   G_IMPLEMENT_INTERFACE(RING_TYPE_SVC_CONNECTION_INTERFACE_SERVICE_POINT,
     NULL);
-  G_IMPLEMENT_INTERFACE(RTCOM_TYPE_TP_SVC_CONNECTION_INTERFACE_GSM,
+  G_IMPLEMENT_INTERFACE(RING_TYPE_SVC_CONNECTION_INTERFACE_CELLULAR,
     NULL);
   G_IMPLEMENT_INTERFACE(RTCOM_TYPE_TP_SVC_CONNECTION_INTERFACE_STORED_MESSAGES,
     ring_connection_stored_messages_iface_init);
@@ -144,7 +144,7 @@ static char const * const ring_connection_interfaces_always_present[] = {
   TP_IFACE_CONNECTION_INTERFACE_CONTACTS,
   TP_IFACE_CONNECTION_INTERFACE_CAPABILITIES,
   RING_IFACE_CONNECTION_INTERFACE_SERVICE_POINT,
-  RTCOM_TP_IFACE_CONNECTION_INTERFACE_GSM,
+  RING_IFACE_CONNECTION_INTERFACE_CELLULAR,
   RTCOM_TP_IFACE_CONNECTION_INTERFACE_STORED_MESSAGES,
   NULL
 };
@@ -392,10 +392,10 @@ ring_connection_dbus_property_interfaces[] = {
     ring_connection_service_point_properties,
   },
   {
-    RTCOM_TP_IFACE_CONNECTION_INTERFACE_GSM,
+    RING_IFACE_CONNECTION_INTERFACE_CELLULAR,
     tp_dbus_properties_mixin_getter_gobject_properties,
-    ring_connection_gsm_properties_setter,
-    ring_connection_gsm_properties,
+    ring_connection_cellular_properties_setter,
+    ring_connection_cellular_properties,
   },
   {
     RTCOM_TP_IFACE_CONNECTION_INTERFACE_STORED_MESSAGES,
@@ -537,8 +537,7 @@ param_filter_validity(TpCMParamSpec const *paramspec,
 }
 
 TpCMParamSpec const ring_connection_params[] = {
-  {
-    "com.nokia.Telepathy.Connection.Interface.GSM.IMSI",
+  { RING_IFACE_CONNECTION_INTERFACE_CELLULAR ".IMSI",
     DBUS_TYPE_STRING_AS_STRING, G_TYPE_STRING,
     TP_CONN_MGR_PARAM_FLAG_DBUS_PROPERTY,
     "",
@@ -546,28 +545,8 @@ TpCMParamSpec const ring_connection_params[] = {
     param_filter_imsi,
   },
 
-#define GSM_PRIVACY_PARAM_SPEC (ring_connection_params + 1)
-  {
-    "com.nokia.Telepathy.Connection.Interface.GSM.Privacy",
-    DBUS_TYPE_STRING_AS_STRING, G_TYPE_STRING,
-    TP_CONN_MGR_PARAM_FLAG_DBUS_PROPERTY, NULL,
-    G_STRUCT_OFFSET(RingConnectionParams, privacy),
-    param_filter_tokens,
-    (void *)(char const * const []){ "id", "no-id", NULL }
-  },
-
-#define GSM_SMS_SERVICE_CENTRE_PARAM_SPEC (ring_connection_params + 2)
-  {
-    "com.nokia.Telepathy.Connection.Interface.GSM.SMSServiceCentre",
-    DBUS_TYPE_STRING_AS_STRING, G_TYPE_STRING,
-    TP_CONN_MGR_PARAM_FLAG_DBUS_PROPERTY,
-    "",
-    G_STRUCT_OFFSET(RingConnectionParams, sms_service_centre),
-    param_filter_isdn,
-  },
-
-#define GSM_SMS_VALIDITY_PERIOD_PARAM_SPEC (ring_connection_params + 3)
-  { "com.nokia.Telepathy.Connection.Interface.GSM.SMSValidityPeriod",
+#define CELLULAR_SMS_VALIDITY_PERIOD_PARAM_SPEC (ring_connection_params + 1)
+  { RING_IFACE_CONNECTION_INTERFACE_CELLULAR ".MessageValidityPeriod",
     DBUS_TYPE_UINT32_AS_STRING, G_TYPE_UINT,
     TP_CONN_MGR_PARAM_FLAG_DBUS_PROPERTY,
     GUINT_TO_POINTER(0),
@@ -575,8 +554,17 @@ TpCMParamSpec const ring_connection_params[] = {
     param_filter_validity,
   },
 
-#define GSM_SMS_REDUCED_CHARSET_PARAM_SPEC (ring_connection_params + 4)
-  { "com.nokia.Telepathy.Connection.Interface.GSM.SMSReducedCharacterSet",
+#define CELLULAR_SMS_SERVICE_CENTRE_PARAM_SPEC (ring_connection_params + 2)
+  { RING_IFACE_CONNECTION_INTERFACE_CELLULAR ".MessageServiceCentre",
+    DBUS_TYPE_STRING_AS_STRING, G_TYPE_STRING,
+    TP_CONN_MGR_PARAM_FLAG_DBUS_PROPERTY,
+    "",
+    G_STRUCT_OFFSET(RingConnectionParams, sms_service_centre),
+    param_filter_isdn,
+  },
+
+#define CELLULAR_SMS_REDUCED_CHARSET_PARAM_SPEC (ring_connection_params + 3)
+  { RING_IFACE_CONNECTION_INTERFACE_CELLULAR ".MessageReducedCharacterSet",
     DBUS_TYPE_BOOLEAN_AS_STRING, G_TYPE_BOOLEAN,
     TP_CONN_MGR_PARAM_FLAG_DBUS_PROPERTY,
     GUINT_TO_POINTER(0),
@@ -1031,21 +1019,20 @@ ring_connection_validate_initial_members(RingConnection *self,
 }
 
 /* ---------------------------------------------------------------------- */
-/* com.nokia.Telepathy.Connection.Interface.GSM */
+/* org.freedesktop.Telepathy.Connection.Interface.Cellular */
 static TpDBusPropertiesMixinPropImpl
-ring_connection_gsm_properties[] = {
+ring_connection_cellular_properties[] = {
   { "IMSI", "imsi" },
-  { "Privacy", "privacy", "privacy" },
-  { "SMSServiceCentre", "sms-service-centre", "sms-service-centre" },
-  { "SMSValidityPeriod", "sms-validity-period", "sms-validity-period" },
-#if notyet /* rtcom-tp-glib does not have this yet */
-  { "SMSReducedCharacterSet", "sms-reduced-charset", "sms-reduced-charset" },
+  { "MessageValidityPeriod", "sms-validity-period", "sms-validity-period" },
+  { "MessageServiceCentre", "sms-service-centre", "sms-service-centre" },
+#if notyet /* non-existent */
+  { "MessageReducedCharacterSet", "sms-reduced-charset", "sms-reduced-charset" },
 #endif
   { NULL }
 };
 
 static gboolean
-ring_connection_gsm_properties_setter(GObject *object,
+ring_connection_cellular_properties_setter(GObject *object,
   GQuark interface,
   GQuark aname,
   const GValue *value,
@@ -1061,17 +1048,14 @@ ring_connection_gsm_properties_setter(GObject *object,
     return FALSE;
   }
 
-  if (strcmp(name, "privacy") == 0) {
-    param_spec = GSM_PRIVACY_PARAM_SPEC;
+  if (strcmp(name, "sms-validity-period") == 0) {
+    param_spec = CELLULAR_SMS_VALIDITY_PERIOD_PARAM_SPEC;
   }
   else if (strcmp(name, "sms-service-centre") == 0) {
-    param_spec = GSM_SMS_SERVICE_CENTRE_PARAM_SPEC;
-  }
-  else if (strcmp(name, "sms-validity-period") == 0) {
-    param_spec = GSM_SMS_VALIDITY_PERIOD_PARAM_SPEC;
+    param_spec = CELLULAR_SMS_SERVICE_CENTRE_PARAM_SPEC;
   }
   else if (strcmp(name, "sms-reduced-charset") == 0) {
-    param_spec = GSM_SMS_REDUCED_CHARSET_PARAM_SPEC;
+    param_spec = CELLULAR_SMS_REDUCED_CHARSET_PARAM_SPEC;
   }
   else  {
     g_set_error(error, TP_ERRORS, TP_ERROR_INVALID_ARGUMENT,
