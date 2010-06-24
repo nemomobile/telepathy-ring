@@ -7,7 +7,7 @@ TESTS = test-modem
 test_PROGRAMS = $(TESTS)
 
 test_modem_SOURCES = \
-		test-modem.c \
+		test-modem.c test-modem.h \
 		test-modem-call-service.c \
 		test-modem-call.c \
 		test-modem-tones.c \
