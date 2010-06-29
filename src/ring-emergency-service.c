@@ -27,6 +27,7 @@
 #include "modem/call.h"
 
 #include <dbus/dbus-glib.h>
+#include <telepathy-glib/gtypes.h>
 
 #include <string.h>
 
@@ -34,7 +35,7 @@ RingEmergencyService *
 ring_emergency_service_new(char const *service)
 {
   GValue value[1] = {{ 0 }};
-  GType gtype = RING_STRUCT_TYPE_SERVICE_POINT;
+  GType gtype = TP_STRUCT_TYPE_SERVICE_POINT;
   TpServicePointType service_type;
 
   if (service == NULL)
@@ -58,7 +59,7 @@ ring_emergency_service_new(char const *service)
 void
 ring_emergency_service_free(RingEmergencyService *service)
 {
-  g_boxed_free(RING_STRUCT_TYPE_SERVICE_POINT, (gpointer)service);
+  g_boxed_free(TP_STRUCT_TYPE_SERVICE_POINT, (gpointer)service);
 }
 
 /* Return a pointer to a boxed service struct */
@@ -68,7 +69,7 @@ ring_emergency_service_info_new(char const *service,
 {
   RingEmergencyService *es;
   GValue value[1] = {{ 0 }};
-  GType gtype = RING_STRUCT_TYPE_SERVICE_POINT_INFO;
+  GType gtype = TP_STRUCT_TYPE_SERVICE_POINT_INFO;
 
   g_value_init(value, gtype);
   g_value_take_boxed(value, dbus_g_type_specialized_construct(gtype));
@@ -88,7 +89,7 @@ ring_emergency_service_info_new(char const *service,
 void
 ring_emergency_service_info_free(RingEmergencyServiceInfo *info)
 {
-  g_boxed_free(RING_STRUCT_TYPE_SERVICE_POINT_INFO, info);
+  g_boxed_free(TP_STRUCT_TYPE_SERVICE_POINT_INFO, info);
 }
 
 RingEmergencyServiceInfoList *

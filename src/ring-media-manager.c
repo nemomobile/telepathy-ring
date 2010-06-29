@@ -455,7 +455,7 @@ on_modem_call_emergency_numbers_changed(ModemCallService *call_service,
   services = ring_emergency_service_info_list_default(numbers);
 
   if (base->status == TP_CONNECTION_STATUS_CONNECTED)
-    ring_svc_connection_interface_service_point_emit_service_points_changed(
+    tp_svc_connection_interface_service_point_emit_service_points_changed(
       priv->connection, services);
 
   ring_emergency_service_info_list_free(services);

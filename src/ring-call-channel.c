@@ -55,6 +55,7 @@
 #include <telepathy-glib/dbus.h>
 #include <telepathy-glib/dbus-properties-mixin.h>
 #include <telepathy-glib/errors.h>
+#include <telepathy-glib/gtypes.h>
 #include <telepathy-glib/interfaces.h>
 #include <telepathy-glib/intset.h>
 #include <telepathy-glib/svc-channel.h>
@@ -183,7 +184,7 @@ G_DEFINE_TYPE_WITH_CODE(
     tp_group_mixin_iface_init)
   G_IMPLEMENT_INTERFACE(TP_TYPE_SVC_CHANNEL_INTERFACE_CALL_STATE,
     ring_channel_call_state_iface_init)
-  G_IMPLEMENT_INTERFACE(RING_TYPE_SVC_CHANNEL_INTERFACE_SERVICE_POINT,
+  G_IMPLEMENT_INTERFACE(TP_TYPE_SVC_CHANNEL_INTERFACE_SERVICE_POINT,
     NULL);
   G_IMPLEMENT_INTERFACE(RING_TYPE_SVC_CHANNEL_INTERFACE_SPLITTABLE,
     ring_channel_splittable_iface_init));
@@ -192,7 +193,7 @@ const char *ring_call_channel_interfaces[] = {
   RING_MEDIA_CHANNEL_INTERFACES,
   TP_IFACE_CHANNEL_INTERFACE_GROUP,
   TP_IFACE_CHANNEL_INTERFACE_CALL_STATE,
-  RING_IFACE_CHANNEL_INTERFACE_SERVICE_POINT,
+  TP_IFACE_CHANNEL_INTERFACE_SERVICE_POINT,
   RING_IFACE_CHANNEL_INTERFACE_SPLITTABLE,
   NULL
 };
@@ -572,7 +573,7 @@ ring_call_channel_class_init(RingCallChannelClass *klass)
     g_param_spec_boxed("initial-service-point",
       "Initial Service Point",
       "The service point initially associated with this channel",
-      RING_STRUCT_TYPE_SERVICE_POINT,
+      TP_STRUCT_TYPE_SERVICE_POINT,
       G_PARAM_READABLE | G_PARAM_STATIC_STRINGS));
 
   g_object_class_install_property(
@@ -580,7 +581,7 @@ ring_call_channel_class_init(RingCallChannelClass *klass)
     g_param_spec_boxed("current-service-point",
       "Current Service Point",
       "The service point currently associated with this channel",
-      RING_STRUCT_TYPE_SERVICE_POINT,
+      TP_STRUCT_TYPE_SERVICE_POINT,
       G_PARAM_READABLE | G_PARAM_STATIC_STRINGS));
 
   g_object_class_install_property(
@@ -655,7 +656,7 @@ static TpDBusPropertiesMixinPropImpl service_point_properties[] = {
 static TpDBusPropertiesMixinIfaceImpl
 ring_call_channel_dbus_property_interfaces[] = {
   {
-    RING_IFACE_CHANNEL_INTERFACE_SERVICE_POINT,
+    TP_IFACE_CHANNEL_INTERFACE_SERVICE_POINT,
     tp_dbus_properties_mixin_getter_gobject_properties,
     NULL,
     service_point_properties,
@@ -678,12 +679,12 @@ ring_call_channel_properties(RingCallChannel *self)
   properties = ring_media_channel_properties(RING_MEDIA_CHANNEL(self));
 
   ring_channel_add_properties(self, properties,
-    RING_IFACE_CHANNEL_INTERFACE_SERVICE_POINT, "CurrentServicePoint",
+    TP_IFACE_CHANNEL_INTERFACE_SERVICE_POINT, "CurrentServicePoint",
     NULL);
 
   if (!RING_STR_EMPTY(self->priv->initial_emergency_service))
     ring_channel_add_properties(self, properties,
-      RING_IFACE_CHANNEL_INTERFACE_SERVICE_POINT, "InitialServicePoint",
+      TP_IFACE_CHANNEL_INTERFACE_SERVICE_POINT, "InitialServicePoint",
       NULL);
 
   return properties;
@@ -1220,8 +1221,8 @@ on_modem_call_emergency(ModemCall *ci,
     DEBUG("emitting ServicePointChanged");
 
     esp = ring_emergency_service_new(emergency_service);
-    ring_svc_channel_interface_service_point_emit_service_point_changed(
-      (RingSvcChannelInterfaceServicePoint *)self, esp);
+    tp_svc_channel_interface_service_point_emit_service_point_changed(
+      (TpSvcChannelInterfaceServicePoint *)self, esp);
     ring_emergency_service_free(esp);
   }
 }

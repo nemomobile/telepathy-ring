@@ -59,7 +59,7 @@ AC_SUBST(DBUS_SERVICES_DIR)
 AC_DEFINE_UNQUOTED([DBUS_SERVICES_DIR], "$DBUS_SERVICES_DIR", [DBus services directory])
 
 dnl Check for telepathy-glib
-PKG_CHECK_MODULES(TP, [telepathy-glib >= 0.7.37])
+PKG_CHECK_MODULES(TP, [telepathy-glib >= 0.11.7])
 PKG_CHECK_MODULES([RTCOM], [rtcom-telepathy-glib >= 0.1.26],,
    AC_MSG_ERROR([cannot find rtcom-telepathy-glib 0.1.26 or newer]))
 

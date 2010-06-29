@@ -137,11 +137,11 @@ G_DEFINE_TYPE_WITH_CODE(
     tp_contacts_mixin_iface_init);
   G_IMPLEMENT_INTERFACE (TP_TYPE_SVC_CONNECTION_INTERFACE_CAPABILITIES,
     ring_connection_capabilities_iface_init);
-  G_IMPLEMENT_INTERFACE(RING_TYPE_SVC_CONNECTION_INTERFACE_SERVICE_POINT,
+  G_IMPLEMENT_INTERFACE(TP_TYPE_SVC_CONNECTION_INTERFACE_SERVICE_POINT,
     NULL);
   G_IMPLEMENT_INTERFACE(RING_TYPE_SVC_CONNECTION_INTERFACE_CELLULAR,
     NULL);
-  G_IMPLEMENT_INTERFACE(RING_TYPE_SVC_CONNECTION_INTERFACE_ANONYMITY,
+  G_IMPLEMENT_INTERFACE(TP_TYPE_SVC_CONNECTION_INTERFACE_ANONYMITY,
     NULL);
   G_IMPLEMENT_INTERFACE(RTCOM_TYPE_TP_SVC_CONNECTION_INTERFACE_STORED_MESSAGES,
     ring_connection_stored_messages_iface_init);
@@ -151,9 +151,9 @@ static char const * const ring_connection_interfaces_always_present[] = {
   TP_IFACE_CONNECTION_INTERFACE_REQUESTS,
   TP_IFACE_CONNECTION_INTERFACE_CONTACTS,
   TP_IFACE_CONNECTION_INTERFACE_CAPABILITIES,
-  RING_IFACE_CONNECTION_INTERFACE_SERVICE_POINT,
+  TP_IFACE_CONNECTION_INTERFACE_SERVICE_POINT,
   RING_IFACE_CONNECTION_INTERFACE_CELLULAR,
-  RING_IFACE_CONNECTION_INTERFACE_ANONYMITY,
+  TP_IFACE_CONNECTION_INTERFACE_ANONYMITY,
   RTCOM_TP_IFACE_CONNECTION_INTERFACE_STORED_MESSAGES,
   NULL
 };
@@ -301,7 +301,7 @@ ring_connection_set_property(GObject *obj,
         g_object_set(priv->media, "anon-modes", priv->anon_modes, NULL);
 
       if (base->status == TP_CONNECTION_STATUS_CONNECTED)
-        ring_svc_connection_interface_anonymity_emit_anonymity_modes_changed
+        tp_svc_connection_interface_anonymity_emit_anonymity_modes_changed
           (self, priv->anon_modes);
       break;
 
@@ -403,7 +403,7 @@ ring_connection_class_init(RingConnectionClass *ring_connection_class)
     g_param_spec_boxed("known-service-points",
       "Known service points",
       "List of known emergency service points",
-      RING_ARRAY_TYPE_SERVICE_POINT_INFO_LIST,
+      TP_ARRAY_TYPE_SERVICE_POINT_INFO_LIST,
       G_PARAM_READABLE |
       G_PARAM_STATIC_STRINGS));
 
@@ -449,7 +449,7 @@ ring_connection_class_init(RingConnectionClass *ring_connection_class)
 static TpDBusPropertiesMixinIfaceImpl
 ring_connection_dbus_property_interfaces[] = {
   {
-    RING_IFACE_CONNECTION_INTERFACE_SERVICE_POINT,
+    TP_IFACE_CONNECTION_INTERFACE_SERVICE_POINT,
     tp_dbus_properties_mixin_getter_gobject_properties,
     NULL,
     ring_connection_service_point_properties,
@@ -461,7 +461,7 @@ ring_connection_dbus_property_interfaces[] = {
     ring_connection_cellular_properties,
   },
   {
-    RING_IFACE_CONNECTION_INTERFACE_ANONYMITY,
+    TP_IFACE_CONNECTION_INTERFACE_ANONYMITY,
     tp_dbus_properties_mixin_getter_gobject_properties,
     tp_dbus_properties_mixin_setter_gobject_properties,
     ring_connection_anon_properties,
@@ -642,7 +642,7 @@ TpCMParamSpec const ring_connection_params[] = {
     NULL,
   },
 
-  { RING_IFACE_CONNECTION_INTERFACE_ANONYMITY ".Mandatory",
+  { TP_IFACE_CONNECTION_INTERFACE_ANONYMITY ".Mandatory",
     DBUS_TYPE_BOOLEAN_AS_STRING, G_TYPE_BOOLEAN,
     TP_CONN_MGR_PARAM_FLAG_DBUS_PROPERTY,
     GUINT_TO_POINTER(FALSE),
@@ -650,7 +650,7 @@ TpCMParamSpec const ring_connection_params[] = {
     NULL,
   },
 
-  { RING_IFACE_CONNECTION_INTERFACE_ANONYMITY ".AnonymityModes",
+  { TP_IFACE_CONNECTION_INTERFACE_ANONYMITY ".AnonymityModes",
     DBUS_TYPE_UINT32_AS_STRING, G_TYPE_UINT,
     TP_CONN_MGR_PARAM_FLAG_DBUS_PROPERTY,
     GUINT_TO_POINTER(0),
