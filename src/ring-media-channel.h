@@ -25,7 +25,6 @@
 #include <glib-object.h>
 #include <telepathy-glib/group-mixin.h>
 #include <telepathy-glib/dbus-properties-mixin.h>
-#include <rtcom-telepathy-glib/extensions.h>
 
 G_BEGIN_DECLS
 
@@ -88,8 +87,11 @@ GType ring_media_channel_get_type(void);
 
 #define RING_MEDIA_CHANNEL_INTERFACES                   \
   TP_IFACE_CHANNEL_INTERFACE_DTMF,                      \
-    TP_IFACE_CHANNEL_INTERFACE_HOLD,                    \
+    TP_IFACE_CHANNEL_INTERFACE_HOLD
+#if nomore
+,                    \
     RTCOM_TP_IFACE_CHANNEL_INTERFACE_DIAL_STRINGS
+#endif
 
 #define RING_MEDIA_CHANNEL_CAPABILITY_FLAGS     \
   (TP_CHANNEL_MEDIA_CAPABILITY_AUDIO)

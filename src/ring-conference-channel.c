@@ -57,7 +57,6 @@
 #include <telepathy-glib/svc-channel.h>
 #include <telepathy-glib/svc-generic.h>
 
-#include <rtcom-telepathy-glib/extensions.h>
 #include <ring-extensions/ring-extensions.h>
 
 #include "ring-connection.h"

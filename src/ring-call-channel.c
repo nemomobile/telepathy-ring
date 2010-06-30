@@ -61,7 +61,6 @@
 #include <telepathy-glib/svc-channel.h>
 #include <telepathy-glib/svc-generic.h>
 
-#include <rtcom-telepathy-glib/extensions.h>
 #include <ring-extensions/ring-extensions.h>
 
 #include "ring-connection.h"
@@ -694,8 +693,6 @@ ring_call_channel_properties(RingCallChannel *self)
 /* RingMediaChannel implementation */
 
 static ModemRequest *ring_call_channel_create(RingCallChannel *, GError **error);
-static gboolean ring_call_channel_check_modem_state(RingCallChannel *self,
-  ModemService *modem, GError **error);
 
 /** Close channel */
 static gboolean

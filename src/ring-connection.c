@@ -45,7 +45,6 @@
 #include <telepathy-glib/svc-generic.h>
 #include <telepathy-glib/svc-connection.h>
 
-#include <rtcom-telepathy-glib/extensions.h>
 #include "ring-extensions/ring-extensions.h"
 
 #include "modem/service.h"
@@ -109,11 +108,11 @@ static void ring_connection_class_init_base_connection(TpBaseConnectionClass *);
 static void ring_connection_capabilities_iface_init(gpointer, gpointer);
 static void ring_connection_add_contact_capabilities(GObject *object,
   GArray const *handles, GHashTable *returns);
-static void ring_connection_stored_messages_iface_init(gpointer, gpointer);
+/*static void ring_connection_stored_messages_iface_init(gpointer, gpointer);*/
 
 static TpDBusPropertiesMixinPropImpl ring_connection_service_point_properties[],
   ring_connection_cellular_properties[],
-  ring_connection_stored_messages_properties[],
+/*ring_connection_stored_messages_properties[],*/
   ring_connection_anon_properties[];
 
 static gboolean ring_connection_cellular_properties_setter(GObject *object,
@@ -143,8 +142,11 @@ G_DEFINE_TYPE_WITH_CODE(
     NULL);
   G_IMPLEMENT_INTERFACE(TP_TYPE_SVC_CONNECTION_INTERFACE_ANONYMITY,
     NULL);
+#if nomore
+  /* XXX: waiting for upstream tp-glib to get this */
   G_IMPLEMENT_INTERFACE(RTCOM_TYPE_TP_SVC_CONNECTION_INTERFACE_STORED_MESSAGES,
     ring_connection_stored_messages_iface_init);
+#endif
   );
 
 static char const * const ring_connection_interfaces_always_present[] = {
@@ -154,7 +156,9 @@ static char const * const ring_connection_interfaces_always_present[] = {
   TP_IFACE_CONNECTION_INTERFACE_SERVICE_POINT,
   RING_IFACE_CONNECTION_INTERFACE_CELLULAR,
   TP_IFACE_CONNECTION_INTERFACE_ANONYMITY,
+#if nomore
   RTCOM_TP_IFACE_CONNECTION_INTERFACE_STORED_MESSAGES,
+#endif
   NULL
 };
 
@@ -466,12 +470,14 @@ ring_connection_dbus_property_interfaces[] = {
     tp_dbus_properties_mixin_setter_gobject_properties,
     ring_connection_anon_properties,
   },
+#if nomore
   {
     RTCOM_TP_IFACE_CONNECTION_INTERFACE_STORED_MESSAGES,
     tp_dbus_properties_mixin_getter_gobject_properties,
     NULL,
     ring_connection_stored_messages_properties,
   },
+#endif
   { NULL }
 };
 
@@ -1187,6 +1193,7 @@ ring_connection_service_point_properties[] = {
 /* ---------------------------------------------------------------------- */
 /* Connection.Interface.StoredMessages */
 
+#if nomore
 static TpDBusPropertiesMixinPropImpl
 ring_connection_stored_messages_properties[] = {
   { "StoredMessages", "stored-messages" },
@@ -1248,6 +1255,7 @@ ring_connection_stored_messages_iface_init(gpointer g_iface, gpointer iface_data
 
 #undef IMPLEMENT
 }
+#endif
 
 /* ---------------------------------------------------------------------- */
 /* Connection.Interface.Capabilities */

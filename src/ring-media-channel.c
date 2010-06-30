@@ -166,7 +166,9 @@ static void ring_media_channel_streamed_media_iface_init(gpointer, gpointer);
 static void ring_media_channel_dtmf_iface_init(gpointer, gpointer);
 
 static void ring_channel_hold_iface_init(gpointer, gpointer);
+#if nomore
 static void ring_channel_dial_strings_iface_init(gpointer, gpointer);
+#endif
 
 G_DEFINE_TYPE_WITH_CODE(
   RingMediaChannel, ring_media_channel, G_TYPE_OBJECT,
@@ -178,8 +180,11 @@ G_DEFINE_TYPE_WITH_CODE(
     ring_media_channel_dtmf_iface_init);
   G_IMPLEMENT_INTERFACE(TP_TYPE_SVC_CHANNEL_INTERFACE_HOLD,
     ring_channel_hold_iface_init);
+#if nomore
+  /* XXX: waiting for upstream tp-glib to provide a similar interface */
   G_IMPLEMENT_INTERFACE(RTCOM_TYPE_TP_SVC_CHANNEL_INTERFACE_DIAL_STRINGS,
     ring_channel_dial_strings_iface_init);
+#endif
   G_IMPLEMENT_INTERFACE(TP_TYPE_SVC_CHANNEL_TYPE_STREAMED_MEDIA,
     ring_media_channel_streamed_media_iface_init);
   G_IMPLEMENT_INTERFACE(TP_TYPE_EXPORTABLE_CHANNEL, NULL);
@@ -1465,8 +1470,10 @@ ring_media_channel_dtmf_start_tone(TpSvcChannelInterfaceDTMF *iface,
       ring_media_channel_queue_request(self, request);
     }
 
+#if nomore
     if (!priv->dial.string)
       ring_sending_dial_string(self, "");
+#endif
 
     request = modem_call_start_dtmf(self->call_instance, events[event],
               ring_media_channel_dtmf_start_tone_replied, self);
@@ -1805,6 +1812,7 @@ ring_update_hold(RingMediaChannel *self,
 /* ---------------------------------------------------------------------- */
 /* Implement com.Nokia.Telepathy.Channel.Interface.DialStrings */
 
+#if nomore
 static void
 ring_emit_stopped_dial_string(RingMediaChannel *self);
 
@@ -1975,6 +1983,7 @@ ring_emit_stopped_dial_string(RingMediaChannel *self)
   priv->dial.canceled = FALSE;
   priv->dial.stopped = FALSE;
 }
+#endif
 
 gboolean
 ring_media_channel_send_dialstring(RingMediaChannel *self,
@@ -2236,10 +2245,12 @@ on_modem_call_dialstring(ModemCall *ci,
 {
   RingMediaChannel *self = RING_MEDIA_CHANNEL(_self);
 
+#if nomore
   if (dialstring)
     ring_sending_dial_string(self, dialstring);
   else
     ring_stopped_dial_string(self, FALSE);
+#endif
 }
 
 static void
@@ -2334,8 +2345,10 @@ ring_media_channel_stopped_playing(ModemTones *tones,
   if (priv->playing == source) {
     priv->playing = 0;
 
+#if nomore
     if (priv->dial.stopped)
       ring_emit_stopped_dial_string(self);
+#endif
 
     if (!self->call_instance) {
       DEBUG("tone ended, closing");

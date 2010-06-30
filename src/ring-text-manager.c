@@ -54,8 +54,6 @@
 #include <telepathy-glib/errors.h>
 #include <telepathy-glib/interfaces.h>
 
-#include <rtcom-telepathy-glib/extensions.h>
-
 #include <string.h>
 
 static void channel_manager_iface_init(gpointer, gpointer);

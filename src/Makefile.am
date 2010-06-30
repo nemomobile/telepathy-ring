@@ -13,7 +13,6 @@
 # Headers and libraries
 
 AM_CFLAGS = $(ERROR_CFLAGS) @GLIB_CFLAGS@ @DBUS_CFLAGS@ @TP_CFLAGS@ \
-	@RTCOM_CFLAGS@ \
 	-I$(top_srcdir) -I$(top_srcdir)/tests
 AM_LDFLAGS =
 
@@ -61,7 +60,6 @@ libtpring_la_SOURCES = \
     ring-util.h ring-util.c
 
 TP_EXTLIB =
-TP_EXTLIB += @RTCOM_LIBS@
 TP_EXTLIB += $(top_builddir)/ring-extensions/libtpextensions.a
 
 telepathy_ring_LDADD = \

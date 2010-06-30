@@ -48,7 +48,6 @@
 
 #include "sms-glib/deliver.h"
 
-#include <rtcom-telepathy-glib/extensions.h>
 #include "ring-extensions/ring-extensions.h"
 
 #include "modem/call.h"

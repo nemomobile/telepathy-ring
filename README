@@ -42,8 +42,7 @@ The following environment variables are used:
 REQUIRED LIBRARIES
 ==================
 
-Telepathy-Ring is based on telepathy-glib (0.7.19), and rtcom-telepathy-glib
-(0.1.18)
+Telepathy-Ring is based on telepathy-glib (0.11.7)
 
 
 RUNNING WITH ELEVATED PRIORITY

@@ -60,8 +60,6 @@ AC_DEFINE_UNQUOTED([DBUS_SERVICES_DIR], "$DBUS_SERVICES_DIR", [DBus services dir
 
 dnl Check for telepathy-glib
 PKG_CHECK_MODULES(TP, [telepathy-glib >= 0.11.7])
-PKG_CHECK_MODULES([RTCOM], [rtcom-telepathy-glib >= 0.1.26],,
-   AC_MSG_ERROR([cannot find rtcom-telepathy-glib 0.1.26 or newer]))
 
 AC_CHECK_PROGS([XSLTPROC], [$XSLTPROC xsltproc])
 AC_CHECK_PROGS([DBUS_BINDING_TOOL], [$DBUS_BINDING_TOOL dbus-binding-tool])

@@ -32,8 +32,6 @@
 #include "ring-util.h"
 
 #include <ring-extensions/ring-extensions.h>
-#include <rtcom-telepathy-glib/extensions.h>
-#include <rtcom-telepathy-glib/mailbox-extensions.h>
 
 #include <telepathy-glib/exportable-channel.h>
 #include <telepathy-glib/channel-iface.h>
@@ -64,7 +62,6 @@ G_DEFINE_TYPE_WITH_CODE(
   G_TYPE_OBJECT,
   G_IMPLEMENT_INTERFACE(TP_TYPE_SVC_DBUS_PROPERTIES,
     tp_dbus_properties_mixin_iface_init);
-  /* G_IMPLEMENT_INTERFACE(RTCOM_TYPE_TP_SVC_CHANNEL_FUTURE, NULL); */
   G_IMPLEMENT_INTERFACE(TP_TYPE_SVC_CHANNEL, channel_iface_init);
   G_IMPLEMENT_INTERFACE(TP_TYPE_SVC_CHANNEL_TYPE_TEXT,
     tp_message_mixin_text_iface_init);
@@ -72,15 +69,18 @@ G_DEFINE_TYPE_WITH_CODE(
     ring_text_channel_destroyable_iface_init);
   G_IMPLEMENT_INTERFACE(TP_TYPE_SVC_CHANNEL_INTERFACE_MESSAGES,
     tp_message_mixin_messages_iface_init);
+#if nomore
   G_IMPLEMENT_INTERFACE(RTCOM_TYPE_TP_SVC_CHANNEL_INTERFACE_SMS, NULL);
+#endif
   G_IMPLEMENT_INTERFACE(TP_TYPE_EXPORTABLE_CHANNEL, NULL);
   G_IMPLEMENT_INTERFACE(TP_TYPE_CHANNEL_IFACE, NULL));
 
 static const char * const ring_text_channel_interfaces[] = {
   TP_IFACE_CHANNEL_INTERFACE_DESTROYABLE,
   TP_IFACE_CHANNEL_INTERFACE_MESSAGES,
+#if nomore
   RTCOM_TP_IFACE_CHANNEL_INTERFACE_SMS,
-  /* RING_IFACE_CHANNEL_FUTURE, */
+#endif
   NULL
 };
 
@@ -173,16 +173,11 @@ static TpDBusPropertiesMixinPropImpl channel_properties[] = {
   { NULL }
 };
 
+#if nomore
 /* Properties for c.n.T.Channel.Interface.SMS. */
 static TpDBusPropertiesMixinPropImpl sms_properties[] = {
   { "Flash", "sms-flash", NULL },
   { "TargetMatch", "target-match", NULL },
-  { NULL }
-};
-
-#if notyet
-/* Properties for org.freedesktop.Telepathy.Channel.FUTURE */
-static TpDBusPropertiesMixinPropImpl future_properties[] = {
   { NULL }
 };
 #endif
@@ -208,8 +203,10 @@ ring_text_channel_properties(RingTextChannel *self)
       TP_IFACE_CHANNEL, "InitiatorHandle",
       TP_IFACE_CHANNEL, "InitiatorID",
       TP_IFACE_CHANNEL, "Requested",
+#if nomore
       RTCOM_TP_IFACE_CHANNEL_INTERFACE_SMS, "TargetMatch",
       RTCOM_TP_IFACE_CHANNEL_INTERFACE_SMS, "Flash",
+#endif
       NULL);
 }
 
@@ -221,18 +218,12 @@ ring_text_channel_dbus_property_interfaces[] = {
     NULL,
     channel_properties,
   },
+#if nomore
   {
     RTCOM_TP_IFACE_CHANNEL_INTERFACE_SMS,
     tp_dbus_properties_mixin_getter_gobject_properties,
     NULL,
     sms_properties,
-  },
-#if notyet
-  {
-    RING_IFACE_CHANNEL_FUTURE,
-    tp_dbus_properties_mixin_getter_gobject_properties,
-    NULL,
-    future_properties,
   },
 #endif
   { NULL }
@@ -967,6 +958,8 @@ ring_text_channel_receive_deliver(RingTextChannel *self,
     if (mwi_type) {
       msg_type = TP_CHANNEL_TEXT_MESSAGE_TYPE_NOTICE;
 
+#if nomore
+      /* XXX: waiting for upstream tp-glib to get these */
       if (g_str_equal(mwi_type, "voice"))
         tp_message_set_string(msg, 0, NOKIA_VOICEMAIL_TYPE, "tel");
       tp_message_set_string(msg, 0, "sms-mwi-type", mwi_type);
@@ -988,6 +981,7 @@ ring_text_channel_receive_deliver(RingTextChannel *self,
             mwi_discard);
         }
       }
+#endif
       g_free(mwi_type);
     }
     else {
