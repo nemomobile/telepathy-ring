@@ -13,4 +13,7 @@ SUBDIRS = tests ring-extensions sms-glib modem src docs tools scripts
 TAGS:
 	find src sms-glib call ring-extensions -name '*.[hc]' | xargs etags
 
+EXTRA_DIST = \
+    autogen.sh
+
 .PHONY: TAGS
