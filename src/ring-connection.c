@@ -648,7 +648,7 @@ TpCMParamSpec const ring_connection_params[] = {
     NULL,
   },
 
-  { TP_IFACE_CONNECTION_INTERFACE_ANONYMITY ".Mandatory",
+  { TP_IFACE_CONNECTION_INTERFACE_ANONYMITY ".AnonymityMandatory",
     DBUS_TYPE_BOOLEAN_AS_STRING, G_TYPE_BOOLEAN,
     TP_CONN_MGR_PARAM_FLAG_DBUS_PROPERTY,
     GUINT_TO_POINTER(FALSE),
@@ -1121,7 +1121,7 @@ ring_connection_validate_initial_members(RingConnection *self,
 static TpDBusPropertiesMixinPropImpl
 ring_connection_anon_properties[] = {
   { "SupportedAnonymityModes", "anon-supported-modes", "anon-supported-modes" },
-  { "Mandatory", "anon-mandatory", "anon-mandatory" },
+  { "AnonymityMandatory", "anon-mandatory", "anon-mandatory" },
   { "AnonymityModes", "anon-modes", "anon-modes" },
   { NULL }
 };
