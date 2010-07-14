@@ -740,7 +740,7 @@ ring_media_requestotron(RingMediaManager *self,
 
     if (!modem_call_validate_address(target_id, &error)) {
       tp_channel_manager_emit_request_failed(
-        self, request, TP_ERRORS, TP_ERROR_NOT_AVAILABLE, error->message);
+        self, request, TP_ERRORS, TP_ERROR_INVALID_HANDLE, error->message);
       g_error_free(error);
       return TRUE;
     }
