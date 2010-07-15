@@ -89,6 +89,8 @@ GError *modem_service_state_as_error(ModemService const *self);
 
 char const *modem_service_get_modem_path(ModemService *self);
 
+gboolean modem_service_supports_call(ModemService *self);
+
 G_END_DECLS
 
 #endif /* #ifndef _MODEM_SERVICE_H_*/

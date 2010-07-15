@@ -622,6 +622,12 @@ ring_media_manager_foreach_channel_class(TpChannelManager *_self,
   TpChannelManagerChannelClassFunc func,
   gpointer userdata)
 {
+  RingMediaManager *self = RING_MEDIA_MANAGER(_self);
+
+  /* If we're not connected, calls aren't supported. */
+  if (self->priv->status != TP_CONNECTION_STATUS_CONNECTED)
+    return;
+
   func(_self,
     ring_call_channel_fixed_properties(),
     ring_call_channel_allowed_properties,
@@ -713,6 +719,10 @@ ring_media_requestotron(RingMediaManager *self,
 {
   RingMediaManagerPrivate *priv = self->priv;
   TpHandle handle;
+
+  /* If we're not connected, calls aren't supported. */
+  if (self->priv->status != TP_CONNECTION_STATUS_CONNECTED)
+    return FALSE;
 
   handle = tp_asv_get_uint32(properties, TP_IFACE_CHANNEL ".TargetHandle", NULL);
 

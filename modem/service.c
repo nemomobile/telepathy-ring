@@ -69,6 +69,7 @@ struct _ModemServicePrivate
 
   unsigned dispose_has_run:1, connected:1, signals:1, disconnected:1;
   unsigned modem_powered:1, mandatory_ifaces_satisfied:1;
+  unsigned have_call_manager:1;
   unsigned :0;
 };
 
@@ -244,8 +245,12 @@ modem_service_check_interfaces(ModemService *self,
     }
   }
 
-  priv->mandatory_ifaces_satisfied = (sim && call && sms);
+  priv->mandatory_ifaces_satisfied = (sim && sms);
+  priv->have_call_manager = call;
+
   if (priv->mandatory_ifaces_satisfied) {
+    DEBUG("interfaces satisfied (%sincluding CallManager)", call ? "" : "NOT ");
+
     if (!priv->connected &&
       !priv->connecting.error &&
       g_queue_is_empty (priv->connecting.queue)) {
@@ -381,6 +386,14 @@ modem_service_get_modem_path(ModemService *self)
     return NULL;
 
   return dbus_g_proxy_get_path(self->priv->modem);
+}
+
+gboolean
+modem_service_supports_call(ModemService *self)
+{
+  g_return_val_if_fail(MODEM_IS_SERVICE(self), FALSE);
+
+  return self->priv->have_call_manager;
 }
 
 /* ---------------------------------------------------------------------- */

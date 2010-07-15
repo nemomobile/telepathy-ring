@@ -988,12 +988,14 @@ ring_connection_modem_connected(ModemService *modem,
     if (!modem_sim_service_connect(priv->sim))
       DEBUG("modem_sim_service_connect failed");
 
-    if (!ring_media_manager_start_connecting(priv->media,
-        modem_path, &error)) {
+    if (modem_service_supports_call(modem)) {
+      if (!ring_media_manager_start_connecting(priv->media,
+          modem_path, &error)) {
 
-      DEBUG("ring_media_manager_start_connecting: " GERROR_MSG_FMT,
-        GERROR_MSG_CODE(error));
-      g_clear_error(&error);
+        DEBUG("ring_media_manager_start_connecting: " GERROR_MSG_FMT,
+          GERROR_MSG_CODE(error));
+        g_clear_error(&error);
+      }
     }
 
     if (!ring_text_manager_start_connecting(priv->text,
@@ -1059,7 +1061,9 @@ ring_connection_check_status(RingConnection *self)
   }
   else if (modem == TP_CONNECTION_STATUS_CONNECTED &&
     sim == TP_CONNECTION_STATUS_CONNECTED &&
-    media == TP_CONNECTION_STATUS_CONNECTED &&
+    /* Not checking 'media': it's optional, so we can run with hardware that
+     * doesn't support calls.
+     */
     text == TP_CONNECTION_STATUS_CONNECTED) {
     tp_base_connection_change_status(
       (TpBaseConnection *)self,

@@ -741,7 +741,9 @@ ring_call_channel_update_state(RingMediaChannel *_self,
   guint state, guint causetype, guint cause)
 {
   RingCallChannel *self = RING_CALL_CHANNEL(_self);
+#if nomore
   RingCallChannelPrivate *priv = self->priv;
+#endif
 
   switch (state) {
     case MODEM_CALL_STATE_DIALING:
