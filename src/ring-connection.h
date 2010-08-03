@@ -65,7 +65,7 @@ GType ring_connection_get_type(void);
 
 /* Extensions to TpBaseConnection */
 
-extern TpCMParamSpec const ring_connection_params[];
+TpCMParamSpec *ring_connection_get_param_specs (void);
 gpointer ring_connection_params_alloc(void);
 void ring_connection_params_free(gpointer p);
 

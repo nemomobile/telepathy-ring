@@ -73,6 +73,7 @@ struct _RingConnectionPrivate
   RingMediaManager *media;
   RingTextManager *text;
 
+  gchar *modem_path;
   ModemService *modem;
   ModemSIMService *sim;
 
@@ -93,6 +94,7 @@ enum {
   PROP_SMSC,                    /**< SMSC address */
   PROP_SMS_VALID,               /**< SMS validity period in seconds */
   PROP_SMS_REDUCED_CHARSET,     /**< SMS reduced charset support */
+  PROP_MODEM_PATH,              /**< Object path of the modem */
 
   PROP_STORED_MESSAGES,         /**< List of stored messages */
   PROP_KNOWN_SERVICE_POINTS,    /**< List of emergency service points */
@@ -225,7 +227,9 @@ ring_connection_constructed(GObject *object)
   self->sos_handle = tp_handle_ensure(repo, RING_EMERGENCY_SERVICE_URN, NULL, NULL);
   g_assert(self->sos_handle != 0);
 
-  self->priv->modem = g_object_new(MODEM_TYPE_SERVICE, NULL);
+  self->priv->modem = g_object_new(MODEM_TYPE_SERVICE,
+    "object-path", self->priv->modem_path,
+    NULL);
 }
 
 static void
@@ -261,6 +265,7 @@ ring_connection_finalize(GObject *object)
 
   /* Free any data held directly by the object here */
   g_free(priv->smsc);
+  g_free(priv->modem_path);
 
   G_OBJECT_CLASS(ring_connection_parent_class)->finalize(object);
 }
@@ -291,6 +296,10 @@ ring_connection_set_property(GObject *obj,
       if (priv->text)
         g_object_set(priv->text, "sms-reduced-charset",
           priv->sms_reduced_charset, NULL);
+      break;
+
+    case PROP_MODEM_PATH:
+      priv->modem_path = g_value_dup_boxed(value);
       break;
 
     case PROP_ANON_MANDATORY:
@@ -339,6 +348,9 @@ ring_connection_get_property(GObject *obj,
       break;
     case PROP_SMS_REDUCED_CHARSET:
       g_value_set_boolean(value, priv->sms_reduced_charset);
+      break;
+    case PROP_MODEM_PATH:
+      g_value_set_boxed(value, priv->modem_path);
       break;
     case PROP_STORED_MESSAGES:
 #if nomore
@@ -391,6 +403,15 @@ ring_connection_class_init(RingConnectionClass *ring_connection_class)
   g_object_class_install_property(
     object_class, PROP_SMS_REDUCED_CHARSET,
     ring_param_spec_sms_reduced_charset());
+
+  g_object_class_install_property(
+    object_class, PROP_MODEM_PATH,
+    g_param_spec_boxed("modem-path",
+      "Modem path",
+      "oFono object path of the modem to use",
+      DBUS_TYPE_G_OBJECT_PATH,
+      G_PARAM_READWRITE | G_PARAM_CONSTRUCT_ONLY |
+      G_PARAM_STATIC_STRINGS));
 
   g_object_class_install_property(
     object_class, PROP_STORED_MESSAGES,
@@ -491,6 +512,10 @@ typedef struct {
 
   gboolean anon_mandatory;      /* Whether anonymity modes are mandatory */
   guint    anon_modes;          /* Required anonymity mode */
+
+  gchar *modem;                /* Object path of the modem to use; NULL to
+                                * pick one arbitrarily.
+                                */
 
   /* Deprecated */
   char *account;               /* Ignored */
@@ -612,8 +637,16 @@ param_filter_anon_modes(TpCMParamSpec const *paramspec,
   return FALSE;
 }
 
-TpCMParamSpec const ring_connection_params[] = {
-  { TP_IFACE_CONNECTION_INTERFACE_CELLULAR ".IMSI",
+static gboolean
+param_filter_valid_object_path (TpCMParamSpec const *paramspec,
+  GValue *value,
+  GError **error)
+{
+  return tp_dbus_check_valid_object_path (g_value_get_boxed (value), error);
+}
+
+TpCMParamSpec ring_connection_params[] = {
+  { RING_IFACE_CONNECTION_INTERFACE_CELLULAR ".IMSI",
     DBUS_TYPE_STRING_AS_STRING, G_TYPE_STRING,
     TP_CONN_MGR_PARAM_FLAG_DBUS_PROPERTY,
     "",
@@ -664,6 +697,19 @@ TpCMParamSpec const ring_connection_params[] = {
     param_filter_anon_modes,
   },
 
+#define MODEM_PARAM_SPEC (ring_connection_params + 6)
+  { "modem",
+    DBUS_TYPE_OBJECT_PATH_AS_STRING,
+    /* DBUS_TYPE_G_OBJECT_PATH expands to a function call so we have to fill
+     * this in in ring_connection_get_param_specs().
+     */
+    (GType) 0,
+    0,
+    NULL,
+    G_STRUCT_OFFSET(RingConnectionParams, modem),
+    param_filter_valid_object_path,
+  },
+
   /* Deprecated... */
   { "account", DBUS_TYPE_STRING_AS_STRING, G_TYPE_STRING,
     0, NULL,
@@ -678,6 +724,16 @@ TpCMParamSpec const ring_connection_params[] = {
   { NULL }
 };
 
+TpCMParamSpec *
+ring_connection_get_param_specs (void)
+{
+  TpCMParamSpec *modem = MODEM_PARAM_SPEC;
+
+  modem->gtype = DBUS_TYPE_G_OBJECT_PATH;
+
+  return ring_connection_params;
+}
+
 gpointer
 ring_connection_params_alloc(void)
 {
@@ -689,6 +745,7 @@ ring_connection_params_free(gpointer p)
 {
   RingConnectionParams *params = p;
 
+  g_free(params->modem);
   g_free(params->account);
   g_free(params->password);
 
@@ -709,6 +766,7 @@ ring_connection_new(TpIntSet *params_present,
     "sms-reduced-charset", params->sms_reduced_charset,
     "anon-modes", params->anon_modes,
     "anon-mandatory", params->anon_mandatory,
+    "modem-path", params->modem,
     NULL);
 }
 

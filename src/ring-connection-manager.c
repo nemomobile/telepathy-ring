@@ -58,10 +58,10 @@ ring_connection_manager_init(RingConnectionManager *self)
   /* Xyzzy */
 }
 
-static const TpCMProtocolSpec ring_protocols[] = {
+static TpCMProtocolSpec ring_protocols[] = {
   {
     "tel",
-    ring_connection_params,
+    NULL, /* filled in in ring_connection_manager_class_init() */
     ring_connection_params_alloc,
     ring_connection_params_free
   },
@@ -92,6 +92,8 @@ static void
 ring_connection_manager_class_init(RingConnectionManagerClass *klass)
 {
   TpBaseConnectionManagerClass *parent_class = &klass->parent_class;
+
+  ring_protocols[0].parameters = ring_connection_get_param_specs();
 
   parent_class->new_connection = new_connection;
   parent_class->cm_dbus_name = "ring";
