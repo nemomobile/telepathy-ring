@@ -32,6 +32,10 @@
 
 #include <dbus/dbus-glib.h>
 
+#include <telepathy-glib/dbus.h>
+#include <telepathy-glib/gtypes.h>
+#include <telepathy-glib/util.h>
+
 #include "signals-marshal.h"
 
 #include <stdio.h>
@@ -52,6 +56,11 @@ enum {
   N_SIGNALS
 };
 
+enum {
+  PROP_OBJECT_PATH = 1,
+  N_PROPS
+};
+
 static guint signals[N_SIGNALS] = {0};
 
 /* private data */
@@ -64,6 +73,8 @@ struct _ModemServicePrivate
 
   DBusGProxy *manager;
   DBusGProxy *modem;
+
+  gchar *object_path;
 
   time_t seldom;
 
@@ -150,7 +161,50 @@ modem_service_finalize(GObject *object)
   if (priv->connecting.error)
     g_clear_error(&priv->connecting.error);
 
+  g_free (priv->object_path);
+
   G_OBJECT_CLASS(modem_service_parent_class)->finalize(object);
+}
+
+static void
+modem_service_set_property(GObject *obj,
+  guint property_id,
+  const GValue *value,
+  GParamSpec *pspec)
+{
+  ModemService *self = MODEM_SERVICE(obj);
+  ModemServicePrivate *priv = self->priv;
+
+  switch (property_id) {
+    case PROP_OBJECT_PATH:
+      g_free(priv->object_path);
+      priv->object_path = g_value_dup_boxed(value);
+      break;
+
+    default:
+      G_OBJECT_WARN_INVALID_PROPERTY_ID(obj, property_id, pspec);
+      break;
+  }
+}
+
+static void
+modem_service_get_property(GObject *obj,
+  guint property_id,
+  GValue *value,
+  GParamSpec *pspec)
+{
+  ModemService *self = MODEM_SERVICE(obj);
+  ModemServicePrivate *priv = self->priv;
+
+  switch (property_id) {
+    case PROP_OBJECT_PATH:
+      g_value_set_boxed(value, priv->object_path);
+      break;
+
+    default:
+      G_OBJECT_WARN_INVALID_PROPERTY_ID(obj, property_id, pspec);
+      break;
+  }
 }
 
 static void
@@ -163,6 +217,8 @@ modem_service_class_init(ModemServiceClass *klass)
   object_class->constructed = modem_service_constructed;
   object_class->dispose = modem_service_dispose;
   object_class->finalize = modem_service_finalize;
+  object_class->get_property = modem_service_get_property;
+  object_class->set_property = modem_service_set_property;
 
   signals[SIGNAL_CONNECTED] =
     g_signal_new("connected",
@@ -178,6 +234,14 @@ modem_service_class_init(ModemServiceClass *klass)
   dbus_g_object_register_marshaller
     (_modem__marshal_VOID__STRING_BOXED,
       G_TYPE_NONE, G_TYPE_STRING, G_TYPE_VALUE, G_TYPE_INVALID);
+
+  g_object_class_install_property(
+    object_class, PROP_OBJECT_PATH,
+    g_param_spec_boxed("object-path",
+      "Object Path",
+      "Object path of the modem on oFono",
+      DBUS_TYPE_G_OBJECT_PATH,
+      G_PARAM_READWRITE | G_PARAM_CONSTRUCT_ONLY | G_PARAM_STATIC_STRINGS));
 
   modem_error_domain_prefix(0); /* Init errors */
   modem_ofono_init_quarks();
@@ -448,46 +512,58 @@ reply_to_manager_get_properties(gpointer _self,
   GError const *error,
   gpointer user_data)
 {
-  const GError error0 = {
-    MODEM_OFONO_ERRORS,
-    MODEM_OFONO_ERROR_FAILED,
-    "No modems found"
-  };
   ModemService *self = MODEM_SERVICE(_self);
   ModemServicePrivate *priv = self->priv;
+  GError *error0 = NULL;
 
   DEBUG("enter");
 
   if (!error) {
-    GValue *value = g_hash_table_lookup(properties, "Modems");
-    if (value) {
-      GPtrArray *paths = g_value_get_boxed(value);
+    GPtrArray *paths = tp_asv_get_boxed (properties, "Modems",
+        TP_ARRAY_TYPE_OBJECT_PATH_LIST);
 
-      if (paths) {
-        char const *path;
+    if (paths == NULL || paths->len == 0) {
+      error0 = g_error_new_literal (MODEM_OFONO_ERRORS,
+          MODEM_OFONO_ERROR_FAILED, "No modems found");
+    } else if (priv->object_path != NULL) {
+      /* We know which modem we want; check it exists. */
+      guint i;
+      gboolean found = FALSE;
 
-        if (paths->len > 0) {
-          path = g_ptr_array_index(paths, 0);
-          if (path) {
-            DEBUG("Modem = %s", path);
-            priv->modem = modem_ofono_proxy(path, OFONO_IFACE_MODEM);
-            modem_ofono_proxy_connect_to_property_changed(
-              priv->modem, on_modem_property_changed, self);
+      for (i = 0; !found && i < paths->len; i++) {
+        const gchar *path = g_ptr_array_index (paths, i);
 
-          g_queue_push_tail(
-            priv->connecting.queue,
-            modem_ofono_proxy_request_properties(
-              priv->modem, reply_to_modem_get_properties, self, NULL));
-          }
-        }
+        found = !tp_strdiff (path, priv->object_path);
       }
+
+      if (!found)
+        error0 = g_error_new (MODEM_OFONO_ERRORS, MODEM_OFONO_ERROR_FAILED,
+            "Modem '%s' not found", priv->object_path);
+    } else {
+      /* Just take the first one. */
+      priv->object_path = g_strdup (g_ptr_array_index (paths, 0));
+    }
+
+    if (error0 == NULL) {
+      DEBUG("Modem = %s", priv->object_path);
+      priv->modem = modem_ofono_proxy(priv->object_path, OFONO_IFACE_MODEM);
+      modem_ofono_proxy_connect_to_property_changed(
+        priv->modem, on_modem_property_changed, self);
+
+      g_queue_push_tail(
+        priv->connecting.queue,
+        modem_ofono_proxy_request_properties(
+          priv->modem, reply_to_modem_get_properties, self, NULL));
     }
   }
 
-  if (!error && !priv->modem)
-    error = &error0;
+  if (error == NULL && error0 != NULL)
+    error = error0;
 
   modem_service_check_connected(self, request, &error);
+
+  if (error0 != NULL)
+    g_clear_error (&error0);
 }
 
 static void
