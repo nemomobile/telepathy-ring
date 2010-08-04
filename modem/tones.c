@@ -356,7 +356,8 @@ reply_to_stop_tone(DBusGProxy *proxy,
   ModemRequest *request = _request;
   ModemTones *self = modem_request_object(request);
   ModemTonesStoppedNotify *notify = modem_request_callback(request);
-  guint source = (guint)modem_request_get_data(request, "modem-tones-stop-source");
+  guint source = GPOINTER_TO_UINT(
+    modem_request_get_data(request, "modem-tones-stop-source"));
   gpointer data = modem_request_user_data(request);
 
   GError *error = NULL;

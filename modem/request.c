@@ -113,7 +113,7 @@ modem_request_add_qdata_full(ModemRequest *request,
   GDestroyNotify destroy)
 {
   GPtrArray *container = (GPtrArray *)request;
-  gpointer qpointer = (gpointer)quark;
+  gpointer qpointer = GUINT_TO_POINTER(quark);
   guint i;
 
   g_assert(quark != DUMMYQ);
@@ -177,7 +177,7 @@ modem_request_add_notifys(ModemRequest *request,
   ...)
 {
   GPtrArray *container = (GPtrArray *)request;
-  gpointer qpointer = (gpointer)DUMMYQ;
+  gpointer qpointer = GUINT_TO_POINTER(DUMMYQ);
 
   va_list ap;
 
@@ -202,7 +202,7 @@ modem_request_steal_qdata(ModemRequest *request,
   GQuark quark)
 {
   GPtrArray *container = (GPtrArray *)request;
-  gpointer qpointer = (gpointer)quark;
+  gpointer qpointer = GUINT_TO_POINTER(quark);
   guint i;
 
   g_assert(quark != DUMMYQ);
@@ -225,7 +225,7 @@ modem_request_get_qdata(ModemRequest *request,
   GQuark quark)
 {
   GPtrArray *container = (GPtrArray *)request;
-  gpointer qpointer = (gpointer)quark;
+  gpointer qpointer = GUINT_TO_POINTER(quark);
 
   guint i;
 

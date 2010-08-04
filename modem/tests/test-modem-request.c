@@ -263,7 +263,7 @@ START_TEST(notify_in_call_request)
 
   struct _ModemRequestNotify *notify = request->priv->notify;
 
-  fail_if(notify[0].quark != (gpointer)quark);
+  fail_if(notify[0].quark != GUINT_TO_POINTER(quark));
   fail_if(notify[0].data != weaknotify);
 
   modem_request_add_notifys(request, unref_proxy, proxy, NULL);
