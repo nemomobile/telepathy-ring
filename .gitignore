@@ -26,10 +26,13 @@
 *.la
 *.pyc
 *.pyo
+.*.swp
 .deps
 .libs
 Makefile.in
 Makefile
+cscope.out
+tags
 /telepathy-ring-*.tar.gz
 /src/telepathy-ring
 /src/org.freedesktop.Telepathy.ConnectionManager.ring.service
