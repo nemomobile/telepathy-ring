@@ -3,8 +3,8 @@ abs_top_builddir = @abs_top_builddir@
 noinst_SCRIPTS = telepathy-glib-env
 
 telepathy-glib-env: telepathy-glib-env.in Makefile
-	sed -e 's![@]abs_top_builddir[@]!$(abs_top_builddir)!' $< > $@
-	chmod +x $@
+	$(AM_V_GEN)sed -e 's![@]abs_top_builddir[@]!$(abs_top_builddir)!' $< > $@
+	$(AM_V_at)chmod +x $@
 
 EXTRA_DIST = \
     c-constants-gen.py \

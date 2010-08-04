@@ -15,7 +15,7 @@ NOT_IFACES = \
 if HAVE_TP_EXTENSIONS
 
 all.xml: all.xml.in Makefile.am
-	$(SHELL) $(srcdir)/all.xml.in $(EXT_IFACES) > $@
+	$(AM_V_GEN) $(SHELL) $(srcdir)/all.xml.in $(EXT_IFACES) > $@
 
 noinst_LIBRARIES = libtpextensions.a
 

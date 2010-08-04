@@ -68,10 +68,10 @@ BUILT_SOURCES = \
 		signals-marshal.c
 
 signals-marshal.c: ${srcdir}/signals-marshal.list
-	glib-genmarshal --body --prefix=_modem__marshal $< >$@
+	$(AM_V_GEN)glib-genmarshal --body --prefix=_modem__marshal $< >$@
 
 signals-marshal.h: ${srcdir}/signals-marshal.list
-	glib-genmarshal --header --prefix=_modem__marshal $< >$@
+	$(AM_V_GEN)glib-genmarshal --header --prefix=_modem__marshal $< >$@
 
 CLEANFILES = ${BUILT_SOURCES}
 

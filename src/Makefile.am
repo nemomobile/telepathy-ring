@@ -82,7 +82,7 @@ service = org.freedesktop.Telepathy.ConnectionManager.ring.service
 # configure script would insert ${prefix}/lib/telepathy-ring in service file
 .service-in.service:
 	@-rm -f $@
-	sed -e 's![@]libexecdir[@]!${libexecdir}!' '${srcdir}/$@-in' > $@
+	$(AM_V_GEN)sed -e 's![@]libexecdir[@]!${libexecdir}!' '${srcdir}/$@-in' > $@
 
 # Install services
 servicedir = $(DBUS_SERVICES_DIR)

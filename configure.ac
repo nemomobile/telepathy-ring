@@ -1,6 +1,7 @@
 AC_INIT([telepathy-ring], [2.0.0])
 AC_PREREQ([2.59])
 AM_INIT_AUTOMAKE([foreign 1.9])
+m4_ifdef([AM_SILENT_RULES], [AM_SILENT_RULES])
 
 AC_CONFIG_MACRO_DIR([m4])
 
