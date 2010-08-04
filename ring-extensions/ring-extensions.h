@@ -3,6 +3,7 @@
 
 #include "ring-extensions/_gen/svc.h"
 #include "ring-extensions/_gen/enums.h"
+#include "ring-extensions/_gen/gtypes.h"
 #include "ring-extensions/_gen/interfaces.h"
 
 #endif

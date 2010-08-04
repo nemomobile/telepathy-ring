@@ -30,7 +30,7 @@ This script originates in telepathy-glib <http://telepathy.freedesktop.org/> -
 please send us any changes that are needed.
 """
 
-# Copyright (C) 2008 Collabora Ltd. <http://www.collabora.co.uk/>
+# Copyright (C) 2008-2010 Collabora Ltd. <http://www.collabora.co.uk/>
 # Copyright (C) 2008 Nokia Corporation
 #
 # Copying and distribution of this file, with or without modification,
@@ -39,7 +39,6 @@ please send us any changes that are needed.
 
 import sys
 from getopt import gnu_getopt
-from sets import Set as set
 
 
 def e(format, *args):
@@ -134,6 +133,10 @@ def main(abifiles, symbols=None, unreleased_version=None,
                 print "        %s;" % symbol
             elif dpkg:
                 dpkg_symbols.append('%s@%s %s' % (symbol, version, release))
+
+            if symbol in versioned_symbols:
+                raise AssertionError('Symbol %s is in version %s and an '
+                                     'earlier version' % (symbol, version))
 
             versioned_symbols.add(symbol)
 

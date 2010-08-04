@@ -22,7 +22,6 @@ EXTRA_DIST = \
     glib-interfaces-gen.py \
     glib-signals-marshal-gen.py \
     gobject-foo.py \
-    identity.xsl \
     libtpcodegen.py \
     libglibcodegen.py \
     make-version-script.py \

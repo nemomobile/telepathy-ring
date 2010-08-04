@@ -3,34 +3,43 @@
 from sys import argv, stdout, stderr
 import xml.dom.minidom
 
-from libglibcodegen import NS_TP, camelcase_to_upper, get_docstring, \
+from libglibcodegen import NS_TP, get_docstring, \
         get_descendant_text, get_by_path
 
 class Generator(object):
-    def __init__(self, prefix, dom):
+    def __init__(self, prefix, dom, output_base):
         self.prefix = prefix + '_'
         self.spec = get_by_path(dom, "spec")[0]
+
+        self.__header = open(output_base + '.h', 'w')
+        self.__docs = open(output_base + '-gtk-doc.h', 'w')
 
     def __call__(self):
         self.do_header()
         self.do_body()
         self.do_footer()
 
+    def write(self, code):
+        self.__header.write(code.encode('utf-8'))
+
+    def d(self, code):
+        self.__docs.write(code.encode('utf-8'))
+
     # Header
     def do_header(self):
-        stdout.write('/* Generated from ')
-        stdout.write(get_descendant_text(get_by_path(self.spec, 'title')))
+        self.write('/* Generated from ')
+        self.write(get_descendant_text(get_by_path(self.spec, 'title')))
         version = get_by_path(self.spec, "version")
         if version:
-            stdout.write(', version ' + get_descendant_text(version))
-        stdout.write('\n\n')
+            self.write(', version ' + get_descendant_text(version))
+        self.write('\n\n')
         for copyright in get_by_path(self.spec, 'copyright'):
-            stdout.write(get_descendant_text(copyright))
-            stdout.write('\n')
-        stdout.write(get_descendant_text(get_by_path(self.spec, 'license')))
-        stdout.write('\n')
-        stdout.write(get_descendant_text(get_by_path(self.spec, 'docstring')))
-        stdout.write("""
+            self.write(get_descendant_text(copyright))
+            self.write('\n')
+        self.write(get_descendant_text(get_by_path(self.spec, 'license')))
+        self.write('\n')
+        self.write(get_descendant_text(get_by_path(self.spec, 'docstring')))
+        self.write("""
  */
 
 #ifdef __cplusplus
@@ -51,28 +60,30 @@ extern "C" {
         value_prefix = flags.getAttribute('singular') or \
                        flags.getAttribute('value-prefix') or \
                        flags.getAttribute('name')
-        stdout.write("""\
+        self.d("""\
 /**
  *
 %s:
 """ % (self.prefix + name).replace('_', ''))
         for flag in get_by_path(flags, 'flag'):
             self.do_gtkdoc(flag, value_prefix)
-        stdout.write(' *\n')
+        self.d(' *\n')
         docstrings = get_by_path(flags, 'docstring')
         if docstrings:
-            stdout.write("""\
+            self.d("""\
  * <![CDATA[%s]]>
  *
 """ % get_descendant_text(docstrings).replace('\n', ' '))
-        stdout.write("""\
+        self.d("""\
  * Bitfield/set of flags generated from the Telepathy specification.
  */
-typedef enum {
 """)
+
+        self.write("typedef enum {\n")
+
         for flag in get_by_path(flags, 'flag'):
             self.do_val(flag, value_prefix)
-        stdout.write("""\
+        self.write("""\
 } %s;
 
 """ % (self.prefix + name).replace('_', ''))
@@ -84,7 +95,7 @@ typedef enum {
                        enum.getAttribute('name')
         name_plural = enum.getAttribute('plural') or \
                       enum.getAttribute('name') + 's'
-        stdout.write("""\
+        self.d("""\
 /**
  *
 %s:
@@ -92,28 +103,35 @@ typedef enum {
         vals = get_by_path(enum, 'enumvalue')
         for val in vals:
             self.do_gtkdoc(val, value_prefix)
-        stdout.write(' *\n')
+        self.d(' *\n')
         docstrings = get_by_path(enum, 'docstring')
         if docstrings:
-            stdout.write("""\
+            self.d("""\
  * <![CDATA[%s]]>
  *
 """ % get_descendant_text(docstrings).replace('\n', ' '))
-        stdout.write("""\
+        self.d("""\
  * Bitfield/set of flags generated from the Telepathy specification.
  */
-typedef enum {
 """)
+
+        self.write("typedef enum {\n")
+
         for val in vals:
             self.do_val(val, value_prefix)
-        stdout.write("""\
-} %(mixed-name)s;
+        self.write("} %s;\n" % (self.prefix + name).replace('_', ''))
 
+        self.d("""\
 /**
  * NUM_%(upper-plural)s:
  *
  * 1 higher than the highest valid value of #%(mixed-name)s.
  */
+""" % {'mixed-name' : (self.prefix + name).replace('_', ''),
+       'upper-plural' : (self.prefix + name_plural).upper(),
+       'last-val' : vals[-1].getAttribute('value')})
+
+        self.write("""\
 #define NUM_%(upper-plural)s (%(last-val)s+1)
 
 """ % {'mixed-name' : (self.prefix + name).replace('_', ''),
@@ -127,20 +145,20 @@ typedef enum {
                 (suffix or name)).upper()
         assert not (name and suffix) or name == suffix, \
                 'Flag/enumvalue name %s != suffix %s' % (name, suffix)
-        stdout.write('    %s = %s,\n' % (use_name, val.getAttribute('value')))
+        self.write('    %s = %s,\n' % (use_name, val.getAttribute('value')))
 
     def do_gtkdoc(self, node, value_prefix):
-        stdout.write(' * @')
-        stdout.write((self.prefix + value_prefix + '_' +
+        self.d(' * @')
+        self.d((self.prefix + value_prefix + '_' +
             node.getAttribute('suffix')).upper())
-        stdout.write(': <![CDATA[')
+        self.d(': <![CDATA[')
         docstring = get_by_path(node, 'docstring')
-        stdout.write(get_descendant_text(docstring).replace('\n', ' '))
-        stdout.write(']]>\n')
+        self.d(get_descendant_text(docstring).replace('\n', ' '))
+        self.d(']]>\n')
 
     # Footer
     def do_footer(self):
-        stdout.write("""
+        self.write("""
 #ifdef __cplusplus
 }
 #endif
@@ -148,4 +166,4 @@ typedef enum {
 
 if __name__ == '__main__':
     argv = argv[1:]
-    Generator(argv[0], xml.dom.minidom.parse(argv[1]))()
+    Generator(argv[0], xml.dom.minidom.parse(argv[1]), argv[2])()
