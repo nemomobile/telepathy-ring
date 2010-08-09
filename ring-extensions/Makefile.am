@@ -6,8 +6,7 @@ EXT_IFACES = \
     $(srcdir)/Channel_Future.xml \
     $(srcdir)/Channel_Interface_Splittable.xml \
     $(srcdir)/Channel_Interface_Conference_DRAFT.xml \
-    $(srcdir)/Channel_Interface_Mergeable_Conference.xml \
-    $(srcdir)/Connection_Interface_Cellular.xml
+    $(srcdir)/Channel_Interface_Mergeable_Conference.xml
 
 NOT_IFACES = \
     $(srcdir)/Channel_Interface_Messages.xml \

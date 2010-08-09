@@ -138,7 +138,7 @@ G_DEFINE_TYPE_WITH_CODE(
     ring_connection_capabilities_iface_init);
   G_IMPLEMENT_INTERFACE(TP_TYPE_SVC_CONNECTION_INTERFACE_SERVICE_POINT,
     NULL);
-  G_IMPLEMENT_INTERFACE(RING_TYPE_SVC_CONNECTION_INTERFACE_CELLULAR,
+  G_IMPLEMENT_INTERFACE(TP_TYPE_SVC_CONNECTION_INTERFACE_CELLULAR,
     NULL);
   G_IMPLEMENT_INTERFACE(TP_TYPE_SVC_CONNECTION_INTERFACE_ANONYMITY,
     NULL);
@@ -154,7 +154,7 @@ static char const * const ring_connection_interfaces_always_present[] = {
   TP_IFACE_CONNECTION_INTERFACE_CONTACTS,
   TP_IFACE_CONNECTION_INTERFACE_CAPABILITIES,
   TP_IFACE_CONNECTION_INTERFACE_SERVICE_POINT,
-  RING_IFACE_CONNECTION_INTERFACE_CELLULAR,
+  TP_IFACE_CONNECTION_INTERFACE_CELLULAR,
   TP_IFACE_CONNECTION_INTERFACE_ANONYMITY,
 #if nomore
   RTCOM_TP_IFACE_CONNECTION_INTERFACE_STORED_MESSAGES,
@@ -194,7 +194,7 @@ on_imsi_changed(GObject *object, GParamSpec *pspec,
     char const *imsi;
 
     imsi = modem_sim_get_imsi(MODEM_SIM_SERVICE(object));
-    ring_svc_connection_interface_cellular_emit_imsi_changed(self, imsi);
+    tp_svc_connection_interface_cellular_emit_imsi_changed(self, imsi);
   }
 }
 
@@ -459,7 +459,7 @@ ring_connection_dbus_property_interfaces[] = {
     ring_connection_service_point_properties,
   },
   {
-    RING_IFACE_CONNECTION_INTERFACE_CELLULAR,
+    TP_IFACE_CONNECTION_INTERFACE_CELLULAR,
     tp_dbus_properties_mixin_getter_gobject_properties,
     ring_connection_cellular_properties_setter,
     ring_connection_cellular_properties,
@@ -613,7 +613,7 @@ param_filter_anon_modes(TpCMParamSpec const *paramspec,
 }
 
 TpCMParamSpec const ring_connection_params[] = {
-  { RING_IFACE_CONNECTION_INTERFACE_CELLULAR ".IMSI",
+  { TP_IFACE_CONNECTION_INTERFACE_CELLULAR ".IMSI",
     DBUS_TYPE_STRING_AS_STRING, G_TYPE_STRING,
     TP_CONN_MGR_PARAM_FLAG_DBUS_PROPERTY,
     "",
@@ -622,7 +622,7 @@ TpCMParamSpec const ring_connection_params[] = {
   },
 
 #define CELLULAR_SMS_VALIDITY_PERIOD_PARAM_SPEC (ring_connection_params + 1)
-  { RING_IFACE_CONNECTION_INTERFACE_CELLULAR ".MessageValidityPeriod",
+  { TP_IFACE_CONNECTION_INTERFACE_CELLULAR ".MessageValidityPeriod",
     DBUS_TYPE_UINT32_AS_STRING, G_TYPE_UINT,
     TP_CONN_MGR_PARAM_FLAG_DBUS_PROPERTY,
     GUINT_TO_POINTER(0),
@@ -631,7 +631,7 @@ TpCMParamSpec const ring_connection_params[] = {
   },
 
 #define CELLULAR_SMS_SERVICE_CENTRE_PARAM_SPEC (ring_connection_params + 2)
-  { RING_IFACE_CONNECTION_INTERFACE_CELLULAR ".MessageServiceCentre",
+  { TP_IFACE_CONNECTION_INTERFACE_CELLULAR ".MessageServiceCentre",
     DBUS_TYPE_STRING_AS_STRING, G_TYPE_STRING,
     TP_CONN_MGR_PARAM_FLAG_DBUS_PROPERTY,
     "",
@@ -640,7 +640,7 @@ TpCMParamSpec const ring_connection_params[] = {
   },
 
 #define CELLULAR_SMS_REDUCED_CHARSET_PARAM_SPEC (ring_connection_params + 3)
-  { RING_IFACE_CONNECTION_INTERFACE_CELLULAR ".MessageReducedCharacterSet",
+  { TP_IFACE_CONNECTION_INTERFACE_CELLULAR ".MessageReducedCharacterSet",
     DBUS_TYPE_BOOLEAN_AS_STRING, G_TYPE_BOOLEAN,
     TP_CONN_MGR_PARAM_FLAG_DBUS_PROPERTY,
     GUINT_TO_POINTER(0),
@@ -1133,9 +1133,7 @@ ring_connection_cellular_properties[] = {
   { "IMSI", "imsi", "imsi" },
   { "MessageValidityPeriod", "sms-validity-period", "sms-validity-period" },
   { "MessageServiceCentre", "sms-service-centre", "sms-service-centre" },
-#if notyet /* non-existent */
   { "MessageReducedCharacterSet", "sms-reduced-charset", "sms-reduced-charset" },
-#endif
   { NULL }
 };
 
