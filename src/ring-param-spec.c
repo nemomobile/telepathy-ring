@@ -86,9 +86,8 @@ GParamSpec *ring_param_spec_interfaces(void)
 {
   return
     g_param_spec_boxed("interfaces",
-      "List of extra channel interfaces",
-      "List of extra Channel.Interface "
-      "implemented by this channel",
+      "List of extra interfaces",
+      "List of extra D-Bus interfaces implemented by this object",
       G_TYPE_STRV,
       G_PARAM_READABLE |
       G_PARAM_STATIC_STRINGS);
