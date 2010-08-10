@@ -2243,9 +2243,9 @@ on_modem_call_dialstring(ModemCall *ci,
   char const *dialstring,
   RingMediaChannel *_self)
 {
+#if nomore
   RingMediaChannel *self = RING_MEDIA_CHANNEL(_self);
 
-#if nomore
   if (dialstring)
     ring_sending_dial_string(self, dialstring);
   else
