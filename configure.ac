@@ -5,8 +5,6 @@ m4_ifdef([AM_SILENT_RULES], [AM_SILENT_RULES])
 
 AC_CONFIG_MACRO_DIR([m4])
 
-WERROR="no"
-
 AM_CONFIG_HEADER([config.h])
 
 AC_PROG_CC
