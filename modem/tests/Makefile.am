@@ -1,5 +1,5 @@
 AM_CFLAGS = $(ERROR_CFLAGS) \
-	@GLIB_CFLAGS@ @DBUS_CFLAGS@ \
+	@TP_CFLAGS@ @GLIB_CFLAGS@ @DBUS_CFLAGS@ \
 	-I$(top_srcdir) -I$(top_srcdir)/tests @CHECK_CFLAGS@
 
 TESTS = test-modem
