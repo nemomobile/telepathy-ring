@@ -1195,7 +1195,13 @@ static void
 on_modem_call_multiparty(ModemCall *ci,
   RingCallChannel *self)
 {
-  /*ring_update_call_state(self, TP_CHANNEL_CALL_STATE_XXX, 0);*/
+  RingCallChannelPrivate *priv = self->priv;
+
+  /* If the conference host state is set, we need to first zap it */
+  if (priv->call_state & TP_CHANNEL_CALL_STATE_CONFERENCE_HOST)
+    ring_update_call_state(self, 0, TP_CHANNEL_CALL_STATE_CONFERENCE_HOST);
+
+  ring_update_call_state(self, TP_CHANNEL_CALL_STATE_CONFERENCE_HOST, 0);
 }
 
 /* Invoked when MO call targets an emergency service */
