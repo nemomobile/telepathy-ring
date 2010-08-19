@@ -705,6 +705,7 @@ my_message_mixin_get_string(TpMessage const *message,
   return g_value_get_string(value);
 }
 
+#if nomore
 static GArray const *
 my_message_mixin_get_bytearray(TpMessage const *message,
   guint part,
@@ -732,6 +733,7 @@ my_message_mixin_get_uint(TpMessage const *message,
 
   return g_value_get_uint(value);
 }
+#endif
 
 /** Convert handle inspection to a destination acceptable by modem.
  *

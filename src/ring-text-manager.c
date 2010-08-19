@@ -127,6 +127,7 @@ static void on_text_channel_closed(RingTextChannel *, RingTextManager *);
 
 static void on_sms_service_deliver(ModemSMSService *,
   SMSGDeliver *, gpointer _self);
+#if nomore
 static void on_sms_service_outgoing_complete(ModemSMSService *,
   char const *token,
   char const *destination,
@@ -138,12 +139,15 @@ static void on_sms_service_outgoing_error(ModemSMSService *,
   gpointer _self);
 static void on_sms_service_status_report(ModemSMSService *,
   SMSGStatusReport *, gpointer _self);
+#endif
 
 static void ring_text_manager_receive_deliver(
   RingTextManager *, SMSGDeliver *);
 
+#if nomore
 static void ring_text_manager_receive_status_report(
   RingTextManager *, SMSGStatusReport *);
+#endif
 
 /* ------------------------------------------------------------------------ */
 /* GObject interface */
@@ -820,6 +824,7 @@ on_sms_service_deliver(ModemSMSService *sms_service,
   ring_text_manager_receive_deliver(RING_TEXT_MANAGER(_self), deliver);
 }
 
+#if nomore
 static void
 on_sms_service_outgoing_complete(ModemSMSService *service,
   char const *destination,
@@ -876,6 +881,7 @@ on_sms_service_status_report(ModemSMSService *sms_service,
   ring_text_manager_receive_status_report(
     RING_TEXT_MANAGER(_self), status_report);
 }
+#endif
 
 /* ---------------------------------------------------------------------- */
 
@@ -909,6 +915,7 @@ ring_text_manager_receive_deliver(RingTextManager *self,
     ring_text_channel_receive_deliver(channel, deliver);
 }
 
+#if nomore
 static void
 ring_text_manager_receive_status_report(RingTextManager *self,
   SMSGStatusReport *status_report)
@@ -931,10 +938,12 @@ ring_text_manager_receive_status_report(RingTextManager *self,
   if (channel)
     ring_text_channel_receive_status_report(channel, status_report);
 }
+#endif
 
 /* ---------------------------------------------------------------------- */
 /* StoredMessages interface */
 
+#if nomore
 static void
 ring_text_manager_not_connected(gpointer context)
 {
@@ -942,6 +951,7 @@ ring_text_manager_not_connected(gpointer context)
     { TP_ERRORS, TP_ERROR_NOT_AVAILABLE, "SMS service is not available" };
   dbus_g_method_return_error(context, &error);
 }
+#endif
 
 void
 ring_text_manager_deliver_stored_messages(RingTextManager *self,

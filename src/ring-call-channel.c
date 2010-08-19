@@ -228,12 +228,16 @@ static void on_modem_call_state_dialing(RingCallChannel *self);
 static void on_modem_call_state_incoming(RingCallChannel *self);
 static void on_modem_call_state_waiting(RingCallChannel *self);
 static void on_modem_call_state_mo_alerting(RingCallChannel *self);
+#ifdef nomore
 static void on_modem_call_state_mt_alerting(RingCallChannel *self);
 static void on_modem_call_state_answered(RingCallChannel *self);
+#endif
 static void on_modem_call_state_active(RingCallChannel *self);
 static void on_modem_call_state_mo_release(RingCallChannel *, guint causetype, guint cause);
+#ifdef nomore
 static void on_modem_call_state_mt_release(RingCallChannel *, guint causetype, guint cause);
 static void on_modem_call_state_terminated(RingCallChannel *, guint causetype, guint cause);
+#endif
 
 static void ring_call_channel_released(RingCallChannel *self,
   TpHandle actor, TpChannelGroupChangeReason reason, char const *message,
@@ -1466,12 +1470,14 @@ static void on_modem_call_state_mo_alerting(RingCallChannel *self)
     TP_CHANNEL_CALL_STATE_QUEUED);
 }
 
+#ifdef nomore
 static void on_modem_call_state_mt_alerting(RingCallChannel *self)
 {
   /* We can answer the call now */
   if (self->priv->accepted)
     modem_call_request_answer(self->base.call_instance, NULL, NULL);
 }
+#endif
 
 static void on_modem_call_state_waiting(RingCallChannel *self)
 {
@@ -1480,9 +1486,11 @@ static void on_modem_call_state_waiting(RingCallChannel *self)
     modem_call_request_answer(self->base.call_instance, NULL, NULL);
 }
 
+#ifdef nomore
 static void on_modem_call_state_answered(RingCallChannel *self)
 {
 }
+#endif
 
 static void on_modem_call_state_active(RingCallChannel *self)
 {
@@ -1600,6 +1608,7 @@ on_modem_call_state_mo_release(RingCallChannel *self,
   g_free(debug);
 }
 
+#ifdef nomore
 static void
 on_modem_call_state_mt_release(RingCallChannel *self,
   guint causetype,
@@ -1687,6 +1696,7 @@ on_modem_call_state_terminated(RingCallChannel *self,
   g_error_free(error);
   g_free(debug);
 }
+#endif
 
 static void
 ring_call_channel_released(RingCallChannel *self,

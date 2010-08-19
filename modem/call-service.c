@@ -109,9 +109,11 @@ static ModemRequestCallNotify modem_call_conference_request_reply;
 static void modem_call_service_check_connected(ModemCallService *self,
   ModemRequest *request,
   GError const *error);
+#if nomore
 static void on_user_connection(DBusGProxy *proxy,
   gboolean attached,
   ModemCallService *self);
+#endif
 static void on_modem_call_ready(ModemCall *, ModemCallService *);
 static void on_modem_call_state(ModemCall *, ModemCallState,
   ModemCallService *);
@@ -813,6 +815,7 @@ modem_call_get_valid_emergency_urn(char const *urn)
 
 /* ---------------------------------------------------------------------- */
 
+#if nomore
 static void
 on_user_connection(DBusGProxy *proxy,
   gboolean attached,
@@ -825,6 +828,7 @@ on_user_connection(DBusGProxy *proxy,
   g_signal_emit(self, signals[SIGNAL_USER_CONNECTION], 0,
     attached);
 }
+#endif
 
 static void request_notify_cancel(gpointer data);
 

@@ -56,6 +56,7 @@ modem_sim_api_init(void)
 
 GError *reply_error;
 
+#if 0
 static void
 reply_to_sim_state_request(ModemSIMService *sim,
   ModemRequest *request,
@@ -70,6 +71,7 @@ reply_to_sim_state_request(ModemSIMService *sim,
 
   g_main_loop_quit(mainloop);
 }
+#endif
 
 static int got_sim_connected;
 

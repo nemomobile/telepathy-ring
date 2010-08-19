@@ -140,9 +140,11 @@ static void on_modem_call_created(ModemCallService *call_service,
   char const *destination,
   RingMediaManager *self);
 
+#if nomore
 static void on_modem_call_conference_joined(ModemCallConference *mcc,
   ModemCall *mc,
   RingMediaManager *self);
+#endif
 
 static void on_modem_call_user_connection(ModemCallService *call_service,
   gboolean active,
@@ -1205,6 +1207,7 @@ on_modem_call_created(ModemCallService *call_service,
     MODEM_CALL_STATE_DIALING, 0, 0);
 }
 
+#ifdef nomore
 static void
 on_modem_call_conference_joined(ModemCallConference *mcc,
   ModemCall *mc,
@@ -1264,6 +1267,7 @@ on_modem_call_conference_joined(ModemCallConference *mcc,
   g_strfreev((char **)g_ptr_array_free(initial, FALSE));
   g_free(members);
 }
+#endif
 
 /* ---------------------------------------------------------------------- */
 

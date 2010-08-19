@@ -205,14 +205,22 @@ static void on_modem_call_state_dialing(RingMediaChannel *self);
 static void on_modem_call_state_incoming(RingMediaChannel *self);
 static void on_modem_call_state_waiting(RingMediaChannel *self);
 static void on_modem_call_state_mo_alerting(RingMediaChannel *self);
+#if nomore
 static void on_modem_call_state_mt_alerting(RingMediaChannel *self);
 static void on_modem_call_state_answered(RingMediaChannel *self);
+#endif
 static void on_modem_call_state_active(RingMediaChannel *self);
+#if nomore
 static void on_modem_call_state_hold_initiated(RingMediaChannel *self);
+#endif
 static void on_modem_call_state_held(RingMediaChannel *self);
+#if nomore
 static void on_modem_call_state_retrieve_initiated(RingMediaChannel *self);
+#endif
 static void on_modem_call_state_release(RingMediaChannel *);
+#if nomore
 static void on_modem_call_state_terminated(RingMediaChannel *);
+#endif
 
 static void on_modem_call_terminated(ModemCall *, RingMediaChannel *);
 static void on_modem_call_dtmf_tone(ModemCall *call_instance,
@@ -1420,7 +1428,9 @@ ring_media_channel_streamed_media_iface_init(gpointer g_iface,
  * Telepathy.Channel.Interface.DTMF DBus interface - version 0.15
  */
 
+#ifdef nomore
 static void ring_sending_dial_string(RingMediaChannel *, char const *);
+#endif
 
 static ModemCallReply ring_media_channel_dtmf_start_tone_replied;
 static ModemCallReply ring_media_channel_dtmf_stop_tone_replied;
@@ -2138,6 +2148,7 @@ on_modem_call_state_mo_alerting(RingMediaChannel *self)
     TP_MEDIA_STREAM_PENDING_LOCAL_SEND);
 }
 
+#if nomore
 static void
 on_modem_call_state_mt_alerting(RingMediaChannel *self)
 {
@@ -2147,6 +2158,7 @@ on_modem_call_state_mt_alerting(RingMediaChannel *self)
     TP_MEDIA_STREAM_DIRECTION_SEND,
     TP_MEDIA_STREAM_PENDING_REMOTE_SEND);
 }
+#endif
 
 static void
 on_modem_call_state_waiting(RingMediaChannel *self)
@@ -2159,6 +2171,7 @@ on_modem_call_state_waiting(RingMediaChannel *self)
     TP_MEDIA_STREAM_PENDING_REMOTE_SEND);
 }
 
+#if nomore
 static void
 on_modem_call_state_answered(RingMediaChannel *self)
 {
@@ -2168,6 +2181,7 @@ on_modem_call_state_answered(RingMediaChannel *self)
     TP_MEDIA_STREAM_DIRECTION_SEND,
     TP_MEDIA_STREAM_PENDING_REMOTE_SEND);
 }
+#endif
 
 static void
 on_modem_call_state_active(RingMediaChannel *self)
@@ -2181,6 +2195,7 @@ on_modem_call_state_active(RingMediaChannel *self)
   ring_update_hold(self, TP_LOCAL_HOLD_STATE_UNHELD, 0);
 }
 
+#if nomore
 static void
 on_modem_call_state_hold_initiated(RingMediaChannel *self)
 {
@@ -2191,6 +2206,7 @@ on_modem_call_state_hold_initiated(RingMediaChannel *self)
 
   ring_update_hold(self, TP_LOCAL_HOLD_STATE_PENDING_HOLD, 0);
 }
+#endif
 
 static void
 on_modem_call_state_held(RingMediaChannel *self)
@@ -2204,6 +2220,7 @@ on_modem_call_state_held(RingMediaChannel *self)
 }
 
 
+#if nomore
 static void
 on_modem_call_state_retrieve_initiated(RingMediaChannel *self)
 {
@@ -2215,6 +2232,7 @@ on_modem_call_state_retrieve_initiated(RingMediaChannel *self)
 
   ring_update_hold(self, TP_LOCAL_HOLD_STATE_PENDING_UNHOLD, 0);
 }
+#endif
 
 
 static void
@@ -2222,6 +2240,7 @@ on_modem_call_state_release(RingMediaChannel *self)
 {
 }
 
+#if nomore
 static void
 on_modem_call_state_terminated(RingMediaChannel *self)
 {
@@ -2230,6 +2249,7 @@ on_modem_call_state_terminated(RingMediaChannel *self)
     TP_MEDIA_STREAM_DIRECTION_NONE,
     0);
 }
+#endif
 
 static void
 on_modem_call_terminated(ModemCall *ci,

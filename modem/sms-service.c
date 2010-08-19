@@ -693,6 +693,7 @@ modem_sms_incoming_deliver(ModemSMSService *self, SMSGDeliver *deliver)
     g_signal_emit(self, signals[SIGNAL_DELIVER], 0, deliver);
 }
 
+#if nomore
 static void
 modem_sms_incoming_status_report(ModemSMSService *self,
   SMSGStatusReport *sr)
@@ -709,6 +710,7 @@ modem_sms_incoming_status_report(ModemSMSService *self,
   if (priv->connected)
     g_signal_emit(self, signals[SIGNAL_STATUS_REPORT], 0, sr);
 }
+#endif
 
 /* ---------------------------------------------------------------------- */
 /* Sending */
