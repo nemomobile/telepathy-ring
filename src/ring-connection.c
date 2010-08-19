@@ -646,7 +646,7 @@ param_filter_valid_object_path (TpCMParamSpec const *paramspec,
 }
 
 TpCMParamSpec ring_connection_params[] = {
-  { RING_IFACE_CONNECTION_INTERFACE_CELLULAR ".IMSI",
+  { TP_IFACE_CONNECTION_INTERFACE_CELLULAR ".IMSI",
     DBUS_TYPE_STRING_AS_STRING, G_TYPE_STRING,
     TP_CONN_MGR_PARAM_FLAG_DBUS_PROPERTY,
     "",
