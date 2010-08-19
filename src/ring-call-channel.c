@@ -68,6 +68,11 @@
 
 #include "ring-param-spec.h"
 
+#if !defined(TP_CHANNEL_CALL_STATE_CONFERENCE_HOST)
+/* Added in tp-spec 0.19.11 */
+#define TP_CHANNEL_CALL_STATE_CONFERENCE_HOST (32)
+#endif
+
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
