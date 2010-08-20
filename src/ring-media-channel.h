@@ -23,7 +23,8 @@
 #define RING_MEDIA_CHANNEL_H
 
 #include <glib-object.h>
-#include <telepathy-glib/group-mixin.h>
+
+#include <telepathy-glib/base-channel.h>
 #include <telepathy-glib/dbus-properties-mixin.h>
 
 G_BEGIN_DECLS
@@ -41,8 +42,7 @@ G_END_DECLS
 G_BEGIN_DECLS
 
 struct _RingMediaChannelClass {
-  GObjectClass parent_class;
-  TpDBusPropertiesMixinClass dbus_properties_class;
+  TpBaseChannelClass parent_class;
 
   void (*emit_initial)(RingMediaChannel *self);
   void (*update_state)(RingMediaChannel *self, guint status, guint causetype, guint cause);
@@ -55,12 +55,12 @@ struct _RingMediaChannelClass {
 };
 
 struct _RingMediaChannel {
-  GObject parent;
+  TpBaseChannel parent;
+
   /* Read-only */
-  RingConnection *connection;
   ModemCallService *call_service;
   ModemCall *call_instance;
-  char const *nick;
+  char *nick;
 
   RingMediaChannelPrivate *priv;
 };
@@ -126,8 +126,6 @@ void ring_media_channel_set_state(RingMediaChannel *self,
   guint state,
   guint causetype,
   guint cause);
-
-GHashTable *ring_media_channel_properties(RingMediaChannel *self);
 
 G_END_DECLS
 

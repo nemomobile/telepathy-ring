@@ -23,6 +23,7 @@
 #define RING_CONFERENCE_CHANNEL_H
 
 #include <glib-object.h>
+#include <telepathy-glib/group-mixin.h>
 
 G_BEGIN_DECLS
 

@@ -58,7 +58,7 @@ AC_SUBST(DBUS_SERVICES_DIR)
 AC_DEFINE_UNQUOTED([DBUS_SERVICES_DIR], "$DBUS_SERVICES_DIR", [DBus services directory])
 
 dnl Check for telepathy-glib
-PKG_CHECK_MODULES(TP, [telepathy-glib >= 0.11.11])
+PKG_CHECK_MODULES(TP, [telepathy-glib >= 0.11.14])
 
 AC_CHECK_PROGS([XSLTPROC], [$XSLTPROC xsltproc])
 AC_CHECK_PROGS([DBUS_BINDING_TOOL], [$DBUS_BINDING_TOOL dbus-binding-tool])
