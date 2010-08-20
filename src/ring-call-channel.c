@@ -113,9 +113,9 @@ struct _RingCallChannelPrivate
 
   unsigned originating:1, terminating:1;
 
-  unsigned call_state:4;        /* Channel.Interface.CallState bits */
-
   unsigned :0;
+
+  unsigned call_state; /* Channel.Interface.CallState bits */
 
   struct {
     gulong emergency, multiparty;
