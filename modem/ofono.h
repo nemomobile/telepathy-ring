@@ -53,6 +53,9 @@ G_BEGIN_DECLS
 #define MODEM_TYPE_DBUS_DICT modem_type_dbus_dict()
 #define MODEM_TYPE_ARRAY_OF_PATHS modem_type_dbus_ao()
 
+/* D-Bus type a{oa{sv}} for oFono call list */
+#define MODEM_TYPE_DBUS_ARRAY_OF_CALLS modem_type_dbus_array_of_calls()
+
 /* ---------------------------------------------------------------------- */
 
 typedef void ModemOfonoPropChangedCb(
@@ -73,6 +76,7 @@ typedef void ModemOfonoVoidReply(
 
 GType modem_type_dbus_dict(void);
 GType modem_type_dbus_ao(void);
+GType modem_type_dbus_array_of_calls(void);
 GQuark modem_ofono_iface_quark_sim(void);
 GQuark modem_ofono_iface_quark_call_manager(void);
 GQuark modem_ofono_iface_quark_sms(void);

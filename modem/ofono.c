@@ -56,6 +56,23 @@ modem_type_dbus_ao(void)
   return type;
 }
 
+GType
+modem_type_dbus_array_of_calls(void)
+{
+  static gsize type = 0;
+
+  if (g_once_init_enter(&type)) {
+    GType stype = dbus_g_type_get_struct("GValueArray",
+	DBUS_TYPE_G_OBJECT_PATH,
+	MODEM_TYPE_DBUS_DICT,
+	G_TYPE_INVALID);
+    GType t = dbus_g_type_get_collection("GPtrArray", stype);
+    g_once_init_leave(&type, t);
+  }
+
+  return type;
+}
+
 GQuark
 modem_ofono_iface_quark_sim(void)
 {
