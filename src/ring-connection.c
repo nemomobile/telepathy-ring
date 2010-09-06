@@ -1118,11 +1118,9 @@ ring_connection_check_status(RingConnection *self)
     return TRUE;
   }
   else if (modem == TP_CONNECTION_STATUS_CONNECTED &&
-    sim == TP_CONNECTION_STATUS_CONNECTED &&
-    /* Not checking 'media': it's optional, so we can run with hardware that
-     * doesn't support calls.
-     */
-    text == TP_CONNECTION_STATUS_CONNECTED) {
+      sim == TP_CONNECTION_STATUS_CONNECTED &&
+      (media == TP_CONNECTION_STATUS_CONNECTED ||
+          text == TP_CONNECTION_STATUS_CONNECTED)) {
     tp_base_connection_change_status(
       (TpBaseConnection *)self,
       TP_CONNECTION_STATUS_CONNECTED,
