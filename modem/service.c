@@ -1,5 +1,5 @@
 /*
- * modem/service.c - Ofono modem service
+ * modem/service.c - oFono modem service
  *
  * Copyright (C) 2009 Nokia Corporation
  *   @author Pekka Pessi <first.surname@nokia.com>
@@ -115,7 +115,7 @@ modem_service_constructed(GObject *object)
     modem_ofono_proxy("/", OFONO_IFACE_MANAGER);
 
   if (!priv->manager) {
-    g_error("Unable to proxy Ofono");
+    g_error("Unable to proxy oFono");
   }
 }
 
@@ -309,7 +309,7 @@ modem_service_check_interfaces(ModemService *self,
     }
   }
 
-  priv->mandatory_ifaces_satisfied = (sim && sms);
+  priv->mandatory_ifaces_satisfied = sim;
   priv->have_call_manager = call;
 
   if (priv->mandatory_ifaces_satisfied) {
