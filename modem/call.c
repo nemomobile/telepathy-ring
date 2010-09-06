@@ -634,7 +634,7 @@ modem_call_is_held(ModemCall const *self)
     self->priv->state == MODEM_CALL_STATE_HELD;
 }
 
-static ModemCallState
+ModemCallState
 modem_call_state_from_ofono_state(const char *state)
 {
   if (G_UNLIKELY (!state))

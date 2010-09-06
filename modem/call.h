@@ -217,6 +217,7 @@ char const *modem_call_get_path(ModemCall const *);
 gboolean modem_call_has_path(ModemCall const *, char const *object_path);
 
 ModemCallState modem_call_get_state(ModemCall const *);
+ModemCallState modem_call_state_from_ofono_state(char const *state);
 
 gboolean modem_call_try_set_handler(ModemCall *, gpointer);
 void modem_call_set_handler(ModemCall *, gpointer);
