@@ -80,7 +80,6 @@ enum
 
 /* Signals */
 enum {
-  SIGNAL_READY,
   SIGNAL_STATE,
   SIGNAL_WAITING,
   SIGNAL_MULTIPARTY,
@@ -126,12 +125,6 @@ static void on_call_property_changed(DBusGProxy *proxy,
   GValue const *value,
   gpointer user_data);
 
-static void reply_to_call_get_properties(gpointer _self,
-  ModemRequest *request,
-  GHashTable *properties,
-  GError const *error,
-  gpointer user_data);
-
 /* ---------------------------------------------------------------------- */
 
 static void
@@ -154,9 +147,6 @@ modem_call_constructed(GObject *object)
 
   modem_ofono_proxy_connect_to_property_changed(
     priv->proxy, on_call_property_changed, self);
-
-  modem_ofono_proxy_request_properties(
-    priv->proxy, reply_to_call_get_properties, self, NULL);
 
   DEBUG("ModemCall for %s on %s",
     self->priv->object_path, OFONO_IFACE_CALL);
@@ -442,15 +432,6 @@ modem_call_class_init(ModemCallClass *klass)
       G_PARAM_READWRITE |
       G_PARAM_STATIC_STRINGS));
 
-  call_signals[SIGNAL_READY] =
-    g_signal_new("ready",
-      G_OBJECT_CLASS_TYPE (klass),
-      G_SIGNAL_RUN_LAST | G_SIGNAL_DETAILED,
-      0,
-      NULL, NULL,
-      g_cclosure_marshal_VOID__VOID,
-      G_TYPE_NONE, 0);
-
   call_signals[SIGNAL_STATE] =
     g_signal_new("state",
       G_OBJECT_CLASS_TYPE (klass),
@@ -707,53 +688,6 @@ on_call_property_changed(DBusGProxy *proxy,
         g_signal_emit(self, call_signals[SIGNAL_TERMINATED], 0);
     }
   }
-}
-
-static void
-reply_to_call_get_properties(gpointer _self,
-  ModemRequest *request,
-  GHashTable *properties,
-  GError const *error,
-  gpointer user_data)
-{
-  DEBUG("enter");
-
-  ModemCall *self = MODEM_CALL (_self);
-
-  if (!error) {
-    char *key;
-    GValue *value;
-    GHashTableIter iter[1];
-    ModemCallState state;
-
-    g_hash_table_iter_init(iter, properties);
-    while (g_hash_table_iter_next(iter,
-        (gpointer)&key,
-        (gpointer)&value)) {
-      char *s = g_strdup_value_contents(value);
-      DEBUG("%s = %s", key, s);
-      g_free(s);
-    }
-
-    value = g_hash_table_lookup(properties, "LineIdentification");
-    g_object_set_property(G_OBJECT(self), "remote", value);
-
-    value = g_hash_table_lookup(properties, "State");
-    state = modem_call_state_from_ofono_state(
-      g_value_get_string(value));
-    g_object_set(self, "state", state, NULL);
-
-    if (state == MODEM_CALL_STATE_INCOMING)
-      g_object_set(self, "terminating", TRUE, NULL);
-    else
-      g_object_set(self, "originating", TRUE, NULL);
-
-  }
-  else {
-    DEBUG("got " GERROR_MSG_FMT, GERROR_MSG_CODE(error));
-  }
-
-  g_signal_emit(self, call_signals[SIGNAL_READY], 0);
 }
 
 #if nomore
