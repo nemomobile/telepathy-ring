@@ -427,9 +427,6 @@ modem_service_disconnect(ModemService *self)
   priv->disconnected = TRUE;
   priv->connected = FALSE;
 
-  if (priv->modem_powered)
-    request_modem_be_powered(self, FALSE);
-
   if (priv->signals) {
     modem_ofono_proxy_disconnect_from_property_changed(
       priv->manager, on_manager_property_changed, self);
