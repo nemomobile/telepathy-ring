@@ -40,8 +40,6 @@
 #include <unistd.h>
 #if HAVE_LIBMLOCKNICE
 #include <mlocknice.h>
-#else
-#warning "The mlocknice library is not available"
 #endif
 
 static TpBaseConnectionManager *
