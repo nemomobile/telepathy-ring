@@ -22,11 +22,13 @@ EXTRA_DIST = \
     glib-interfaces-gen.py \
     glib-signals-marshal-gen.py \
     gobject-foo.py \
-    libtpcodegen.py \
+    identity.xsl \
     libglibcodegen.py \
+    libtpcodegen.py \
     make-version-script.py \
     telepathy-glib-env.in \
-    with-session-bus.sh
+    with-session-bus.sh \
+    xincludator.py
 
 CLEANFILES = libtpcodegen.pyc libtpcodegen.pyo libglibcodegen.pyc libglibcodegen.pyo $(noinst_SCRIPTS)
 
