@@ -12,10 +12,9 @@
 # -----------------------------------------------------------------------------
 # Headers and libraries
 
-AM_CFLAGS = $(ERROR_CFLAGS) @GLIB_CFLAGS@ @DBUS_CFLAGS@ @TP_CFLAGS@ \
-	-I$(top_srcdir) -I$(top_srcdir)/tests
+AM_CFLAGS = $(ERROR_CFLAGS) @GLIB_CFLAGS@ @DBUS_CFLAGS@ @TP_CFLAGS@
+INCLUDES = -I$(top_srcdir) -I$(top_srcdir)/tests -I${top_builddir}
 AM_LDFLAGS =
-
 
 # Build targets
 
