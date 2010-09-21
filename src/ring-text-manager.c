@@ -402,7 +402,11 @@ on_connection_status_changed(RingConnection *connection,
       break;
 
     case TP_CONNECTION_STATUS_CONNECTED:
+      if (priv->smsc && strlen(priv->smsc))
+        modem_sms_set_sc_address(priv->sms_service, priv->smsc, NULL, NULL);
+
       /* XXX - get list of spooled sms */
+
       break;
 
     case TP_CONNECTION_STATUS_DISCONNECTED:
