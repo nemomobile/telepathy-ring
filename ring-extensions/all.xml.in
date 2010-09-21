@@ -15,7 +15,7 @@ cat << EOF
 `
 for iface in "$@"
 do
-   echo $iface | sed 's-.*/-<xi:include href="-; s-$-"/>-;'
+   echo $iface | sed 's-^-<xi:include href="-; s-$-"/>-;'
 done
 `
 
