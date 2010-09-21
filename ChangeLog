@@ -1,0 +1,4 @@
+release 2.0.1
+	Initial release for oFono 0.26.
+	Basic calls, sending and receiving SMSs work.
+
