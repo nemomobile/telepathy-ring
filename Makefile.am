@@ -11,7 +11,8 @@ ACLOCAL_AMFLAGS = -I m4
 SUBDIRS = tests ring-extensions sms-glib modem src docs tools scripts
 
 TAGS:
-	find src sms-glib call ring-extensions -name '*.[hc]' | xargs etags
+	find src sms-glib modem ring-extensions -name '*.[hc]' | \
+	xargs etags
 
 EXTRA_DIST = \
     autogen.sh
