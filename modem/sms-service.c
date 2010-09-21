@@ -657,6 +657,74 @@ modem_sms_service_disconnect(ModemSMSService *self)
 }
 
 /* ---------------------------------------------------------------------- */
+/* Properties */
+
+static void
+reply_to_modem_sms_request(DBusGProxy *proxy,
+                           DBusGProxyCall *call,
+                           void *_request)
+{
+  ModemRequest *request = _request;
+  ModemSMSService *self = modem_request_object(request);
+  ModemSMSServiceReply *callback = modem_request_callback(request);
+  gpointer user_data = modem_request_user_data(request);
+
+  GError *error = NULL;
+
+  dbus_g_proxy_end_call(proxy, call, &error, G_TYPE_INVALID);
+  if (callback)
+    callback(self, request, error, user_data);
+  g_clear_error(&error);
+}
+
+
+ModemRequest *
+modem_sms_set_sc_address(ModemSMSService *self,
+                         char const *address,
+                         ModemSMSServiceReply *callback,
+                         gpointer user_data)
+{
+  ModemSMSServicePrivate *priv = self->priv;
+  GValue value[1];
+
+  g_value_init(memset(value, 0, sizeof value), G_TYPE_STRING);
+  g_value_set_string(value, address);
+
+  DEBUG(OFONO_IFACE_SMS ".SetProperty(%s, %s)",
+      "ServiceCenterAddress", address);
+
+  return modem_request_begin(self, priv->proxy, "SetProperty",
+      reply_to_modem_sms_request,
+      G_CALLBACK(callback), user_data,
+      G_TYPE_STRING, "ServiceCenterAddress",
+      G_TYPE_VALUE, value,
+      G_TYPE_INVALID);
+}
+
+ModemRequest *
+modem_sms_set_srr(ModemSMSService *self,
+                  gboolean srr,
+                  ModemSMSServiceReply *callback,
+                  gpointer user_data)
+{
+  ModemSMSServicePrivate *priv = self->priv;
+  GValue value[1];
+
+  g_value_init(memset(value, 0, sizeof value), G_TYPE_BOOLEAN);
+  g_value_set_boolean(value, srr);
+
+  DEBUG(OFONO_IFACE_SMS ".SetProperty(%s, %s)",
+      "UseDeliveryReports", srr ? "true" : "false");
+
+  return modem_request_begin(self, priv->proxy, "SetProperty",
+      reply_to_modem_sms_request,
+      G_CALLBACK(callback), user_data,
+      G_TYPE_STRING, "UseDeliveryReports",
+      G_TYPE_VALUE, value,
+      G_TYPE_INVALID);
+}
+
+/* ---------------------------------------------------------------------- */
 /* Message deliver */
 
 static void

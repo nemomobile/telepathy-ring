@@ -101,6 +101,16 @@ guint64 modem_sms_service_time_connected(ModemSMSService const *self);
 
 /* ---------------------------------------------------------------------- */
 
+ModemRequest *modem_sms_set_sc_address(ModemSMSService *self,
+    char const *address,
+    ModemSMSServiceReply *reply,
+    gpointer user_data);
+
+ModemRequest *modem_sms_set_srr(ModemSMSService *self,
+    gboolean srr,
+    ModemSMSServiceReply *reply,
+    gpointer user_data);
+
 ModemRequest *modem_sms_request_send(ModemSMSService *self,
   char const *to, char const *message,
   ModemSMSServiceSendReply *reply,
