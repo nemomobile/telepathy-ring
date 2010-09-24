@@ -1,7 +1,7 @@
 AM_CFLAGS = $(ERROR_CFLAGS) \
 	@TP_CFLAGS@ @GLIB_CFLAGS@ @DBUS_CFLAGS@ @CHECK_CFLAGS@
 
-INCLUDE = -I$(top_srcdir) -I$(top_srcdir)/tests -I$(top_srcdir)/modem -I..
+INCLUDES = -I$(top_srcdir) -I$(top_srcdir)/tests -I$(top_srcdir)/modem -I..
 
 TESTS = test-modem
 

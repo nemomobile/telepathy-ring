@@ -12,7 +12,9 @@ SUBDIRS = . tests
 # Headers and libraries
 
 AM_CFLAGS = $(ERROR_CFLAGS) @GLIB_CFLAGS@ @DBUS_CFLAGS@ @TP_CFLAGS@ \
-	    @UUID_CFLAGS@ -I$(top_srcdir) -I$(top_srcdir)/modem
+	    @UUID_CFLAGS@
+
+INCLUDES = -I$(top_srcdir) -I$(top_srcdir)/modem
 
 AM_LDFLAGS =
 
