@@ -330,6 +330,9 @@ ring_text_manager_start_connecting(RingTextManager *self,
     return FALSE;
   }
 
+  if (self->priv->status != TP_INTERNAL_CONNECTION_STATUS_NEW)
+    return TRUE;
+
   priv->signals.connecting =
     modem_sms_connect_to_connected(priv->sms_service,
       on_sms_service_connected,
