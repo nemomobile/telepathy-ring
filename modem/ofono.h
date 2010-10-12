@@ -42,7 +42,7 @@ G_BEGIN_DECLS
 #define OFONO_IFACE_SIM          "org.ofono.SimManager"
 #define OFONO_IFACE_CALL_MANAGER "org.ofono.VoiceCallManager"
 #define OFONO_IFACE_CALL         "org.ofono.VoiceCall"
-#define OFONO_IFACE_SMS          "org.ofono.SmsManager"
+#define OFONO_IFACE_SMS          "org.ofono.MessageManager"
 
 /* Quarks for mandatory modem interfaces */
 #define OFONO_IFACE_QUARK_SIM modem_ofono_iface_quark_sim()
