@@ -1056,12 +1056,19 @@ ring_connection_modem_connected(ModemService *modem,
       }
     }
 
-    if (!ring_text_manager_start_connecting(priv->text,
-        modem_path, &error)) {
+    /*
+     * XXX if sms atom is added after transition to online
+     * we don't ever get text manager connected
+     * Only way to use SMS is to start ring after modem is in online
+     */
+    if (modem_service_supports_sms(modem)) {
+      if (!ring_text_manager_start_connecting(priv->text,
+              modem_path, &error)) {
 
-      DEBUG("ring_text_manager_start_connecting: " GERROR_MSG_FMT,
-        GERROR_MSG_CODE(error));
-      g_clear_error(&error);
+        DEBUG("ring_text_manager_start_connecting: " GERROR_MSG_FMT,
+            GERROR_MSG_CODE(error));
+        g_clear_error(&error);
+      }
     }
   }
 

@@ -109,6 +109,8 @@ static void on_connection_status_changed(RingConnection *connection,
 
 static void on_sms_service_connected(ModemSMSService *sms, gpointer _self);
 
+static void ring_text_manager_connected(RingTextManager *self);
+
 static void ring_text_manager_disconnect(RingTextManager *self);
 
 static gboolean ring_text_requestotron(RingTextManager *self,
@@ -402,11 +404,7 @@ on_connection_status_changed(RingConnection *connection,
       break;
 
     case TP_CONNECTION_STATUS_CONNECTED:
-      if (priv->smsc && strlen(priv->smsc))
-        modem_sms_set_sc_address(priv->sms_service, priv->smsc, NULL, NULL);
-
-      /* XXX - get list of spooled sms */
-
+      ring_text_manager_connected(self);
       break;
 
     case TP_CONNECTION_STATUS_DISCONNECTED:
@@ -433,7 +431,25 @@ on_sms_service_connected(ModemSMSService *sms,
   else
     priv->status = TP_CONNECTION_STATUS_DISCONNECTED;
 
+  ring_text_manager_connected(self);
+
   ring_connection_check_status(RING_CONNECTION(priv->connection));
+}
+
+static void
+ring_text_manager_connected(RingTextManager *self)
+{
+  RingTextManagerPrivate *priv = self->priv;
+
+  if (priv->status != TP_CONNECTION_STATUS_CONNECTED)
+    return;
+  if (priv->cstatus != TP_CONNECTION_STATUS_CONNECTED)
+    return;
+
+  if (priv->smsc && strlen(priv->smsc))
+    modem_sms_set_sc_address(priv->sms_service, priv->smsc, NULL, NULL);
+
+  /* XXX - get list of spooled sms */
 }
 
 static void
