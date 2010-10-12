@@ -23,7 +23,6 @@
 #define _MODEM_SERVICE_H_
 
 #include <glib-object.h>
-#include <modem/request.h>
 
 G_BEGIN_DECLS
 
@@ -58,34 +57,10 @@ GType modem_service_get_type(void);
 
 /* ---------------------------------------------------------------------- */
 
-typedef void ModemServiceStringReply (ModemService *self,
-  ModemRequest *request,
-  char *result,
-  GError *error,
-  gpointer user_data);
-
-typedef void ModemServiceBooleanReply (ModemService *self,
-  ModemRequest *request,
-  gboolean result,
-  GError *error,
-  gpointer user_data);
-
-typedef void ModemServiceVoidReply (ModemService *self,
-  ModemRequest *request,
-  GError *error,
-  gpointer user_data);
-
 gboolean modem_service_connect(ModemService *self);
 gboolean modem_service_is_connected(ModemService *self);
 gboolean modem_service_is_connecting(ModemService *self);
 void modem_service_disconnect(ModemService *self);
-
-ModemRequest *modem_service_request_state(ModemService *self,
-  ModemServiceStringReply *,
-  gpointer user_data);
-
-char const *modem_service_get_state(ModemService const *self);
-GError *modem_service_state_as_error(ModemService const *self);
 
 char const *modem_service_get_modem_path(ModemService *self);
 
