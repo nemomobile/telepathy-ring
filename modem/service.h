@@ -65,6 +65,7 @@ void modem_service_disconnect(ModemService *self);
 char const *modem_service_get_modem_path(ModemService *self);
 
 gboolean modem_service_supports_call(ModemService *self);
+gboolean modem_service_supports_sms(ModemService *self);
 
 G_END_DECLS
 
