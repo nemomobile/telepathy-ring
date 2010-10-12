@@ -41,6 +41,8 @@
 #include "ring-connection-manager.h"
 #include "ring-connection.h"
 
+#include "modem/service.h"
+
 #include <telepathy-glib/errors.h>
 
 #include <stdio.h>
@@ -62,6 +64,8 @@ ring_connection_manager_init(RingConnectionManager *self)
 {
   self->priv = G_TYPE_INSTANCE_GET_PRIVATE(self,
       RING_TYPE_CONNECTION_MANAGER, RingConnectionManagerPrivate);
+
+  modem_service_refresh (modem_service ());
 }
 
 static TpCMProtocolSpec ring_protocols[] = {

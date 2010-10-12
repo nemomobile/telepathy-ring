@@ -48,6 +48,7 @@
 #include "ring-extensions/ring-extensions.h"
 
 #include "modem/service.h"
+#include "modem/modem.h"
 #include "modem/sim.h"
 #include "modem/call.h"
 #include "modem/sms.h"
@@ -74,13 +75,18 @@ struct _RingConnectionPrivate
   RingTextManager *text;
 
   gchar *modem_path;
-  ModemService *modem;
+  Modem *modem;
   ModemSIMService *sim;
 
   struct {
-    gulong sim_connected, modem_connected;
+    gulong modem_added;
+    gulong modem_removed;
+    gulong modem_interfaces;
+    gulong sim_connected;
     gulong imsi_notify;
   } signals;
+
+  guint connecting_source;
 
   unsigned anon_mandatory:1;
   unsigned sms_reduced_charset:1;
@@ -226,10 +232,6 @@ ring_connection_constructed(GObject *object)
 
   self->sos_handle = tp_handle_ensure(repo, RING_EMERGENCY_SERVICE_URN, NULL, NULL);
   g_assert(self->sos_handle != 0);
-
-  self->priv->modem = g_object_new(MODEM_TYPE_SERVICE,
-    "object-path", self->priv->modem_path,
-    NULL);
 }
 
 static void
@@ -246,10 +248,10 @@ ring_connection_dispose(GObject *object)
   tp_handle_unref(repo, self->anon_handle), self->anon_handle = 0;
   tp_handle_unref(repo, self->sos_handle), self->sos_handle = 0;
 
-  g_object_unref(self->priv->modem);
-  if (self->priv->sim) {
+  if (self->priv->modem)
+    g_object_unref (self->priv->modem);
+  if (self->priv->sim)
     g_object_unref(self->priv->sim);
-  }
 
   G_OBJECT_CLASS(ring_connection_parent_class)->dispose(object);
   g_assert(self->parent.self_handle == 0);  /* unref'd by base class */
@@ -760,14 +762,14 @@ ring_connection_new(TpIntSet *params_present,
   char *sms_service_centre = params->sms_service_centre;
 
   return (RingConnection *) g_object_new(RING_TYPE_CONNECTION,
-    "protocol", "tel",
-    "sms-service-centre", sms_service_centre ? sms_service_centre : "",
-    "sms-validity-period", params->sms_validity_period,
-    "sms-reduced-charset", params->sms_reduced_charset,
-    "anon-modes", params->anon_modes,
-    "anon-mandatory", params->anon_mandatory,
-    "modem-path", params->modem,
-    NULL);
+      "protocol", "tel",
+      "modem-path", params->modem,
+      "sms-service-centre", sms_service_centre ? sms_service_centre : "",
+      "sms-validity-period", params->sms_validity_period,
+      "sms-reduced-charset", params->sms_reduced_charset,
+      "anon-modes", params->anon_modes,
+      "anon-mandatory", params->anon_mandatory,
+      NULL);
 }
 
 
@@ -903,8 +905,11 @@ ring_connection_create_channel_managers(TpBaseConnection *base)
   return channel_managers;
 }
 
+static gboolean ring_connection_connecting_timeout (gpointer);
 static void ring_connection_sim_connected(ModemSIMService *, gpointer);
-static void ring_connection_modem_connected(ModemService *, gpointer);
+static void ring_connection_modem_added (ModemService *, Modem *, gpointer);
+static void ring_connection_modem_removed (ModemService *, Modem *, gpointer);
+static void on_modem_interfaces_changed (Modem *, GParamSpec *, gpointer);
 
 static gboolean
 ring_connection_start_connecting(TpBaseConnection *base,
@@ -912,6 +917,8 @@ ring_connection_start_connecting(TpBaseConnection *base,
 {
   RingConnection *self = RING_CONNECTION(base);
   RingConnectionPrivate *priv = self->priv;
+  ModemService *modems;
+  Modem *modem;
   GError *error = NULL;
 
   DEBUG("called");
@@ -920,23 +927,46 @@ ring_connection_start_connecting(TpBaseConnection *base,
 
   error = NULL;
 
-  priv->signals.modem_connected =
-    g_signal_connect(priv->modem, "connected",
-      G_CALLBACK(ring_connection_modem_connected),
-      self);
+  priv->connecting_source = g_timeout_add_seconds (30,
+      ring_connection_connecting_timeout, self);
 
-  if (!modem_service_connect(priv->modem)) {
-    DEBUG("modem_service_connect failed");
-  }
+  modems = modem_service ();
+  modem = modem_service_find_modem (modems, priv->modem_path);
 
-  if (!ring_connection_check_status(self)) {
-    DEBUG("ring_connection_check_status() failed");
-    g_set_error(return_error, TP_ERRORS, TP_ERROR_NOT_AVAILABLE,
-      "No cellular modem service available");
-    return FALSE;
-  }
+  if (modem)
+    {
+      ring_connection_modem_added (modems, modem, self);
+    }
+  else
+    {
+      priv->signals.modem_added = g_signal_connect (modems,
+          "modem-added", G_CALLBACK (ring_connection_modem_added), self);
+    }
+
+  priv->signals.modem_removed = g_signal_connect (modems,
+      "modem-removed", G_CALLBACK (ring_connection_modem_removed), self);
 
   return TRUE;
+}
+
+/**
+ * ring_connection_connected
+ *
+ * Called after a connection becomes connected.
+ */
+static void
+ring_connection_connected (TpBaseConnection *base)
+{
+  RingConnection *self = RING_CONNECTION (base);
+  RingConnectionPrivate *priv = self->priv;
+
+  DEBUG ("called");
+
+  if (priv->connecting_source)
+    {
+      g_source_remove (priv->connecting_source);
+      priv->connecting_source = 0;
+    }
 }
 
 /**
@@ -954,9 +984,14 @@ ring_connection_disconnected(TpBaseConnection *base)
 
   DEBUG("called");
 
+  if (priv->connecting_source)
+    {
+      g_source_remove (priv->connecting_source);
+      priv->connecting_source = 0;
+    }
+
   if (priv->sim)
     modem_sim_service_disconnect(priv->sim);
-  modem_service_disconnect(priv->modem);
 }
 
 /** Called after connection has been disconnected.
@@ -972,14 +1007,30 @@ ring_connection_shut_down(TpBaseConnection *base)
 
   DEBUG("called");
 
+  if (priv->signals.modem_added)
+    {
+      g_signal_handler_disconnect (modem_service (),
+          priv->signals.modem_added);
+      priv->signals.modem_added = 0;
+    }
+
+  if (priv->signals.modem_removed)
+    {
+      g_signal_handler_disconnect (modem_service (),
+          priv->signals.modem_removed);
+      priv->signals.modem_removed = 0;
+    }
+
+  if (priv->signals.modem_interfaces)
+    {
+      g_signal_handler_disconnect(priv->modem,
+          priv->signals.modem_interfaces);
+      priv->signals.modem_interfaces = 0;
+    }
+
   if (priv->signals.sim_connected) {
     g_signal_handler_disconnect(priv->sim, priv->signals.sim_connected);
     priv->signals.sim_connected = 0;
-  }
-
-  if (priv->signals.modem_connected) {
-    g_signal_handler_disconnect(priv->modem, priv->signals.modem_connected);
-    priv->signals.modem_connected = 0;
   }
 
   if (priv->signals.imsi_notify) {
@@ -1000,7 +1051,7 @@ ring_connection_class_init_base_connection(TpBaseConnectionClass *klass)
   IMPLEMENT(get_unique_connection_name);
 
   /* IMPLEMENT(connecting) */
-  /* IMPLEMENT(connected) */
+  IMPLEMENT (connected);
   IMPLEMENT(disconnected);
   IMPLEMENT(shut_down);
   IMPLEMENT(start_connecting);
@@ -1014,65 +1065,124 @@ ring_connection_class_init_base_connection(TpBaseConnectionClass *klass)
 /* ---------------------------------------------------------------------- */
 /* RingConnection interface */
 
-static void
-ring_connection_modem_connected(ModemService *modem,
-  gpointer _self)
+static gboolean
+ring_connection_connecting_timeout (gpointer _self)
 {
-  RingConnection *self = RING_CONNECTION(_self);
+  RingConnection *self = RING_CONNECTION (_self);
   RingConnectionPrivate *priv = self->priv;
 
-  DEBUG("enter");
+  DEBUG ("enter");
 
-  if (modem_service_is_connected(modem)) {
-    char const *modem_path;
-    GError *error = NULL;
+  priv->connecting_source = 0;
 
-    modem_path = modem_service_get_modem_path(modem);
+  ring_connection_check_status (self);
 
-    g_assert(modem_path != NULL);
-    g_assert(priv->sim == NULL);
+  return FALSE;
+}
 
-    priv->sim = g_object_new(
-      MODEM_TYPE_SIM_SERVICE, "object-path", modem_path, NULL);
+static void
+ring_connection_modem_added (ModemService *modems,
+                             Modem *modem,
+                             gpointer _self)
+{
+  RingConnection *self = RING_CONNECTION (_self);
+  RingConnectionPrivate *priv = self->priv;
+  char const *path;
 
-    priv->signals.sim_connected =
-      g_signal_connect(priv->sim, "connected",
-        G_CALLBACK(ring_connection_sim_connected), self);
+  DEBUG ("enter");
 
-    priv->signals.imsi_notify =
-      g_signal_connect(self->priv->sim, "notify::imsi",
-        G_CALLBACK(on_imsi_changed), self);
+  if (priv->modem)
+    return;
 
-    if (!modem_sim_service_connect(priv->sim))
-      DEBUG("modem_sim_service_connect failed");
+  path = modem_get_modem_path (modem);
+  g_assert (path != NULL);
+  g_assert (priv->sim == NULL);
 
-    if (modem_service_supports_call(modem)) {
-      if (!ring_media_manager_start_connecting(priv->media,
-          modem_path, &error)) {
+  if (priv->modem_path && strcmp (priv->modem_path, path))
+    return;
 
-        DEBUG("ring_media_manager_start_connecting: " GERROR_MSG_FMT,
-          GERROR_MSG_CODE(error));
-        g_clear_error(&error);
-      }
+  priv->modem = g_object_ref (modem);
+
+  priv->signals.modem_interfaces = g_signal_connect (modem,
+      "notify::interfaces",
+      G_CALLBACK (on_modem_interfaces_changed), self);
+
+  on_modem_interfaces_changed (modem, NULL, self);
+}
+
+static void
+ring_connection_modem_removed (ModemService *modems,
+                               Modem *modem,
+                               gpointer _self)
+{
+  TpBaseConnection *base = TP_BASE_CONNECTION (_self);
+  RingConnection *self = RING_CONNECTION (_self);
+  RingConnectionPrivate *priv = self->priv;
+
+  DEBUG ("enter");
+
+  if (priv->modem != modem)
+    return;
+
+  if (base->status != TP_CONNECTION_STATUS_DISCONNECTED)
+    {
+      tp_base_connection_change_status (base,
+          TP_CONNECTION_STATUS_DISCONNECTED,
+          TP_CONNECTION_STATUS_REASON_NETWORK_ERROR);
+    }
+}
+
+static void
+on_modem_interfaces_changed (Modem *modem,
+                             GParamSpec *spec,
+                             gpointer _self)
+{
+  RingConnection *self = RING_CONNECTION (_self);
+  RingConnectionPrivate *priv = self->priv;
+  char const *path = modem_get_modem_path (modem);
+  GError *error = NULL;
+
+  if (modem_supports_sim (modem))
+    {
+      if (!priv->sim)
+        {
+          priv->sim = g_object_new (MODEM_TYPE_SIM_SERVICE,
+              "object-path", path, NULL);
+
+          priv->signals.sim_connected =
+            g_signal_connect (priv->sim, "connected",
+                G_CALLBACK (ring_connection_sim_connected), self);
+
+          priv->signals.imsi_notify =
+            g_signal_connect (self->priv->sim, "notify::imsi",
+                G_CALLBACK (on_imsi_changed), self);
+
+          if (!modem_sim_service_connect (priv->sim))
+            DEBUG ("modem_sim_service_connect failed");
+        }
     }
 
-    /*
-     * XXX if sms atom is added after transition to online
-     * we don't ever get text manager connected
-     * Only way to use SMS is to start ring after modem is in online
-     */
-    if (modem_service_supports_sms(modem)) {
-      if (!ring_text_manager_start_connecting(priv->text,
-              modem_path, &error)) {
-
-        DEBUG("ring_text_manager_start_connecting: " GERROR_MSG_FMT,
-            GERROR_MSG_CODE(error));
-        g_clear_error(&error);
-      }
+  if (modem_supports_call (modem))
+    {
+      if (!ring_media_manager_start_connecting (priv->media, path, &error))
+        {
+          DEBUG ("ring_media_manager_start_connecting: " GERROR_MSG_FMT,
+              GERROR_MSG_CODE (error));
+          g_clear_error (&error);
+        }
     }
-  }
 
-  ring_connection_check_status(self);
+  if (modem_supports_sms (modem))
+    {
+      if (!ring_text_manager_start_connecting (priv->text, path, &error))
+        {
+          DEBUG ("ring_text_manager_start_connecting: " GERROR_MSG_FMT,
+              GERROR_MSG_CODE (error));
+          g_clear_error (&error);
+        }
+    }
+
+  ring_connection_check_status (self);
 }
 
 static void
@@ -1090,60 +1200,64 @@ ring_connection_sim_connected(ModemSIMService *sim,
 gboolean
 ring_connection_check_status(RingConnection *self)
 {
+  TpBaseConnection *base = TP_BASE_CONNECTION (self);
   RingConnectionPrivate *priv = self->priv;
-  TpConnectionStatus modem, sim, text, media;
+  TpConnectionStatus conn, modem, sim, text, media;
 
-  modem = modem_service_is_connected(priv->modem)
+  conn = base->status;
+
+  modem = !priv->modem
+    ? TP_INTERNAL_CONNECTION_STATUS_NEW
+    : modem_is_powered (priv->modem)
     ? TP_CONNECTION_STATUS_CONNECTED
-    : modem_service_is_connecting(priv->modem)
+    : TP_CONNECTION_STATUS_CONNECTING;
+
+  sim = !priv->sim
+    ? TP_INTERNAL_CONNECTION_STATUS_NEW
+    : modem_sim_service_is_connected (priv->sim)
+    ? TP_CONNECTION_STATUS_CONNECTED
+    : modem_sim_service_is_connecting (priv->sim)
     ? TP_CONNECTION_STATUS_CONNECTING
     : TP_CONNECTION_STATUS_DISCONNECTED;
-
-  if (priv->sim)
-    sim = modem_sim_service_is_connected(priv->sim)
-      ? TP_CONNECTION_STATUS_CONNECTED
-      : modem_sim_service_is_connecting(priv->sim)
-      ? TP_CONNECTION_STATUS_CONNECTING
-      : TP_CONNECTION_STATUS_DISCONNECTED;
-  else
-    sim = TP_INTERNAL_CONNECTION_STATUS_NEW;
 
   media = ring_media_manager_get_status(priv->media);
   text = ring_text_manager_get_status(priv->text);
 
-  DEBUG("MODEM %s, SIM %s, CALL %s, SMS %s",
-    ring_connection_status_as_string(modem),
-    ring_connection_status_as_string(sim),
-    ring_connection_status_as_string(media),
-    ring_connection_status_as_string(text));
+  DEBUG ("%s - MODEM %s, SIM %s, CALL %s, SMS %s%s",
+      ring_connection_status_as_string (conn),
+      ring_connection_status_as_string (modem),
+      ring_connection_status_as_string (sim),
+      ring_connection_status_as_string (media),
+      ring_connection_status_as_string (text),
+      conn != TP_CONNECTION_STATUS_CONNECTING
+      ? ""
+      : priv->connecting_source
+      ? ", timer running" : ", timer expired");
 
-  if (modem == TP_CONNECTION_STATUS_CONNECTING ||
-    sim == TP_CONNECTION_STATUS_CONNECTING ||
-    media == TP_CONNECTION_STATUS_CONNECTING ||
-    text == TP_CONNECTION_STATUS_CONNECTING) {
-    /* Not yet */;
-    return TRUE;
-  }
-  else if (modem == TP_CONNECTION_STATUS_CONNECTED &&
+  if (modem == TP_CONNECTION_STATUS_CONNECTED &&
       sim == TP_CONNECTION_STATUS_CONNECTED &&
       (media == TP_CONNECTION_STATUS_CONNECTED ||
-          text == TP_CONNECTION_STATUS_CONNECTED)) {
-    tp_base_connection_change_status(
-      (TpBaseConnection *)self,
-      TP_CONNECTION_STATUS_CONNECTED,
-      TP_CONNECTION_STATUS_REASON_REQUESTED);
+          text == TP_CONNECTION_STATUS_CONNECTED))
+    {
+      if (base->status != TP_CONNECTION_STATUS_CONNECTED)
+        tp_base_connection_change_status (base,
+            TP_CONNECTION_STATUS_CONNECTED,
+            TP_CONNECTION_STATUS_REASON_REQUESTED);
 
-    return TRUE;
-  }
-  else {
-    TpBaseConnection *base = (TpBaseConnection *)self;
-    if (base->status != TP_CONNECTION_STATUS_DISCONNECTED) {
-      tp_base_connection_change_status(base,
-        TP_CONNECTION_STATUS_DISCONNECTED,
-        TP_CONNECTION_STATUS_REASON_NETWORK_ERROR);
+      return TRUE;
     }
-    return FALSE;
-  }
+
+  if (priv->connecting_source)
+    return TRUE;
+
+  if (base->status != TP_CONNECTION_STATUS_DISCONNECTED)
+    {
+      tp_base_connection_change_status (base,
+          TP_CONNECTION_STATUS_DISCONNECTED,
+          TP_CONNECTION_STATUS_REASON_NETWORK_ERROR);
+    }
+
+  return FALSE;
 }
 
 char const *
