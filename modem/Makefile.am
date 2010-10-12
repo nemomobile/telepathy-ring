@@ -36,7 +36,7 @@ modem_HEADERS = request.h errors.h
 
 libmodem_glib_la_SOURCES = request.c request-private.h \
 	ofono.h ofono.c errors.c \
-	service.c service.h \
+	service.c service.h modem.c modem.h \
 	debug.h debug.c
 
 nodist_libmodem_glib_la_SOURCES = $(BUILT_SOURCES)
