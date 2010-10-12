@@ -57,7 +57,7 @@ modem_type_dbus_ao(void)
 }
 
 GType
-modem_type_dbus_array_of_calls(void)
+modem_type_dbus_desc_array(void)
 {
   static gsize type = 0;
 
@@ -179,6 +179,61 @@ reply_to_get_properties(DBusGProxy *proxy,
     g_error_free (error);
   if (properties)
     g_hash_table_unref (properties);
+}
+
+static void
+reply_to_get_descs(DBusGProxy *proxy,
+		   DBusGProxyCall *call,
+		   gpointer _request)
+{
+  GPtrArray *calls = NULL;
+  ModemRequest *request = _request;
+  gpointer object = modem_request_object(request);
+  ModemOfonoGetDescsReply *callback = modem_request_callback(request);
+  gpointer user_data = modem_request_user_data(request);
+  GError *error = NULL;
+
+  if (!dbus_g_proxy_end_call(proxy, call, &error,
+          MODEM_TYPE_DBUS_DESC_ARRAY, &calls,
+          G_TYPE_INVALID))
+    modem_error_fix(&error);
+
+  if (callback)
+    callback(object, request, calls, error, user_data);
+
+  if (error)
+    g_error_free (error);
+  if (calls)
+    g_ptr_array_free (calls, TRUE);
+}
+
+ModemRequest *modem_ofono_request_descs(gpointer object,
+    DBusGProxy *proxy, char const *method,
+    ModemOfonoGetDescsReply *callback, gpointer userdata)
+{
+  return modem_request_begin(object,
+      proxy, method, reply_to_get_descs,
+      G_CALLBACK(callback), userdata,
+      G_TYPE_INVALID);
+}
+
+void
+modem_ofono_debug_desc(char const *name,
+                       char const *object_path,
+                       GHashTable *properties)
+{
+  char *key;
+  GValue *value;
+  GHashTableIter iter[1];
+
+  DEBUG("%s path %s", name, object_path);
+
+  for (g_hash_table_iter_init(iter, properties);
+       g_hash_table_iter_next(iter, (gpointer)&key, (gpointer)&value);) {
+    char *s = g_strdup_value_contents(value);
+    DEBUG("%s = %s", key, s);
+    g_free(s);
+  }
 }
 
 /* ---------------------------------------------------------------------- */

@@ -53,8 +53,8 @@ G_BEGIN_DECLS
 #define MODEM_TYPE_DBUS_DICT modem_type_dbus_dict()
 #define MODEM_TYPE_ARRAY_OF_PATHS modem_type_dbus_ao()
 
-/* D-Bus type a{oa{sv}} for oFono call list */
-#define MODEM_TYPE_DBUS_ARRAY_OF_CALLS modem_type_dbus_array_of_calls()
+/* D-Bus type a{oa{sv}} for oFono path-property list */
+#define MODEM_TYPE_DBUS_DESC_ARRAY modem_type_dbus_desc_array()
 
 /* ---------------------------------------------------------------------- */
 
@@ -72,11 +72,15 @@ typedef void ModemOfonoVoidReply(
   ModemRequest *request,
   GError const *error, gpointer user_data);
 
+typedef void ModemOfonoGetDescsReply(gpointer object,
+    ModemRequest *request, GPtrArray *descs,
+    GError const *error, gpointer user_data);
+
 /* ---------------------------------------------------------------------- */
 
 GType modem_type_dbus_dict(void);
 GType modem_type_dbus_ao(void);
-GType modem_type_dbus_array_of_calls(void);
+GType modem_type_dbus_desc_array(void);
 GQuark modem_ofono_iface_quark_sim(void);
 GQuark modem_ofono_iface_quark_call_manager(void);
 GQuark modem_ofono_iface_quark_sms(void);
@@ -102,6 +106,14 @@ void modem_ofono_proxy_connect_to_property_changed(
 void modem_ofono_proxy_disconnect_from_property_changed(
   DBusGProxy *proxy, ModemOfonoPropChangedCb callback,
   gpointer user_data);
+
+ModemRequest *modem_ofono_request_descs(gpointer object,
+    DBusGProxy *proxy, char const *method,
+    ModemOfonoGetDescsReply *callback, gpointer user_dat);
+
+void modem_ofono_debug_desc(char const *name,
+    char const *object_path,
+    GHashTable *properties);
 
 G_END_DECLS
 

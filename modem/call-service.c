@@ -333,55 +333,12 @@ modem_call_service_class_init(ModemCallServiceClass *klass)
 
 /* ---------------------------------------------------------------------- */
 
-typedef void ModemOfonoCallsReply(ModemCallService *self,
-    ModemRequest *request, GPtrArray *calls,
-    GError const *error, gpointer user_data);
-
-static ModemOfonoCallsReply reply_to_call_manager_get_calls;
+static ModemOfonoGetDescsReply reply_to_call_manager_get_calls;
 
 static void on_manager_call_added(DBusGProxy *proxy,
     char const *path,
     GHashTable *properties,
     gpointer user_data);
-
-static void
-reply_to_get_calls(DBusGProxy *proxy,
-  DBusGProxyCall *call,
-  gpointer _request)
-{
-  GPtrArray *calls = NULL;
-  ModemRequest *request = _request;
-  gpointer object = modem_request_object(request);
-  ModemOfonoCallsReply *callback = modem_request_callback(request);
-  gpointer user_data = modem_request_user_data(request);
-  GError *error = NULL;
-
-  if (!dbus_g_proxy_end_call(proxy, call, &error,
-      MODEM_TYPE_DBUS_ARRAY_OF_CALLS, &calls,
-      G_TYPE_INVALID)) {
-    modem_error_fix(&error);
-  }
-
-  if (callback)
-    callback(object, request, calls, error, user_data);
-
-  if (error)
-    g_error_free (error);
-  if (calls)
-    g_ptr_array_free (calls, TRUE);
-}
-
-static ModemRequest *
-modem_call_service_request_calls(ModemCallService *self,
-  ModemOfonoCallsReply *callback,
-  gpointer user_data)
-{
-  return modem_request_begin(self, self->priv->proxy,
-      "GetCalls",
-      reply_to_get_calls,
-      G_CALLBACK(callback), user_data,
-      G_TYPE_INVALID);
-}
 
 /* ---------------------------------------------------------------------- */
 
@@ -589,8 +546,8 @@ modem_call_service_connect(ModemCallService *self,
           reply_to_call_manager_get_properties, self, NULL));
 
   g_queue_push_tail(priv->connecting.queue,
-      modem_call_service_request_calls(self,
-          reply_to_call_manager_get_calls, NULL));
+      modem_ofono_request_descs(self, priv->proxy,
+          "GetCalls", reply_to_call_manager_get_calls, NULL));
 
   return TRUE;
 }
@@ -708,12 +665,14 @@ on_manager_call_added(DBusGProxy *proxy,
 }
 
 static void
-reply_to_call_manager_get_calls(ModemCallService *self,
-  ModemRequest *request,
-  GPtrArray *array,
-  GError const *error,
-  gpointer user_data)
+reply_to_call_manager_get_calls(gpointer _self,
+                                ModemRequest *request,
+                                GPtrArray *array,
+                                GError const *error,
+                                gpointer user_data)
 {
+  ModemCallService *self = _self;
+
   DEBUG("enter");
 
   if (!error) {
@@ -721,7 +680,7 @@ reply_to_call_manager_get_calls(ModemCallService *self,
 
     for (i = 0; i < array->len; i++) {
       GValueArray *va = g_ptr_array_index(array, i);
-      char const *path = g_value_get_string(va->values + 0);
+      char const *path = g_value_get_boxed(va->values + 0);
       GHashTable *properties = g_value_get_boxed(va->values + 1);
 
       modem_call_service_ensure_instance(self, path, properties);
