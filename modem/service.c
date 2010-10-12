@@ -31,6 +31,7 @@
 #include "modem/errors.h"
 
 #include <dbus/dbus-glib.h>
+#include <dbus/dbus.h>
 
 #include <telepathy-glib/dbus.h>
 #include <telepathy-glib/gtypes.h>
@@ -50,52 +51,33 @@
 
 G_DEFINE_TYPE(ModemService, modem_service, G_TYPE_OBJECT);
 
-/* Signals we send */
 enum {
-  SIGNAL_CONNECTED,
   SIGNAL_MODEM_ADDED,
   SIGNAL_MODEM_REMOVED,
   N_SIGNALS
 };
 
-enum {
-  PROP_OBJECT_PATH = 1,
-  N_PROPS
-};
-
 static guint signals[N_SIGNALS] = {0};
 
-/* private data */
 struct _ModemServicePrivate
 {
-  struct {
-    ModemRequest *request;
-    GError *error;
-  } connecting;
+  ModemRequest *refresh;
 
   DBusGProxy *proxy;
-  DBusGProxy *modem;
 
-  gchar *object_path;
+  GHashTable *modems;
 
-  gchar **interfaces;
-
-  unsigned dispose_has_run:1, connected:1, signals:1, disconnected:1;
-  unsigned modem_online:1;
-  unsigned have_call_manager:1;
+  unsigned dispose_has_run:1, signals:1, subscribed:1;
   unsigned :0;
 };
 
 /* ------------------------------------------------------------------------ */
 /* Local functions */
 
-static void reply_to_get_modems(gpointer _self, ModemRequest *request,
+static void reply_to_get_modems (gpointer _self, ModemRequest *request,
     GPtrArray *modems, GError const *error, gpointer user_data);
-static void on_modem_added(DBusGProxy *, char const *, GHashTable *, gpointer);
-static void on_modem_removed(DBusGProxy *, char const *, gpointer);
-static void modem_service_check_connected(ModemService *self);
-static void on_modem_property_changed(DBusGProxy *, char const *,
-  GValue const *, gpointer);
+static void on_modem_added (DBusGProxy *, char const *, GHashTable *, gpointer);
+static void on_modem_removed (DBusGProxy *, char const *, gpointer);
 
 /* ------------------------------------------------------------------------ */
 
@@ -106,6 +88,9 @@ modem_service_init(ModemService *self)
 
   self->priv = G_TYPE_INSTANCE_GET_PRIVATE(
     self, MODEM_TYPE_SERVICE, ModemServicePrivate);
+
+  self->priv->modems = g_hash_table_new_full (g_str_hash, g_str_equal,
+      g_free, g_object_unref);
 }
 
 static void
@@ -131,17 +116,13 @@ modem_service_dispose(GObject *object)
     return;
 
   priv->dispose_has_run = TRUE;
-  priv->disconnected = TRUE;
-  priv->connected = FALSE;
   priv->signals = FALSE;
 
-  if (priv->connecting.request)
-    modem_request_cancel(priv->connecting.request);
-  priv->connecting.request = NULL;
+  if (priv->refresh)
+    modem_request_cancel (priv->refresh);
+  priv->refresh = NULL;
 
   g_object_run_dispose(G_OBJECT(priv->proxy));
-  if (priv->modem)
-    g_object_run_dispose(G_OBJECT(priv->modem));
 
   if (G_OBJECT_CLASS(modem_service_parent_class)->dispose)
     G_OBJECT_CLASS(modem_service_parent_class)->dispose(object);
@@ -157,55 +138,11 @@ modem_service_finalize(GObject *object)
 
   /* Free any data held directly by the object here */
 
-  g_object_unref(priv->proxy);
-  if (priv->modem)
-    g_object_unref(priv->modem);
+  g_object_unref (priv->proxy);
 
-  if (priv->connecting.error)
-    g_clear_error(&priv->connecting.error);
+  g_hash_table_unref (priv->modems);
 
   G_OBJECT_CLASS(modem_service_parent_class)->finalize(object);
-}
-
-static void
-modem_service_set_property(GObject *obj,
-  guint property_id,
-  const GValue *value,
-  GParamSpec *pspec)
-{
-  ModemService *self = MODEM_SERVICE(obj);
-  ModemServicePrivate *priv = self->priv;
-
-  switch (property_id) {
-    case PROP_OBJECT_PATH:
-      g_free(priv->object_path);
-      priv->object_path = g_value_dup_boxed(value);
-      break;
-
-    default:
-      G_OBJECT_WARN_INVALID_PROPERTY_ID(obj, property_id, pspec);
-      break;
-  }
-}
-
-static void
-modem_service_get_property(GObject *obj,
-  guint property_id,
-  GValue *value,
-  GParamSpec *pspec)
-{
-  ModemService *self = MODEM_SERVICE(obj);
-  ModemServicePrivate *priv = self->priv;
-
-  switch (property_id) {
-    case PROP_OBJECT_PATH:
-      g_value_set_boxed(value, priv->object_path);
-      break;
-
-    default:
-      G_OBJECT_WARN_INVALID_PROPERTY_ID(obj, property_id, pspec);
-      break;
-  }
 }
 
 static void
@@ -218,16 +155,22 @@ modem_service_class_init(ModemServiceClass *klass)
   object_class->constructed = modem_service_constructed;
   object_class->dispose = modem_service_dispose;
   object_class->finalize = modem_service_finalize;
-  object_class->get_property = modem_service_get_property;
-  object_class->set_property = modem_service_set_property;
 
-  signals[SIGNAL_CONNECTED] = g_signal_new("connected",
+  signals[SIGNAL_MODEM_ADDED] = g_signal_new ("modem-added",
       G_OBJECT_CLASS_TYPE (klass),
       G_SIGNAL_RUN_LAST | G_SIGNAL_DETAILED,
       0,
       NULL, NULL,
-      g_cclosure_marshal_VOID__VOID,
-      G_TYPE_NONE, 0);
+      g_cclosure_marshal_VOID__OBJECT,
+      G_TYPE_NONE, 1, MODEM_TYPE_MODEM);
+
+  signals[SIGNAL_MODEM_REMOVED] = g_signal_new ("modem-removed",
+      G_OBJECT_CLASS_TYPE (klass),
+      G_SIGNAL_RUN_LAST | G_SIGNAL_DETAILED,
+      0,
+      NULL, NULL,
+      g_cclosure_marshal_VOID__OBJECT,
+      G_TYPE_NONE, 1, MODEM_TYPE_MODEM);
 
   g_type_class_add_private(klass, sizeof (ModemServicePrivate));
 
@@ -239,14 +182,6 @@ modem_service_class_init(ModemServiceClass *klass)
       G_TYPE_NONE,
       DBUS_TYPE_G_OBJECT_PATH, G_TYPE_INVALID);
 
-  g_object_class_install_property(
-    object_class, PROP_OBJECT_PATH,
-    g_param_spec_boxed("object-path",
-      "Object Path",
-      "Object path of the modem on oFono",
-      DBUS_TYPE_G_OBJECT_PATH,
-      G_PARAM_READWRITE | G_PARAM_CONSTRUCT_ONLY | G_PARAM_STATIC_STRINGS));
-
   modem_error_domain_prefix(0); /* Init errors */
 
   modem_ofono_init_quarks();
@@ -255,332 +190,248 @@ modem_service_class_init(ModemServiceClass *klass)
 /* ------------------------------------------------------------------------ */
 /* modem_service interface */
 
-/* Connect to service */
-gboolean
-modem_service_connect(ModemService *self)
+ModemService *modem_service (void)
 {
-  ModemServicePrivate *priv = self->priv;
+  static ModemService *service;
 
-  DEBUG("enter");
+  if (!service)
+    service = g_object_new (MODEM_TYPE_SERVICE, NULL);
 
-  if (self->priv->connected) {
-    DEBUG("already connected");
-    return TRUE;
-  }
-
-  if (self->priv->disconnected) {
-    DEBUG("already disconnected");
-    return TRUE;
-  }
-
-  priv->signals = TRUE;
-
-  dbus_g_proxy_add_signal(priv->proxy,
-      "ModemAdded", DBUS_TYPE_G_OBJECT_PATH, MODEM_TYPE_DBUS_DICT,
-      G_TYPE_INVALID);
-  dbus_g_proxy_connect_signal(priv->proxy,
-      "ModemAdded", G_CALLBACK(on_modem_added), self, NULL);
-
-  dbus_g_proxy_add_signal(priv->proxy,
-      "ModemRemoved", DBUS_TYPE_G_OBJECT_PATH,
-      G_TYPE_INVALID);
-  dbus_g_proxy_connect_signal(priv->proxy,
-      "ModemRemoved", G_CALLBACK(on_modem_removed), self, NULL);
-
-  priv->connecting.request = modem_ofono_request_descs(self,
-      priv->proxy, "GetModems",
-      reply_to_get_modems, NULL);
-
-  DEBUG("connecting");
-
-  return TRUE;
+  return service;
 }
 
-static void
-reply_to_get_modems(gpointer _self,
-                    ModemRequest *request,
-                    GPtrArray *modem_list,
-                    GError const *error,
-                    gpointer user_data)
-{
-  ModemService *self = MODEM_SERVICE(_self);
-  ModemServicePrivate *priv = self->priv;
-  guint i;
-
-  DEBUG("enter");
-
-  priv->connecting.request = NULL;
-
-  if (error) {
-    if (priv->connecting.error)
-      g_clear_error(&priv->connecting.error);
-    priv->connecting.error = g_error_copy(error);
-    priv->connected = TRUE;
-    g_signal_emit(self, signals[SIGNAL_CONNECTED], 0);
-    return;
-  }
-
-  for (i = 0; i < modem_list->len; i++) {
-    GValueArray *va = g_ptr_array_index(modem_list, i);
-    char const *path = g_value_get_boxed(va->values + 0);
-    GHashTable *properties = g_value_get_boxed(va->values + 1);
-
-    on_modem_added(priv->proxy, path, properties, self);
-  }
-}
-
-static void
-on_modem_added(DBusGProxy *proxy,
-               char const *object_path,
-               GHashTable *properties,
-               gpointer userdata)
-{
-  ModemService *self = userdata;
-  ModemServicePrivate *priv = self->priv;
-  GValue *value;
-
-  if (DEBUGGING)
-    modem_ofono_debug_desc("Modem", object_path, properties);
-
-  if (priv->modem)
-    return;
-
-  if (priv->object_path && strcmp(object_path, priv->object_path))
-    return;
-
-  priv->modem = modem_ofono_proxy(object_path, OFONO_IFACE_MODEM);
-
-  modem_ofono_proxy_connect_to_property_changed(priv->modem,
-      on_modem_property_changed, self);
-
-  value = g_hash_table_lookup(properties, "Powered");
-  if (value && !g_value_get_boolean(value)) {
-    GValue v[1];
-    g_value_init (memset (v, 0, sizeof v), G_TYPE_BOOLEAN);
-    g_value_set_boolean (v, TRUE);
-
-    modem_ofono_proxy_set_property(priv->modem,
-        "Powered", v,
-        NULL, NULL, NULL);
-  }
-
-  value = g_hash_table_lookup(properties, "Interfaces");
-  if (value)
-    priv->interfaces = g_value_dup_boxed(value);
-
-  value = g_hash_table_lookup(properties, "Online");
-  if (value) {
-    priv->modem_online = g_value_get_boolean(value);
-
-    modem_service_check_connected(self);
-  }
-}
-
-static void
-on_modem_removed(DBusGProxy *proxy,
-                 char const *object_path,
-                 gpointer userdata)
-{
-  ModemService *self = userdata;
-  ModemServicePrivate *priv = self->priv;
-
-  DEBUG("ModemRemoved(%s)", object_path);
-
-  if (priv->modem == NULL)
-    return;
-
-  if (strcmp(object_path, dbus_g_proxy_get_path(priv->modem)))
-    return;
-
-  if (modem_service_is_connecting(self)) {
-    modem_ofono_proxy_disconnect_from_property_changed(priv->modem,
-        on_modem_property_changed, self);
-    g_object_run_dispose(G_OBJECT(priv->modem));
-    priv->modem = NULL;
-
-    if (priv->connecting.request)
-      return;
-
-    /* Try another? */
-    priv->connecting.request = modem_ofono_request_descs(self,
-        priv->proxy, "GetModems",
-        reply_to_get_modems, NULL);
-
-    DEBUG("re-connecting");
-  }
-  else if (priv->connected)
-    modem_service_disconnect(self);
-}
-
-static void
-modem_service_check_connected(ModemService *self)
-{
-  ModemServicePrivate *priv = self->priv;
-
-  if (priv->connected || priv->disconnected)
-    return;
-
-  if (modem_service_is_connecting(self))
-    return;
-
-  int i;
-  for (i = 0; priv->interfaces[i]; i++)
-    if (!strcmp(priv->interfaces[i], OFONO_IFACE_SIM))
-      break;
-
-  if (priv->interfaces[i])
-    priv->connected = TRUE;
-  else
-    modem_service_disconnect(self);
-
-  g_signal_emit(self, signals[SIGNAL_CONNECTED], 0);
-}
-
-gboolean
-modem_service_is_connected(ModemService *self)
-{
-  return MODEM_IS_SERVICE(self)
-    && self->priv->connected
-    && !self->priv->connecting.error;
-}
-
-gboolean
-modem_service_is_connecting(ModemService *self)
+Modem *modem_service_find_modem (ModemService *self, char const *object_path)
 {
   ModemServicePrivate *priv;
+  char *key;
+  Modem *modem;
+  GHashTableIter iter[1];
 
-  if (!MODEM_IS_SERVICE(self))
-    return FALSE;
+  g_return_val_if_fail (MODEM_IS_SERVICE (self), NULL);
 
   priv = self->priv;
 
-  if (priv->connected || priv->disconnected)
-    return FALSE;
+  if (object_path)
+    return g_hash_table_lookup (priv->modems, object_path);
 
-  if (priv->connecting.request)
-    return TRUE;
+  for (g_hash_table_iter_init (iter, priv->modems);
+       g_hash_table_iter_next (iter, (gpointer)&key, (gpointer)&modem);)
+    {
+      if (modem_is_online (modem))
+        return modem;
+    }
 
-  if (!priv->modem)
-    return TRUE;
+  for (g_hash_table_iter_init (iter, priv->modems);
+       g_hash_table_iter_next (iter, (gpointer)&key, (gpointer)&modem);)
+    {
+      if (modem_is_powered (modem))
+        return modem;
+    }
 
-  if (!priv->modem_online)
-    return TRUE;
+  return NULL;
+}
 
-  if (!priv->interfaces)
-    return TRUE;
+Modem **modem_service_get_modems(ModemService *self)
+{
+  ModemServicePrivate *priv = self->priv;
+  GPtrArray *array;
+  char *key;
+  Modem *modem;
+  GHashTableIter iter[1];
 
-  return FALSE;
+  g_return_val_if_fail (MODEM_IS_SERVICE (self), NULL);
+
+  priv = self->priv;
+  array = g_ptr_array_sized_new (g_hash_table_size (priv->modems) + 1);
+
+  for (g_hash_table_iter_init (iter, priv->modems);
+       g_hash_table_iter_next (iter, (gpointer)&key, (gpointer)&modem);)
+    {
+      g_ptr_array_add(array, modem);
+    }
+
+  g_ptr_array_add (array, NULL);
+
+  return (Modem **)g_ptr_array_free (array, FALSE);
 }
 
 void
-modem_service_disconnect(ModemService *self)
+modem_service_refresh (ModemService *self)
 {
   ModemServicePrivate *priv = self->priv;
-  int was_connected;
-
-  if (priv->disconnected)
-    return;
 
   DEBUG("enter");
 
-  was_connected = priv->connected;
-  priv->disconnected = TRUE;
-  priv->connected = FALSE;
+  if (!priv->signals)
+    {
+      priv->signals = TRUE;
 
-  if (priv->signals) {
-    dbus_g_proxy_disconnect_signal(priv->proxy, "ModemAdded",
-	G_CALLBACK(on_modem_added), self);
-    dbus_g_proxy_disconnect_signal(priv->proxy, "ModemRemoved",
-	G_CALLBACK(on_modem_removed), self);
+      dbus_g_proxy_add_signal (priv->proxy,
+          "ModemAdded", DBUS_TYPE_G_OBJECT_PATH, MODEM_TYPE_DBUS_DICT,
+          G_TYPE_INVALID);
+      dbus_g_proxy_connect_signal (priv->proxy,
+          "ModemAdded", G_CALLBACK (on_modem_added), self, NULL);
 
-    priv->signals = FALSE;
-  }
+      dbus_g_proxy_add_signal (priv->proxy,
+          "ModemRemoved", DBUS_TYPE_G_OBJECT_PATH,
+          G_TYPE_INVALID);
+      dbus_g_proxy_connect_signal (priv->proxy,
+          "ModemRemoved", G_CALLBACK (on_modem_removed), self, NULL);
+    }
 
-  if (priv->modem) {
-    modem_ofono_proxy_disconnect_from_property_changed(priv->modem,
-        on_modem_property_changed, self);
-  }
+  if (!priv->subscribed)
+    {
+      DBusConnection *bus = dbus_bus_get(DBUS_BUS_SYSTEM, NULL);
 
-  if (was_connected)
-    g_signal_emit(self, signals[SIGNAL_CONNECTED], 0);
-}
+      /* Pre-subscribe to all interesting signals */
 
-char const *
-modem_service_get_modem_path(ModemService *self)
-{
-  g_return_val_if_fail(MODEM_IS_SERVICE(self), NULL);
+      if (bus)
+        {
+          priv->subscribed = 1;
 
-  if (!self->priv->modem)
-    return NULL;
+          dbus_bus_add_match (bus,
+              "type='signal',"
+              "sender='org.ofono',"
+              "interface='org.ofono.Modem',"
+              "member='PropertyChanged'",
+              NULL);
+          dbus_bus_add_match (bus,
+              "type='signal',"
+              "sender='org.ofono',"
+              "interface='org.ofono.SimManager',"
+              "member='PropertyChanged'",
+              NULL);
+          dbus_bus_add_match (bus,
+              "type='signal',"
+              "sender='org.ofono',"
+              "interface='org.ofono.MessageManager',"
+              "member='PropertyChanged'",
+              NULL);
+          dbus_bus_add_match (bus,
+              "type='signal',"
+              "sender='org.ofono',"
+              "interface='org.ofono.MessageManager',"
+              "member='MessageAdded'",
+              NULL);
+          dbus_bus_add_match (bus,
+              "type='signal',"
+              "sender='org.ofono',"
+              "interface='org.ofono.MessageManager',"
+              "member='MessageRemoved'",
+              NULL);
+          dbus_bus_add_match (bus,
+              "type='signal',"
+              "sender='org.ofono',"
+              "interface='org.ofono.VoiceCallManager',"
+              "member='PropertyChanged'",
+              NULL);
+          dbus_bus_add_match (bus,
+              "type='signal',"
+              "sender='org.ofono',"
+              "interface='org.ofono.VoiceCallManager',"
+              "member='CallAdded'",
+              NULL);
+          dbus_bus_add_match (bus,
+              "type='signal',"
+              "sender='org.ofono',"
+              "interface='org.ofono.VoiceCallManager',"
+              "member='CallRemoved'",
+              NULL);
+        }
+    }
 
-  return dbus_g_proxy_get_path(self->priv->modem);
-}
+  if (priv->refresh)
+    return;
 
-gboolean
-modem_service_supports_call(ModemService *self)
-{
-  g_return_val_if_fail(MODEM_IS_SERVICE(self), FALSE);
-
-  ModemServicePrivate *priv = self->priv;
-  int i;
-
-  if (priv->interfaces == NULL)
-    return FALSE;
-
-  for (i = 0; priv->interfaces[i]; i++)
-    if (!strcmp(priv->interfaces[i], OFONO_IFACE_CALL_MANAGER))
-      return TRUE;
-
-  return FALSE;
-}
-
-gboolean
-modem_service_supports_sms(ModemService *self)
-{
-  g_return_val_if_fail(MODEM_IS_SERVICE(self), FALSE);
-
-  ModemServicePrivate *priv = self->priv;
-  int i;
-
-  if (priv->interfaces == NULL)
-    return FALSE;
-
-  for (i = 0; priv->interfaces[i]; i++)
-    if (!strcmp(priv->interfaces[i], OFONO_IFACE_SMS))
-      return TRUE;
-
-  return FALSE;
+  priv->refresh = modem_ofono_request_descs (self,
+      priv->proxy, "GetModems",
+      reply_to_get_modems, NULL);
 }
 
 static void
-on_modem_property_changed(DBusGProxy *proxy,
-  char const *property,
-  GValue const *value,
-  gpointer _self)
+reply_to_get_modems (gpointer _self,
+                     ModemRequest *request,
+                     GPtrArray *modem_list,
+                     GError const *error,
+                     gpointer user_data)
 {
-  ModemService *self = MODEM_SERVICE(_self);
+  ModemService *self = MODEM_SERVICE (_self);
   ModemServicePrivate *priv = self->priv;
+  guint i;
 
-  if (!strcmp(property, "Interfaces")) {
-    g_strfreev(priv->interfaces);
-    priv->interfaces = g_value_dup_boxed(value);
-    modem_service_check_connected(self);
+  DEBUG ("enter");
+
+  priv->refresh = NULL;
+
+  if (error)
     return;
+
+  for (i = 0; i < modem_list->len; i++) {
+    GValueArray *va = g_ptr_array_index (modem_list, i);
+    char const *path = g_value_get_boxed (va->values + 0);
+    GHashTable *properties = g_value_get_boxed (va->values + 1);
+
+    on_modem_added (priv->proxy, path, properties, self);
   }
+}
 
-  if (!strcmp(property, "Powered")) {
-    gboolean powered = g_value_get_boolean(value);
+static void
+on_modem_added (DBusGProxy *proxy,
+                char const *object_path,
+                GHashTable *properties,
+                gpointer userdata)
+{
+  ModemService *self = userdata;
+  ModemServicePrivate *priv = self->priv;
+  Modem *modem;
+  GHashTableIter iter[1];
+  char *name;
+  GValue *value;
 
-    DEBUG("Powered = %d", powered);
-    if (!powered)
-      modem_service_disconnect(self);
+  if (DEBUGGING)
+    modem_ofono_debug_desc ("ModemAdded", object_path, properties);
+
+  modem = g_hash_table_lookup (priv->modems, object_path);
+  if (modem)
+    {
+      DEBUG ("Modem %s already has object %p", object_path, (void *)modem);
+      return;
+    }
+
+  modem = g_object_new (MODEM_TYPE_MODEM, "object-path", object_path, NULL);
+  if (!modem)
     return;
-  }
 
-  if (!strcmp(property, "Online")) {
-    priv->modem_online = g_value_get_boolean(value);
+  for (g_hash_table_iter_init (iter, properties);
+       g_hash_table_iter_next (iter, (gpointer)&name, (gpointer)&value);)
+    {
+      char const *property = modem_property_name_by_ofono_name (name);
 
-    modem_service_check_connected(self);
+      if (property)
+        g_object_set_property (G_OBJECT (modem), property, value);
+    }
+
+  g_hash_table_insert (priv->modems, g_strdup (object_path), modem);
+
+  g_signal_emit (self, signals[SIGNAL_MODEM_ADDED], 0, modem);
+}
+
+static void
+on_modem_removed (DBusGProxy *proxy,
+                  char const *object_path,
+                  gpointer userdata)
+{
+  ModemService *self = userdata;
+  ModemServicePrivate *priv = self->priv;
+  Modem *modem;
+
+  DEBUG ("ModemRemoved(%s)", object_path);
+
+  modem = g_hash_table_lookup (priv->modems, object_path);
+  if (!modem)
     return;
-  }
+
+  g_signal_emit (self, signals[SIGNAL_MODEM_REMOVED], 0, modem);
+
+  g_hash_table_remove (priv->modems, object_path);
 }

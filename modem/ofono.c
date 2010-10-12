@@ -226,7 +226,7 @@ modem_ofono_debug_desc(char const *name,
   GValue *value;
   GHashTableIter iter[1];
 
-  DEBUG("%s path %s", name, object_path);
+  DEBUG ("%s(\"%s\")", name, object_path);
 
   for (g_hash_table_iter_init(iter, properties);
        g_hash_table_iter_next(iter, (gpointer)&key, (gpointer)&value);) {

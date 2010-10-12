@@ -24,6 +24,8 @@
 
 #include <glib-object.h>
 
+#include <modem/modem.h>
+
 G_BEGIN_DECLS
 
 typedef struct _ModemService ModemService;
@@ -55,17 +57,20 @@ GType modem_service_get_type(void);
 #define MODEM_SERVICE_GET_CLASS(obj)                                    \
   (G_TYPE_INSTANCE_GET_CLASS ((obj), MODEM_TYPE_SERVICE, ModemServiceClass))
 
+/*
+ * Signals:
+ * modem-added (modem)
+ * modem-removed (modem)
+ */
+
 /* ---------------------------------------------------------------------- */
 
-gboolean modem_service_connect(ModemService *self);
-gboolean modem_service_is_connected(ModemService *self);
-gboolean modem_service_is_connecting(ModemService *self);
-void modem_service_disconnect(ModemService *self);
+ModemService *modem_service(void);
 
-char const *modem_service_get_modem_path(ModemService *self);
+void modem_service_refresh(ModemService *self);
 
-gboolean modem_service_supports_call(ModemService *self);
-gboolean modem_service_supports_sms(ModemService *self);
+Modem *modem_service_find_modem(ModemService *self, char const *object_path);
+Modem **modem_service_get_modems(ModemService *self);
 
 G_END_DECLS
 
