@@ -325,6 +325,9 @@ ring_media_manager_start_connecting(RingMediaManager *self,
     return FALSE;
   }
 
+  if (priv->status != TP_INTERNAL_CONNECTION_STATUS_NEW)
+    return TRUE;
+
   priv->status = TP_CONNECTION_STATUS_CONNECTING;
 
   priv->signals.connected =
