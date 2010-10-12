@@ -48,6 +48,11 @@
 #include <assert.h>
 #include <string.h>
 
+struct _RingConnectionManagerPrivate
+{
+  int dummy;
+};
+
 G_DEFINE_TYPE (RingConnectionManager,
     ring_connection_manager,
     TP_TYPE_BASE_CONNECTION_MANAGER)
@@ -55,7 +60,8 @@ G_DEFINE_TYPE (RingConnectionManager,
 static void
 ring_connection_manager_init(RingConnectionManager *self)
 {
-  /* Xyzzy */
+  self->priv = G_TYPE_INSTANCE_GET_PRIVATE(self,
+      RING_TYPE_CONNECTION_MANAGER, RingConnectionManagerPrivate);
 }
 
 static TpCMProtocolSpec ring_protocols[] = {
@@ -69,7 +75,7 @@ static TpCMProtocolSpec ring_protocols[] = {
 };
 
 static TpBaseConnection *
-new_connection(TpBaseConnectionManager *self,
+new_connection(TpBaseConnectionManager *base,
                const char *proto,
                TpIntSet *params_present,
                gpointer parsed_params,
@@ -87,11 +93,13 @@ new_connection(TpBaseConnectionManager *self,
   return (TpBaseConnection *)ring_connection_new(params_present, parsed_params);
 }
 
-
 static void
 ring_connection_manager_class_init(RingConnectionManagerClass *klass)
 {
   TpBaseConnectionManagerClass *parent_class = &klass->parent_class;
+
+  g_type_class_add_private (klass,
+      sizeof (RingConnectionManagerPrivate));
 
   ring_protocols[0].parameters = ring_connection_get_param_specs();
 

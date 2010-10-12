@@ -32,6 +32,7 @@ G_BEGIN_DECLS
 
 typedef struct _RingConnectionManager RingConnectionManager;
 typedef struct _RingConnectionManagerClass RingConnectionManagerClass;
+typedef struct _RingConnectionManagerPrivate RingConnectionManagerPrivate;
 
 struct _RingConnectionManagerClass {
   TpBaseConnectionManagerClass parent_class;
@@ -39,6 +40,7 @@ struct _RingConnectionManagerClass {
 
 struct _RingConnectionManager {
   TpBaseConnectionManager parent;
+  RingConnectionManagerPrivate *priv;
 };
 
 GType ring_connection_manager_get_type(void);
