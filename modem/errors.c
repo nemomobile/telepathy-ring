@@ -33,21 +33,22 @@
 #include <string.h>
 
 GQuark
-modem_ofono_errors_quark(void)
+modem_ofono_errors_quark (void)
 {
   static gsize quark = 0;
 
-  if (g_once_init_enter (&quark)) {
-    GQuark domain = g_quark_from_static_string(MODEM_OFONO_ERROR_PREFIX);
-    g_once_init_leave(&quark, domain);
-  }
+  if (g_once_init_enter (&quark))
+    {
+      GQuark domain = g_quark_from_static_string (MODEM_OFONO_ERROR_PREFIX);
+      g_once_init_leave (&quark, domain);
+    }
 
   return (GQuark)quark;
 }
 
 /** Get GType for  errors */
 GType
-modem_ofono_error_get_type(void)
+modem_ofono_error_get_type (void)
 {
   static const GEnumValue values[] = {
 #define _(x, t) { MODEM_OFONO_ERROR_ ## x, "MODEM_OFONO_ERROR_" #x, #t }
@@ -70,30 +71,32 @@ modem_ofono_error_get_type(void)
 
   static gsize etype = 0;
 
-  if (g_once_init_enter(&etype)) {
-    GType type = g_enum_register_static("ModemOfonoError", values);
-    g_once_init_leave(&etype, type);
-  }
+  if (g_once_init_enter (&etype))
+    {
+      GType type = g_enum_register_static ("ModemOfonoError", values);
+      g_once_init_leave (&etype, type);
+    }
 
   return (GType)etype;
 }
 
 GQuark
-modem_call_errors_quark(void)
+modem_call_errors_quark (void)
 {
   static gsize quark = 0;
 
-  if (g_once_init_enter (&quark)) {
-    GQuark domain = g_quark_from_static_string(MODEM_CALL_ERROR_PREFIX);
-    g_once_init_leave(&quark, domain);
-  }
+  if (g_once_init_enter (&quark))
+    {
+      GQuark domain = g_quark_from_static_string (MODEM_CALL_ERROR_PREFIX);
+      g_once_init_leave (&quark, domain);
+    }
 
   return (GQuark)quark;
 }
 
 /** Get GType for  errors */
 GType
-modem_call_error_get_type(void)
+modem_call_error_get_type (void)
 {
   static const GEnumValue values[] = {
 #define _(x, t) { MODEM_CALL_ERROR_ ## x, "MODEM_CALL_ERROR_" #x, #t }
@@ -131,28 +134,30 @@ modem_call_error_get_type(void)
 
   static gsize etype = 0;
 
-  if (g_once_init_enter(&etype)) {
-    GType type = g_enum_register_static("ModemCallError", values);
-    g_once_init_leave(&etype, type);
-  }
+  if (g_once_init_enter (&etype))
+    {
+      GType type = g_enum_register_static ("ModemCallError", values);
+      g_once_init_leave (&etype, type);
+    }
 
   return (GType)etype;
 }
 
 GQuark
-modem_call_net_errors_quark(void)
+modem_call_net_errors_quark (void)
 {
   static gsize quark = 0;
-  if (g_once_init_enter (&quark)) {
-    GQuark domain = g_quark_from_static_string(MODEM_CALL_NET_ERROR_PREFIX);
-    g_once_init_leave(&quark, domain);
-  }
+  if (g_once_init_enter (&quark))
+    {
+      GQuark domain = g_quark_from_static_string (MODEM_CALL_NET_ERROR_PREFIX);
+      g_once_init_leave (&quark, domain);
+    }
   return (GQuark)quark;
 }
 
 /** Get GType for network errors */
 GType
-modem_call_net_error_get_type(void)
+modem_call_net_error_get_type (void)
 {
   static const GEnumValue values[] = {
 #define _(x, t) { MODEM_CALL_NET_ERROR_ ## x, "MODEM_CALL_NET_ERROR_" #x, #t }
@@ -210,10 +215,11 @@ modem_call_net_error_get_type(void)
 
   static gsize etype = 0;
 
-  if (g_once_init_enter(&etype)) {
-    GType type = g_enum_register_static("ModemCallNetError", values);
-    g_once_init_leave(&etype, type);
-  }
+  if (g_once_init_enter (&etype))
+    {
+      GType type = g_enum_register_static ("ModemCallNetError", values);
+      g_once_init_leave (&etype, type);
+    }
 
   return (GType)etype;
 }
@@ -221,21 +227,22 @@ modem_call_net_error_get_type(void)
 /* ---------------------------------------------------------------------- */
 
 GQuark
-modem_sms_net_errors_quark(void)
+modem_sms_net_errors_quark (void)
 {
   static gsize quark = 0;
 
-  if (g_once_init_enter(&quark)) {
-    GQuark domain = g_quark_from_static_string(MODEM_SMS_NET_ERROR_PREFIX);
-    g_once_init_leave(&quark, domain);
-  }
+  if (g_once_init_enter (&quark))
+    {
+      GQuark domain = g_quark_from_static_string (MODEM_SMS_NET_ERROR_PREFIX);
+      g_once_init_leave (&quark, domain);
+    }
 
   return (GQuark)quark;
 }
 
 /** Get GType for GSM errors */
 GType
-modem_sms_net_error_get_type(void)
+modem_sms_net_error_get_type (void)
 {
   static const GEnumValue values[] = {
 #define _(x, t) { MODEM_SMS_NET_ERROR_ ## x, "MODEM_SMS_NET_ERROR_" #x, #t }
@@ -298,10 +305,11 @@ modem_sms_net_error_get_type(void)
 
   static gsize etype = 0;
 
-  if (g_once_init_enter(&etype)) {
-    GType type = g_enum_register_static("ModemSmsNetError", values);
-    g_once_init_leave(&etype, type);
-  }
+  if (g_once_init_enter (&etype))
+    {
+      GType type = g_enum_register_static ("ModemSmsNetError", values);
+      g_once_init_leave (&etype, type);
+    }
 
   return (GType)etype;
 }
@@ -309,21 +317,22 @@ modem_sms_net_error_get_type(void)
 /* ---------------------------------------------------------------------- */
 
 GQuark
-modem_sms_errors_quark(void)
+modem_sms_errors_quark (void)
 {
   static gsize quark = 0;
 
-  if (g_once_init_enter(&quark)) {
-    GQuark domain = g_quark_from_static_string(MODEM_SMS_ERROR_PREFIX);
-    g_once_init_leave(&quark, domain);
-  }
+  if (g_once_init_enter (&quark))
+    {
+      GQuark domain = g_quark_from_static_string (MODEM_SMS_ERROR_PREFIX);
+      g_once_init_leave (&quark, domain);
+    }
 
   return (GQuark)quark;
 }
 
 /** GType for sms errors */
 GType
-modem_sms_error_get_type(void)
+modem_sms_error_get_type (void)
 {
   static const GEnumValue values[] = {
 #define _(x, t) { MODEM_SMS_ERROR_ ## x, "MODEM_SMS_ERROR_" #x, #t }
@@ -357,10 +366,11 @@ modem_sms_error_get_type(void)
 
   static gsize etype = 0;
 
-  if (g_once_init_enter(&etype)) {
-    GType type = g_enum_register_static("ModemSmsError", values);
-    g_once_init_leave(&etype, type);
-  }
+  if (g_once_init_enter (&etype))
+    {
+      GType type = g_enum_register_static ("ModemSmsError", values);
+      g_once_init_leave (&etype, type);
+    }
 
   return (GType)etype;
 }
@@ -379,109 +389,116 @@ struct {
     gsize prefixlen;
   } *list;
 } modem_registered_errors =
-{
-  G_STATIC_RW_LOCK_INIT,
-  NULL,
-};
+  {
+    G_STATIC_RW_LOCK_INIT,
+    NULL,
+  };
 
 static ModemErrorMapping **
-modem_error_append_mapping(ModemErrorMapping **list,
-  GQuark domain,
-  char const *prefix,
-  GType type)
+modem_error_append_mapping (ModemErrorMapping **list,
+                            GQuark domain,
+                            char const *prefix,
+                            GType type)
 {
-  *list = g_new0(ModemErrorMapping, 1);
+  *list = g_new0 (ModemErrorMapping, 1);
 
   (*list)->domain = domain;
   (*list)->type = type;
   (*list)->prefix = prefix;
-  (*list)->prefixlen = strlen(prefix);
+  (*list)->prefixlen = strlen (prefix);
 
-  g_type_class_unref(g_type_class_ref(type));
+  g_type_class_unref (g_type_class_ref (type));
 
-  dbus_g_error_domain_register(domain, prefix, type);
+  dbus_g_error_domain_register (domain, prefix, type);
 
   return &(*list)->next;
 }
 
 static ModemErrorMapping **
-modem_registered_errors_writer_lock(void)
+modem_registered_errors_writer_lock (void)
 {
   ModemErrorMapping **list;
 
-  g_static_rw_lock_writer_lock(&modem_registered_errors.lock);
+  g_static_rw_lock_writer_lock (&modem_registered_errors.lock);
 
   list = &modem_registered_errors.list;
 
-  if (*list == NULL) {
-#define _(n) list = modem_error_append_mapping( \
-      list,                                     \
-      MODEM_## n ##_ERRORS,                     \
-      MODEM_## n ##_ERROR_PREFIX,               \
-      MODEM_TYPE_## n ##_ERROR)
-    _(OFONO); _(CALL); _(CALL_NET); _(SMS); _(SMS_NET);
+  if (*list == NULL)
+    {
+#define _(n) list = modem_error_append_mapping (list,   \
+          MODEM_## n ##_ERRORS,                         \
+          MODEM_## n ##_ERROR_PREFIX,                   \
+          MODEM_TYPE_## n ##_ERROR)
+      _(OFONO);
+      _(CALL);
+      _(CALL_NET);
+      _(SMS);
+      _(SMS_NET);
 #undef _
-  }
+    }
 
   return &modem_registered_errors.list;
 }
 
 static void
-modem_registered_errors_writer_unlock(void)
+modem_registered_errors_writer_unlock (void)
 {
-  g_static_rw_lock_writer_unlock(&modem_registered_errors.lock);
+  g_static_rw_lock_writer_unlock (&modem_registered_errors.lock);
 }
 
 static ModemErrorMapping const *
-modem_registered_errors_reader_lock(void)
+modem_registered_errors_reader_lock (void)
 {
-  if (modem_registered_errors.list == NULL) {
-    modem_registered_errors_writer_lock();
-    modem_registered_errors_writer_unlock();
-  }
-  g_static_rw_lock_reader_lock(&modem_registered_errors.lock);
+  if (modem_registered_errors.list == NULL)
+    {
+      modem_registered_errors_writer_lock ();
+      modem_registered_errors_writer_unlock ();
+    }
+
+  g_static_rw_lock_reader_lock (&modem_registered_errors.lock);
 
   return modem_registered_errors.list;
 }
 
 static void
-modem_registered_errors_reader_unlock(void)
+modem_registered_errors_reader_unlock (void)
 {
-  g_static_rw_lock_reader_unlock(&modem_registered_errors.lock);
+  g_static_rw_lock_reader_unlock (&modem_registered_errors.lock);
 }
 
 void
-modem_error_register_mapping(GQuark domain,
-  char const *prefix,
-  GType type)
+modem_error_register_mapping (GQuark domain,
+                              char const *prefix,
+                              GType type)
 {
-  DEBUG("enter");
+  DEBUG ("enter");
 
-  ModemErrorMapping **list =  modem_registered_errors_writer_lock();
+  ModemErrorMapping **list =  modem_registered_errors_writer_lock ();
 
   for (; *list; list = &(*list)->next)
-    if ((*list)->domain == domain) {
-      modem_registered_errors_writer_unlock();
-      return;
-    }
+    if ((*list)->domain == domain)
+      {
+        modem_registered_errors_writer_unlock ();
+        return;
+      }
 
-  modem_error_append_mapping(list, domain, prefix, type);
+  modem_error_append_mapping (list, domain, prefix, type);
 
-  modem_registered_errors_writer_unlock();
+  modem_registered_errors_writer_unlock ();
 }
 
 char const *
-modem_error_domain_prefix(GQuark error_domain)
+modem_error_domain_prefix (GQuark error_domain)
 {
   ModemErrorMapping const *map;
 
-  map = modem_registered_errors_reader_lock();
+  map = modem_registered_errors_reader_lock ();
 
   for (; map; map = map->next)
     if (map->domain == error_domain)
       break;
 
-  modem_registered_errors_reader_unlock();
+  modem_registered_errors_reader_unlock ();
 
   if (map)
     return map->prefix;
@@ -491,48 +508,52 @@ modem_error_domain_prefix(GQuark error_domain)
 
 
 char const *
-modem_error_name(GError const *error, void *buffer, guint len)
+modem_error_name (GError const *error, void *buffer, guint len)
 {
   GType type = G_TYPE_INVALID;
 
-  if (error) {
-    ModemErrorMapping const *map;
+  if (error)
+    {
+      ModemErrorMapping const *map;
 
-    map = modem_registered_errors_reader_lock();
+      map = modem_registered_errors_reader_lock ();
 
-    for (; map; map = map->next) {
-      if (map->domain == error->domain) {
-        type = map->type;
-        break;
-      }
+      for (; map; map = map->next)
+        {
+          if (map->domain == error->domain)
+            {
+              type = map->type;
+              break;
+            }
+        }
+
+      modem_registered_errors_reader_unlock ();
     }
 
-    modem_registered_errors_reader_unlock();
-  }
+  if (type)
+    {
+      GEnumClass *gec = g_type_class_peek (type);
+      GEnumValue *ev = g_enum_get_value (gec, error->code);
 
-  if (type) {
-    GEnumClass *gec = g_type_class_peek(type);
-    GEnumValue *ev = g_enum_get_value(gec, error->code);
-
-    if (ev)
-      return ev->value_nick;
-  }
+      if (ev)
+        return ev->value_nick;
+    }
 
   if (error)
-    g_snprintf(buffer, len, "Code%u", error->code);
+    g_snprintf (buffer, len, "Code%u", error->code);
   else
-    g_snprintf(buffer, len, "NullError");
+    g_snprintf (buffer, len, "NullError");
 
   return buffer;
 }
 
 static char *
-dbus_gerror_fqn(GError const *error)
+dbus_gerror_fqn (GError const *error)
 {
   char const *fqn;
 
   switch (error->code)
-  {
+    {
     case DBUS_GERROR_FAILED:
       fqn = DBUS_ERROR_FAILED;
       break;
@@ -630,41 +651,41 @@ dbus_gerror_fqn(GError const *error)
       fqn = DBUS_ERROR_SELINUX_SECURITY_CONTEXT_UNKNOWN;
       break;
     case DBUS_GERROR_REMOTE_EXCEPTION:
-      fqn = dbus_g_error_get_name((GError *)error);
+      fqn = dbus_g_error_get_name ((GError *)error);
       break;
     default:
       return NULL;
-  }
+    }
 
-  return g_strdup(fqn);
+  return g_strdup (fqn);
 }
 
 char *
-modem_error_fqn(GError const *error)
+modem_error_fqn (GError const *error)
 {
   char const *domain, *name;
 
-  g_return_val_if_fail(error, NULL);
+  g_return_val_if_fail (error, NULL);
 
   if (error->domain == DBUS_GERROR)
-    return dbus_gerror_fqn(error);
+    return dbus_gerror_fqn (error);
 
-  domain = modem_error_domain_prefix(error->domain);
+  domain = modem_error_domain_prefix (error->domain);
   if (domain == NULL)
     return NULL;
-  name = modem_error_name(error, NULL, 0);
+  name = modem_error_name (error, NULL, 0);
   if (name == NULL)
     return NULL;
 
-  return g_strdup_printf("%s.%s", domain, name);
+  return g_strdup_printf ("%s.%s", domain, name);
 }
 
 void
-modem_error_fix(GError **error)
+modem_error_fix (GError **error)
 {
   if (*error == NULL ||
-    (*error)->domain != DBUS_GERROR ||
-    (*error)->code != DBUS_GERROR_REMOTE_EXCEPTION)
+      (*error)->domain != DBUS_GERROR ||
+      (*error)->code != DBUS_GERROR_REMOTE_EXCEPTION)
     return;
 
   ModemErrorMapping const *map;
@@ -672,34 +693,36 @@ modem_error_fix(GError **error)
   GEnumValue *ev;
   GError *fixed;
 
-  char const *fqe = (*error)->message + strlen((*error)->message) + 1;
+  char const *fqe = (*error)->message + strlen ((*error)->message) + 1;
 
-  map = modem_registered_errors_reader_lock();
+  map = modem_registered_errors_reader_lock ();
 
   for (; map; map = map->next)
-    if (strncmp(fqe, map->prefix, map->prefixlen) == 0 &&
-      fqe[map->prefixlen] == '.' &&
-      strchr(fqe + map->prefixlen + 1, '.') == 0)
+    if (strncmp (fqe, map->prefix, map->prefixlen) == 0 &&
+        fqe[map->prefixlen] == '.' &&
+        strchr (fqe + map->prefixlen + 1, '.') == 0)
       break;
 
-  modem_registered_errors_reader_unlock();
+  modem_registered_errors_reader_unlock ();
 
-  if (!map) {
-    DEBUG("no match for %s", fqe);
-    return;
-  }
+  if (!map)
+    {
+      DEBUG ("no match for %s", fqe);
+      return;
+    }
 
-  gec = g_type_class_peek(map->type);
-  ev = g_enum_get_value_by_nick(gec, fqe + map->prefixlen + 1);
+  gec = g_type_class_peek (map->type);
+  ev = g_enum_get_value_by_nick (gec, fqe + map->prefixlen + 1);
 
-  if (ev == NULL) {
-    DEBUG("no code point for %s", fqe);
-    return;
-  }
+  if (ev == NULL)
+    {
+      DEBUG ("no code point for %s", fqe);
+      return;
+    }
 
-  fixed = g_error_new_literal(map->domain, ev->value, (*error)->message);
+  fixed = g_error_new_literal (map->domain, ev->value, (*error)->message);
 
-  g_clear_error(error);
+  g_clear_error (error);
 
   *error = fixed;
 }

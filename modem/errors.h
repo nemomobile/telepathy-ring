@@ -28,20 +28,21 @@
 G_BEGIN_DECLS
 
 /* ---------------------------------------------------------------------- */
-/* This is what Ofono provides now */
+/* This is what oFono provides now */
 
-/** The error domain for Ofono */
-#define MODEM_OFONO_ERRORS modem_ofono_errors_quark()
-GQuark modem_ofono_errors_quark(void);
+/** The error domain for oFono */
+#define MODEM_OFONO_ERRORS modem_ofono_errors_quark ()
+GQuark modem_ofono_errors_quark (void);
 
-/** The error type for Ofono */
-#define MODEM_TYPE_OFONO_ERROR modem_ofono_error_get_type()
-GType modem_ofono_error_get_type(void);
+/** The error type for oFono */
+#define MODEM_TYPE_OFONO_ERROR modem_ofono_error_get_type ()
+GType modem_ofono_error_get_type (void);
 
-/** The error prefix for Ofono */
+/** The error prefix for oFono */
 #define MODEM_OFONO_ERROR_PREFIX "org.ofono.Error"
 
-typedef enum _ModemOfonoError {
+typedef enum _ModemoFonoError
+{
   MODEM_OFONO_ERROR_FAILED = 0,
   MODEM_OFONO_ERROR_INVALID_ARGUMENTS,
   MODEM_OFONO_ERROR_INVALID_FORMAT,
@@ -55,22 +56,23 @@ typedef enum _ModemOfonoError {
   MODEM_OFONO_ERROR_IN_USE,
   MODEM_OFONO_ERROR_NOT_ATTACHED,
   MODEM_OFONO_ERROR_ATTACH_IN_PROGRESS
-} ModemOfonoError;
+} ModemoFonoError;
 
 /* ---------------------------------------------------------------------- */
-/* And this is what we'd like Ofono to provide one day */
+/* And this is what we'd like oFono to provide one day */
 
 /** The error domain for the call service. */
 #define MODEM_CALL_ERRORS modem_call_errors_quark ()
-GQuark modem_call_errors_quark(void);
+GQuark modem_call_errors_quark (void);
 
 /** The error type for the call service. */
-#define MODEM_TYPE_CALL_ERROR modem_call_error_get_type()
-GType modem_call_error_get_type(void);
+#define MODEM_TYPE_CALL_ERROR modem_call_error_get_type ()
+GType modem_call_error_get_type (void);
 
 #define MODEM_CALL_ERROR_PREFIX "org.ofono.Bogus.Call"
 
-typedef enum _ModemCallError {
+typedef enum _ModemCallError
+{
   MODEM_CALL_ERROR_NO_ERROR = 0,
 
   MODEM_CALL_ERROR_NO_CALL,
@@ -105,8 +107,8 @@ typedef enum _ModemCallError {
 
 /* ---------------------------------------------------------------------- */
 
-GQuark modem_call_net_errors_quark(void);
-GType modem_call_net_error_get_type(void);
+GQuark modem_call_net_errors_quark (void);
+GType modem_call_net_error_get_type (void);
 
 /** The error domain for errors from GSM network.
  *
@@ -115,11 +117,12 @@ GType modem_call_net_error_get_type(void);
 #define MODEM_CALL_NET_ERRORS modem_call_net_errors_quark ()
 
 /** The error type for errors from GSM network */
-#define MODEM_TYPE_CALL_NET_ERROR modem_call_net_error_get_type()
+#define MODEM_TYPE_CALL_NET_ERROR modem_call_net_error_get_type ()
 
 #define MODEM_CALL_NET_ERROR_PREFIX "org.ofono.Bogus.Call.Network"
 
-typedef enum _ModemNetError {
+typedef enum _ModemNetError
+{
   MODEM_CALL_NET_ERROR_UNASSIGNED_NUMBER        = 0x01, /* UnassignedNumber */
   MODEM_CALL_NET_ERROR_NO_ROUTE                 = 0x03, /* NoRouteToDestination */
   MODEM_CALL_NET_ERROR_CH_UNACCEPTABLE          = 0x06, /* ChannelUnacceptable */
@@ -176,12 +179,12 @@ typedef enum _ModemNetError {
 /** The error domain for the GSM cause. */
 #define MODEM_SMS_NET_ERRORS modem_sms_net_errors_quark ()
 
-GQuark modem_sms_net_errors_quark(void);
+GQuark modem_sms_net_errors_quark (void);
 
 /** The error type for the SMS GSM cause. */
-#define MODEM_TYPE_SMS_NET_ERROR modem_sms_net_error_get_type()
+#define MODEM_TYPE_SMS_NET_ERROR modem_sms_net_error_get_type ()
 
-GType modem_sms_net_error_get_type(void);
+GType modem_sms_net_error_get_type (void);
 
 #define MODEM_SMS_NET_ERROR_PREFIX "org.ofono.Bogus.SMS.Network"
 
@@ -250,16 +253,17 @@ enum
 /** The error domain for the SMS errors. */
 #define MODEM_SMS_ERRORS modem_sms_errors_quark ()
 
-GQuark modem_sms_errors_quark(void);
+GQuark modem_sms_errors_quark (void);
 
 /** The error type for the SMS errors. */
-#define MODEM_TYPE_SMS_ERROR modem_sms_error_get_type()
+#define MODEM_TYPE_SMS_ERROR modem_sms_error_get_type ()
 
-GType modem_sms_error_get_type(void);
+GType modem_sms_error_get_type (void);
 
 #define MODEM_SMS_ERROR_PREFIX "org.ofono.Bogus.SMS"
 
-enum {
+enum
+{
   MODEM_SMS_ERROR_ROUTING_RELEASED         = 0x01,
   MODEM_SMS_ERROR_INVALID_PARAMETER        = 0x02,
   MODEM_SMS_ERROR_DEVICE_FAILURE           = 0x03,
@@ -288,12 +292,12 @@ enum {
 
 /* ---------------------------------------------------------------------- */
 
-void modem_error_register_mapping(GQuark domain, char const *prefix, GType type);
-char const *modem_error_domain_prefix(GQuark);
-char const *modem_error_name(GError const *error, void *buffer, guint len);
-void modem_error_fix(GError **error);
+void modem_error_register_mapping (GQuark domain, char const *prefix, GType);
+char const *modem_error_domain_prefix (GQuark);
+char const *modem_error_name (GError const *error, void *buffer, guint len);
+void modem_error_fix (GError **error);
 
-char *modem_error_fqn(GError const *error);
+char *modem_error_fqn (GError const *error);
 
 G_END_DECLS
 
