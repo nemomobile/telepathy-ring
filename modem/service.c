@@ -174,6 +174,10 @@ modem_service_class_init(ModemServiceClass *klass)
 
   g_type_class_add_private(klass, sizeof (ModemServicePrivate));
 
+  dbus_g_object_register_marshaller (_modem__marshal_VOID__STRING_BOXED,
+      G_TYPE_NONE,
+      G_TYPE_STRING, G_TYPE_VALUE, G_TYPE_INVALID);
+
   dbus_g_object_register_marshaller (_modem__marshal_VOID__BOXED_BOXED,
       G_TYPE_NONE,
       DBUS_TYPE_G_OBJECT_PATH, MODEM_TYPE_DBUS_DICT, G_TYPE_INVALID);

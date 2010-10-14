@@ -301,9 +301,6 @@ modem_class_init (ModemClass *klass)
 
   g_type_class_add_private (klass, sizeof (ModemPrivate));
 
-  dbus_g_object_register_marshaller (_modem__marshal_VOID__STRING_BOXED,
-      G_TYPE_NONE, G_TYPE_STRING, G_TYPE_VALUE, G_TYPE_INVALID);
-
   g_object_class_install_property (object_class, PROP_OBJECT_PATH,
       g_param_spec_boxed ("object-path",
           "Object Path",
