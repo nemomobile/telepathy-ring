@@ -32,32 +32,38 @@ typedef struct _ModemSIMServiceClass ModemSIMServiceClass;
 typedef struct _ModemSIMServicePrivate ModemSIMServicePrivate;
 typedef enum _ModemSIMState ModemSIMState;
 
-struct _ModemSIMServiceClass {
+struct _ModemSIMServiceClass
+{
   GObjectClass parent_class;
 };
 
-struct _ModemSIMService {
+struct _ModemSIMService
+{
   GObject parent;
   ModemSIMServicePrivate *priv;
 };
 
-GType modem_sim_service_get_type(void);
+GType modem_sim_service_get_type (void);
 
 /* TYPE MACROS */
 #define MODEM_TYPE_SIM_SERVICE                  \
-  (modem_sim_service_get_type())
-#define MODEM_SIM_SERVICE(obj)                                          \
-  (G_TYPE_CHECK_INSTANCE_CAST((obj), MODEM_TYPE_SIM_SERVICE, ModemSIMService))
-#define MODEM_SIM_SERVICE_CLASS(klass)                                  \
-  (G_TYPE_CHECK_CLASS_CAST((klass), MODEM_TYPE_SIM_SERVICE, ModemSIMServiceClass))
+  (modem_sim_service_get_type ())
+#define MODEM_SIM_SERVICE(obj)                  \
+  (G_TYPE_CHECK_INSTANCE_CAST ((obj),           \
+      MODEM_TYPE_SIM_SERVICE, ModemSIMService))
+#define MODEM_SIM_SERVICE_CLASS(klass)                  \
+  (G_TYPE_CHECK_CLASS_CAST ((klass),                    \
+      MODEM_TYPE_SIM_SERVICE, ModemSIMServiceClass))
 #define MODEM_IS_SIM_SERVICE(obj)                               \
-  (G_TYPE_CHECK_INSTANCE_TYPE((obj), MODEM_TYPE_SIM_SERVICE))
+  (G_TYPE_CHECK_INSTANCE_TYPE ((obj), MODEM_TYPE_SIM_SERVICE))
 #define MODEM_IS_SIM_SERVICE_CLASS(klass)                       \
-  (G_TYPE_CHECK_CLASS_TYPE((klass), MODEM_TYPE_SIM_SERVICE))
-#define MODEM_SIM_SERVICE_GET_CLASS(obj)                                \
-  (G_TYPE_INSTANCE_GET_CLASS ((obj), MODEM_TYPE_SIM_SERVICE, ModemSIMServiceClass))
+  (G_TYPE_CHECK_CLASS_TYPE ((klass), MODEM_TYPE_SIM_SERVICE))
+#define MODEM_SIM_SERVICE_GET_CLASS(obj)                \
+  (G_TYPE_INSTANCE_GET_CLASS ((obj),                    \
+      MODEM_TYPE_SIM_SERVICE, ModemSIMServiceClass))
 
-enum _ModemSIMState {
+enum _ModemSIMState
+{
   MODEM_SIM_STATE_UNKNOWN     = 0,
   MODEM_SIM_STATE_OK,
   MODEM_SIM_STATE_NO_SIM,
@@ -73,26 +79,26 @@ enum _ModemSIMState {
 
 /* ---------------------------------------------------------------------- */
 
-gboolean modem_sim_service_connect(ModemSIMService *self);
-gboolean modem_sim_service_is_connected(ModemSIMService *self);
-gboolean modem_sim_service_is_connecting(ModemSIMService *self);
-void modem_sim_service_disconnect(ModemSIMService *self);
+gboolean modem_sim_service_connect (ModemSIMService *self);
+gboolean modem_sim_service_is_connected (ModemSIMService *self);
+gboolean modem_sim_service_is_connecting (ModemSIMService *self);
+void modem_sim_service_disconnect (ModemSIMService *self);
 
 typedef void ModemSIMStringReply (ModemSIMService *self,
-  ModemRequest *request,
-  char *reply,
-  GError *error,
-  gpointer user_data);
+    ModemRequest *request,
+    char *reply,
+    GError *error,
+    gpointer user_data);
 
 typedef void ModemSIMUnsignedReply (ModemSIMService *self,
-  ModemRequest *request,
-  guint reply,
-  GError *error,
-  gpointer user_data);
+    ModemRequest *request,
+    guint reply,
+    GError *error,
+    gpointer user_data);
 
-char const *modem_sim_get_imsi(ModemSIMService const *self);
+char const *modem_sim_get_imsi (ModemSIMService const *self);
 
-ModemSIMState modem_sim_get_state(ModemSIMService const *self);
+ModemSIMState modem_sim_get_state (ModemSIMService const *self);
 
 G_END_DECLS
 
