@@ -48,7 +48,7 @@ AC_SUBST(GLIB_GENMARSHAL)
 
 PKG_CHECK_MODULES([CHECK], [check >= 0.9.4])
 
-PKG_CHECK_MODULES([DBUS], [dbus-1 >= 0.60, dbus-glib-1 >= 0.60])
+PKG_CHECK_MODULES([DBUS], [dbus-1 >= 0.60, dbus-glib-1 >= 0.88])
 
 PKG_CHECK_MODULES([UUID], [uuid])
 
