@@ -188,6 +188,9 @@ START_TEST(make_request_to_invalid)
   fail_unless(return_error != NULL);
   g_clear_error(&return_error);
 
+  g_message("You will get a SIGSEGV (process:%u) if you have dbus-glib < 0.88",
+      (unsigned)getpid());
+
   request = modem_request_begin(object, proxy,
             "invalid", reply_to_invalid,
             G_CALLBACK(callback), NULL,
