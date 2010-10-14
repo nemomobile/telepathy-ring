@@ -34,7 +34,8 @@ struct _ModemRequest
 
 typedef struct _ModemRequestNotify ModemRequestNotify;
 
-struct _ModemRequestPrivate {
+struct _ModemRequestPrivate
+{
   GObject *object;
   GCallback callback;
   gpointer user_data;
@@ -42,56 +43,58 @@ struct _ModemRequestPrivate {
   DBusGProxy *proxy;
   DBusGProxyCall *call;
 
-  struct _ModemRequestNotify {
+  struct _ModemRequestNotify
+  {
     gpointer quark;
     GDestroyNotify destroy;
     gpointer data;
   } notify[];
 };
 
-enum {
-  N_SIZED = offsetof(ModemRequestPrivate, notify[4]) / sizeof (gpointer),
-  N_SIZE = offsetof(ModemRequestPrivate, notify[0]) / sizeof (gpointer),
-  N_NOTIFY = sizeof(struct _ModemRequestNotify) / sizeof (gpointer)
+enum
+{
+  N_SIZED = offsetof (ModemRequestPrivate, notify[4]) / sizeof (gpointer),
+  N_SIZE = offsetof (ModemRequestPrivate, notify[0]) / sizeof (gpointer),
+  N_NOTIFY = sizeof (struct _ModemRequestNotify) / sizeof (gpointer)
 };
 
-#define DUMMYQ modem_request_dummy_quark()
+#define DUMMYQ modem_request_dummy_quark ()
 GQuark
-modem_request_dummy_quark(void)
+modem_request_dummy_quark (void)
 {
   static GQuark quark;
-  if (G_UNLIKELY(!quark))
-    quark = g_quark_from_static_string("modem_request_dummy_quark");
+  if (G_UNLIKELY (!quark))
+    quark = g_quark_from_static_string ("modem_request_dummy_quark");
   return quark;
 }
 
-#define MODEM_REQUEST_CANCEL_QUARK modem_request_cancel_quark()
+#define MODEM_REQUEST_CANCEL_QUARK modem_request_cancel_quark ()
 GQuark
-modem_request_cancel_quark(void)
+modem_request_cancel_quark (void)
 {
   static GQuark quark;
-  if (G_UNLIKELY(!quark))
-    quark = g_quark_from_static_string("modem_request_cancel");
+  if (G_UNLIKELY (!quark))
+    quark = g_quark_from_static_string ("modem_request_cancel");
   return quark;
 }
 
 
 ModemRequest *
-_modem_request_new(gpointer object,
-  DBusGProxy *proxy,
-  GCallback callback,
-  gpointer user_data)
+_modem_request_new (gpointer object,
+                    DBusGProxy *proxy,
+                    GCallback callback,
+                    gpointer user_data)
 {
-  GPtrArray *container = g_ptr_array_sized_new(N_SIZED);
+  GPtrArray *container = g_ptr_array_sized_new (N_SIZED);
 
-  g_ptr_array_set_size(container, N_SIZE);
+  g_ptr_array_set_size (container, N_SIZE);
 
   ModemRequest *request = (gpointer)container;
   ModemRequestPrivate *priv = request->priv;
 
   if (object)
-    priv->object = g_object_ref(object);
-  priv->proxy = DBUS_G_PROXY(g_object_ref(proxy));
+    priv->object = g_object_ref (object);
+  priv->proxy = DBUS_G_PROXY (g_object_ref (proxy));
   priv->callback = callback;
   priv->user_data = user_data;
 
@@ -99,184 +102,192 @@ _modem_request_new(gpointer object,
 }
 
 void
-_modem_request_add_proxy_call(ModemRequest *request,
-  DBusGProxyCall *call)
+_modem_request_add_proxy_call (ModemRequest *request,
+                               DBusGProxyCall *call)
 {
-
   request->priv->call = call;
 }
 
 void
-modem_request_add_qdata_full(ModemRequest *request,
-  GQuark quark,
-  gpointer user_data,
-  GDestroyNotify destroy)
+modem_request_add_qdata_full (ModemRequest *request,
+                              GQuark quark,
+                              gpointer user_data,
+                              GDestroyNotify destroy)
 {
   GPtrArray *container = (GPtrArray *)request;
-  gpointer qpointer = GUINT_TO_POINTER(quark);
+  gpointer qpointer = GUINT_TO_POINTER (quark);
   guint i;
 
-  g_assert(quark != DUMMYQ);
+  g_assert (quark != DUMMYQ);
 
-  for (i = N_SIZE; i < container->len; i += N_NOTIFY) {
-    ModemRequestNotify *notify = (gpointer)(container->pdata + i);
+  for (i = N_SIZE; i < container->len; i += N_NOTIFY)
+    {
+      ModemRequestNotify *notify = (gpointer)(container->pdata + i);
 
-    if (notify->quark == qpointer) {
-      ModemRequestNotify save;
-      save = *notify;
-      notify->destroy = destroy;
-      notify->data = user_data;
+      if (notify->quark == qpointer)
+        {
+          ModemRequestNotify save = *notify;
 
-      if (save.destroy)
-        save.destroy(save.data);
+          notify->destroy = destroy;
+          notify->data = user_data;
 
-      return;
+          if (save.destroy)
+            save.destroy (save.data);
+
+          return;
+        }
     }
-  }
 
-  g_ptr_array_add(container, qpointer);
-  g_ptr_array_add(container, destroy);
-  g_ptr_array_add(container, user_data);
+  g_ptr_array_add (container, qpointer);
+  g_ptr_array_add (container, destroy);
+  g_ptr_array_add (container, user_data);
 }
 
 void
-modem_request_add_qdata(ModemRequest *request,
-  GQuark quark,
-  gpointer data)
+modem_request_add_qdata (ModemRequest *request,
+                         GQuark quark,
+                         gpointer data)
 {
-  modem_request_add_qdata_full(request, quark, data, NULL);
+  modem_request_add_qdata_full (request, quark, data, NULL);
 }
 
 void
-modem_request_add_qdatas(ModemRequest *request,
-  GQuark quark,
-  gpointer user_data,
-  GDestroyNotify destroy,
-  ...)
+modem_request_add_qdatas (ModemRequest *request,
+                          GQuark quark,
+                          gpointer user_data,
+                          GDestroyNotify destroy,
+                          ...)
 {
   va_list ap;
 
-  va_start(ap, destroy);
+  va_start (ap, destroy);
 
-  for (;;) {
-    modem_request_add_qdata_full(request, quark, user_data, destroy);
-    quark = va_arg(ap, GQuark);
-    if (!quark)
-      break;
-    user_data = va_arg(ap, gpointer);
-    destroy = va_arg(ap, GDestroyNotify);
-  }
+  for (;;)
+    {
+      modem_request_add_qdata_full (request, quark, user_data, destroy);
+      quark = va_arg (ap, GQuark);
+      if (!quark)
+        break;
+      user_data = va_arg (ap, gpointer);
+      destroy = va_arg (ap, GDestroyNotify);
+    }
 
-  va_end(ap);
+  va_end (ap);
 }
 
 void
-modem_request_add_notifys(ModemRequest *request,
-  GDestroyNotify destroy,
-  gpointer user_data,
-  ...)
+modem_request_add_notifys (ModemRequest *request,
+                           GDestroyNotify destroy,
+                           gpointer user_data,
+                           ...)
 {
   GPtrArray *container = (GPtrArray *)request;
-  gpointer qpointer = GUINT_TO_POINTER(DUMMYQ);
+  gpointer qpointer = GUINT_TO_POINTER (DUMMYQ);
 
   va_list ap;
 
-  va_start(ap, user_data);
+  va_start (ap, user_data);
 
-  for (;;) {
-    g_ptr_array_add(container, qpointer);
-    g_ptr_array_add(container, destroy);
-    g_ptr_array_add(container, user_data);
+  for (;;)
+    {
+      g_ptr_array_add (container, qpointer);
+      g_ptr_array_add (container, destroy);
+      g_ptr_array_add (container, user_data);
 
-    destroy = va_arg(ap, GDestroyNotify);
-    if (!destroy)
-      break;
-    user_data = va_arg(ap, gpointer);
-  }
+      destroy = va_arg (ap, GDestroyNotify);
+      if (!destroy)
+        break;
+      user_data = va_arg (ap, gpointer);
+    }
 
-  va_end(ap);
+  va_end (ap);
 }
 
 gpointer
-modem_request_steal_qdata(ModemRequest *request,
-  GQuark quark)
+modem_request_steal_qdata (ModemRequest *request,
+                           GQuark quark)
 {
   GPtrArray *container = (GPtrArray *)request;
-  gpointer qpointer = GUINT_TO_POINTER(quark);
+  gpointer qpointer = GUINT_TO_POINTER (quark);
   guint i;
 
-  g_assert(quark != DUMMYQ);
+  g_assert (quark != DUMMYQ);
 
-  for (i = N_SIZE; i < container->len; i += N_NOTIFY) {
-    ModemRequestNotify *notify = (gpointer)(container->pdata + i);
+  for (i = N_SIZE; i < container->len; i += N_NOTIFY)
+    {
+      ModemRequestNotify *notify = (gpointer)(container->pdata + i);
 
-    if (notify->quark == qpointer) {
-      gpointer data = notify->data;
-      g_ptr_array_remove_range(container, i, N_NOTIFY);
-      return data;
+      if (notify->quark == qpointer)
+        {
+          gpointer data = notify->data;
+          g_ptr_array_remove_range (container, i, N_NOTIFY);
+          return data;
+        }
     }
-  }
 
   return NULL;
 }
 
 gpointer
-modem_request_get_qdata(ModemRequest *request,
-  GQuark quark)
+modem_request_get_qdata (ModemRequest *request,
+                         GQuark quark)
 {
   GPtrArray *container = (GPtrArray *)request;
-  gpointer qpointer = GUINT_TO_POINTER(quark);
+  gpointer qpointer = GUINT_TO_POINTER (quark);
 
   guint i;
 
-  for (i = N_SIZE; i < container->len; i += N_NOTIFY) {
-    ModemRequestNotify *notify = (gpointer)(container->pdata + i);
-    if (notify->quark == qpointer)
-      return notify->data;
-  }
+  for (i = N_SIZE; i < container->len; i += N_NOTIFY)
+    {
+      ModemRequestNotify *notify = (gpointer)(container->pdata + i);
+      if (notify->quark == qpointer)
+        return notify->data;
+    }
 
   return NULL;
 }
 
 void
-modem_request_add_data(ModemRequest *request,
-  char const *key,
-  gpointer data)
+modem_request_add_data (ModemRequest *request,
+                        char const *key,
+                        gpointer data)
 {
-  modem_request_add_data_full(request, key, data, NULL);
+  modem_request_add_data_full (request, key, data, NULL);
 }
 
 void
-modem_request_add_data_full(ModemRequest *request,
-  char const *key,
-  gpointer data,
-  GDestroyNotify destroy)
+modem_request_add_data_full (ModemRequest *request,
+                             char const *key,
+                             gpointer data,
+                             GDestroyNotify destroy)
 {
-  modem_request_add_qdata_full(request, g_quark_from_string(key), data, destroy);
+  modem_request_add_qdata_full (request,
+      g_quark_from_string (key),
+      data, destroy);
 }
 
 gpointer
-modem_request_get_data(ModemRequest *request,
-  char const *key)
+modem_request_get_data (ModemRequest *request,
+                        char const *key)
 {
-  GQuark quark = g_quark_try_string(key);
+  GQuark quark = g_quark_try_string (key);
   if (!quark)
     return NULL;
-  return modem_request_get_qdata(request, quark);
+  return modem_request_get_qdata (request, quark);
 }
 
 gpointer
-modem_request_steal_data(ModemRequest *request,
-  char const *key)
+modem_request_steal_data (ModemRequest *request,
+                          char const *key)
 {
-  GQuark quark = g_quark_try_string(key);
+  GQuark quark = g_quark_try_string (key);
   if (!quark)
     return NULL;
-  return modem_request_steal_qdata(request, quark);
+  return modem_request_steal_qdata (request, quark);
 }
 
 void
-_modem_request_destroy_notify(gpointer _request)
+_modem_request_destroy_notify (gpointer _request)
 {
   ModemRequest *request = _request;
   ModemRequestPrivate *priv = request->priv;
@@ -290,51 +301,53 @@ _modem_request_destroy_notify(gpointer _request)
   GPtrArray *container = (GPtrArray *)request;
   guint i;
 
-  for (i = N_SIZE; i < container->len; i += N_NOTIFY) {
-    ModemRequestNotify *notify = (gpointer)(container->pdata + i);
+  for (i = N_SIZE; i < container->len; i += N_NOTIFY)
+    {
+      ModemRequestNotify *notify = (gpointer)(container->pdata + i);
 
-    GDestroyNotify destroy = notify->destroy;
-    gpointer data = notify->data;
+      GDestroyNotify destroy = notify->destroy;
+      gpointer data = notify->data;
 
-    memset(notify, 0, sizeof notify);
+      memset (notify, 0, sizeof notify);
 
-    if (destroy)
-      destroy(data);
-  }
+      if (destroy)
+        destroy (data);
+    }
 
   if (proxy)
-    g_object_unref((GObject*)proxy);
+    g_object_unref ((GObject*)proxy);
   if (object)
-    g_object_unref(object);
+    g_object_unref (object);
 
-  g_ptr_array_free(_request, TRUE);
+  g_ptr_array_free (_request, TRUE);
 }
 
 /**  Cancel request
  */
 void
-modem_request_cancel(ModemRequest *request)
+modem_request_cancel (ModemRequest *request)
 {
   ModemRequestPrivate *priv = request->priv;
   GDestroyNotify cancel;
 
-  cancel = modem_request_steal_qdata(request, MODEM_REQUEST_CANCEL_QUARK);
+  cancel = modem_request_steal_qdata (request, MODEM_REQUEST_CANCEL_QUARK);
 
-  if (cancel) {
-    cancel(request);
-    return;
-  }
+  if (cancel)
+    {
+      cancel (request);
+      return;
+    }
 
   if (priv->call)
-    dbus_g_proxy_cancel_call(priv->proxy, priv->call);
+    dbus_g_proxy_cancel_call (priv->proxy, priv->call);
   else
-    _modem_request_destroy_notify(request);
+    _modem_request_destroy_notify (request);
 }
 
 void
-modem_request_add_cancel_notify(ModemRequest *request,
-  GDestroyNotify notify)
+modem_request_add_cancel_notify (ModemRequest *request,
+                                 GDestroyNotify notify)
 {
-  modem_request_add_qdata(request, MODEM_REQUEST_CANCEL_QUARK,
-    (gpointer)notify);
+  modem_request_add_qdata (request, MODEM_REQUEST_CANCEL_QUARK,
+      (gpointer)notify);
 }

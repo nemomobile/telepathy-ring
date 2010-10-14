@@ -28,38 +28,38 @@ G_BEGIN_DECLS
 
 typedef struct _ModemRequest ModemRequest;
 
-void modem_request_cancel(ModemRequest *request);
+void modem_request_cancel (ModemRequest *request);
 
-void modem_request_add_cancel_notify(ModemRequest *request,
-  GDestroyNotify notify);
+void modem_request_add_cancel_notify (ModemRequest *request,
+    GDestroyNotify notify);
 
-void modem_request_add_notifys(ModemRequest *request,
-  GDestroyNotify notify,
-  gpointer data,
-  ...) G_GNUC_NULL_TERMINATED;
+void modem_request_add_notifys (ModemRequest *request,
+    GDestroyNotify notify,
+    gpointer data,
+    ...) G_GNUC_NULL_TERMINATED;
 
-void modem_request_add_qdata(ModemRequest *, GQuark, gpointer data);
-void modem_request_add_qdata_full(ModemRequest *request,
-  GQuark quark,
-  gpointer data,
-  GDestroyNotify destroy);
-void modem_request_add_qdatas(ModemRequest *request,
-  GQuark quark,
-  gpointer data,
-  GDestroyNotify notify,
-  ...) G_GNUC_NULL_TERMINATED;
+void modem_request_add_qdata (ModemRequest *, GQuark, gpointer data);
+void modem_request_add_qdata_full (ModemRequest *request,
+    GQuark quark,
+    gpointer data,
+    GDestroyNotify destroy);
+void modem_request_add_qdatas (ModemRequest *request,
+    GQuark quark,
+    gpointer data,
+    GDestroyNotify notify,
+    ...) G_GNUC_NULL_TERMINATED;
 
-gpointer modem_request_get_qdata(ModemRequest *request, GQuark quark);
-gpointer modem_request_steal_qdata(ModemRequest *request, GQuark quark);
+gpointer modem_request_get_qdata (ModemRequest *request, GQuark quark);
+gpointer modem_request_steal_qdata (ModemRequest *request, GQuark quark);
 
-void modem_request_add_data(ModemRequest *, char const *key, gpointer data);
-void modem_request_add_data_full(ModemRequest *request,
-  char const *key,
-  gpointer data,
-  GDestroyNotify destroy);
+void modem_request_add_data (ModemRequest *, char const *key, gpointer data);
+void modem_request_add_data_full (ModemRequest *request,
+    char const *key,
+    gpointer data,
+    GDestroyNotify destroy);
 
-gpointer modem_request_get_data(ModemRequest *request, char const *key);
-gpointer modem_request_steal_data(ModemRequest *request, char const *key);
+gpointer modem_request_get_data (ModemRequest *request, char const *key);
+gpointer modem_request_steal_data (ModemRequest *request, char const *key);
 
 G_END_DECLS
 
