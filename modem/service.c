@@ -174,17 +174,17 @@ modem_service_class_init(ModemServiceClass *klass)
 
   g_type_class_add_private(klass, sizeof (ModemServicePrivate));
 
-  dbus_g_object_register_marshaller(_modem__marshal_VOID__BOXED_BOXED,
+  dbus_g_object_register_marshaller (_modem__marshal_VOID__BOXED_BOXED,
       G_TYPE_NONE,
       DBUS_TYPE_G_OBJECT_PATH, MODEM_TYPE_DBUS_DICT, G_TYPE_INVALID);
 
-  dbus_g_object_register_marshaller(_modem__marshal_VOID__BOXED,
+  dbus_g_object_register_marshaller (_modem__marshal_VOID__BOXED,
       G_TYPE_NONE,
       DBUS_TYPE_G_OBJECT_PATH, G_TYPE_INVALID);
 
-  modem_error_domain_prefix(0); /* Init errors */
+  modem_error_domain_prefix (0); /* Init errors */
 
-  modem_ofono_init_quarks();
+  modem_ofono_init_quarks ();
 }
 
 /* ------------------------------------------------------------------------ */
