@@ -20,6 +20,7 @@ test_modem_SOURCES = \
 test_modem_LDADD = ../libmodem-call-glib.la \
 	../libmodem-sim-glib.la \
 	../libtest-modem-sms.la \
+	../libmodem-glib.la \
 	../../tests/libtestcommon.la \
 	@TP_LIBS@ @DBUS_LIBS@ @GLIB_LIBS@ \
 	@CHECK_LIBS@
