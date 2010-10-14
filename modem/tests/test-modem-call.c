@@ -24,6 +24,7 @@
 #include <modem/ofono.h>
 #include <modem/call.h>
 #include <modem/errors.h>
+#include <modem/service.h>
 
 #include <dbus/dbus-glib.h>
 
@@ -36,6 +37,7 @@ static void setup(void)
 {
   g_type_init();
   (void)dbus_g_bus_get(DBUS_BUS_SYSTEM, NULL);
+  modem_service();
 }
 
 static void teardown(void)
