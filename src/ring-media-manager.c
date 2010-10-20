@@ -520,6 +520,18 @@ tp_asv_get_initial_audio(GHashTable *properties, gboolean default_value)
     return default_value;
 }
 
+static gboolean
+tp_asv_get_initial_video (GHashTable *properties, gboolean default_value)
+{
+  GValue *value = g_hash_table_lookup (properties,
+      TP_IFACE_CHANNEL_TYPE_STREAMED_MEDIA ".InitialVideo");
+
+  if (value && G_VALUE_HOLDS_BOOLEAN (value))
+    return g_value_get_boolean (value);
+  else
+    return default_value;
+}
+
 /* ---------------------------------------------------------------------- */
 /* TpChannelManagerIface interface */
 
@@ -555,6 +567,7 @@ static char const * const ring_call_channel_allowed_properties[] =
 {
   TP_IFACE_CHANNEL ".TargetHandle",
   TP_IFACE_CHANNEL_TYPE_STREAMED_MEDIA ".InitialAudio",
+  TP_IFACE_CHANNEL_TYPE_STREAMED_MEDIA ".InitialVideo",
   NULL
 };
 
@@ -618,6 +631,7 @@ static char const * const ring_conference_channel_allowed_properties[] =
   RING_IFACE_CHANNEL_INTERFACE_CONFERENCE ".InitialChannels",
   TP_IFACE_CHANNEL ".TargetHandleType",
   TP_IFACE_CHANNEL_TYPE_STREAMED_MEDIA ".InitialAudio",
+  TP_IFACE_CHANNEL_TYPE_STREAMED_MEDIA ".InitialVideo",
   NULL
 };
 
@@ -729,7 +743,8 @@ ring_media_requestotron(RingMediaManager *self,
   if (self->priv->status != TP_CONNECTION_STATUS_CONNECTED)
     return FALSE;
 
-  handle = tp_asv_get_uint32(properties, TP_IFACE_CHANNEL ".TargetHandle", NULL);
+  handle = tp_asv_get_uint32 (properties,
+      TP_IFACE_CHANNEL ".TargetHandle", NULL);
 
   if (handle == priv->connection->parent.self_handle ||
     handle == priv->connection->anon_handle)
@@ -742,6 +757,14 @@ ring_media_requestotron(RingMediaManager *self,
       ring_anon_channel_allowed_properties)) {
     return ring_media_manager_outgoing_call(self, request, 0, 0, NULL, FALSE);
   }
+
+  if (tp_asv_get_initial_video (properties, FALSE))
+    {
+      tp_channel_manager_emit_request_failed (self, request,
+          TP_ERRORS, TP_ERROR_NOT_IMPLEMENTED,
+          "Video calls are not supported");
+      return TRUE;
+    }
 
   if (handle != 0 &&
     ring_properties_satisfy(properties,
@@ -759,7 +782,7 @@ ring_media_requestotron(RingMediaManager *self,
       g_error_free(error);
       return TRUE;
     }
-    /* We do not support 'w' */
+    /* We do not yes support 'w' */
     else if (strchr(target_id, 'w')) {
       tp_channel_manager_emit_request_failed(
         self, request,
