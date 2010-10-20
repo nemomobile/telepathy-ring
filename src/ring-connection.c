@@ -136,8 +136,8 @@ static char const ring_self_handle_name[] = "<SelfHandle>";
 /* ---------------------------------------------------------------------- */
 /* GObject interface */
 
-G_DEFINE_TYPE_WITH_CODE(
-  RingConnection, ring_connection, TP_TYPE_BASE_CONNECTION,
+G_DEFINE_TYPE_WITH_CODE (RingConnection,
+  ring_connection, TP_TYPE_BASE_CONNECTION,
   G_IMPLEMENT_INTERFACE(TP_TYPE_SVC_DBUS_PROPERTIES,
     tp_dbus_properties_mixin_iface_init);
   G_IMPLEMENT_INTERFACE (TP_TYPE_SVC_CONNECTION_INTERFACE_CONTACTS,
@@ -412,7 +412,7 @@ ring_connection_class_init(RingConnectionClass *ring_connection_class)
       "Modem path",
       "oFono object path of the modem to use",
       DBUS_TYPE_G_OBJECT_PATH,
-      G_PARAM_READWRITE | G_PARAM_CONSTRUCT_ONLY |
+      G_PARAM_READWRITE |
       G_PARAM_STATIC_STRINGS));
 
   g_object_class_install_property(
@@ -505,58 +505,6 @@ ring_connection_dbus_property_interfaces[] = {
 };
 
 /* ------------------------------------------------------------------------- */
-
-typedef struct {
-  char *imsi;                  /* Internation Mobile Subscriber Identifier */
-  char *sms_service_centre;    /* SMS Service Center address */
-  guint  sms_validity_period;   /* SMS validity period, 0 if default */
-  gboolean sms_reduced_charset; /* SMS reduced character set support */
-
-  gboolean anon_mandatory;      /* Whether anonymity modes are mandatory */
-  guint    anon_modes;          /* Required anonymity mode */
-
-  gchar *modem;                /* Object path of the modem to use; NULL to
-                                * pick one arbitrarily.
-                                */
-
-  /* Deprecated */
-  char *account;               /* Ignored */
-  char *password;              /* Ignored */
-} RingConnectionParams;
-
-#if nomore
-/**
- * param_filter_tokens:
- * @paramspec: The parameter specification for a string parameter
- * @value: A GValue containing a string, which will not be altered
- * @error: Used to return an error if the string has non-empty value
- *         that does not match filter_data
- *
- * A #TpCMParamFilter which rejects empty strings.
- *
- * Returns: %TRUE to accept, %FALSE (with @error set) to reject
- */
-static gboolean
-param_filter_tokens(TpCMParamSpec const *paramspec,
-  GValue *value,
-  GError **error)
-{
-  const char * const *values;
-  const char *str = g_value_get_string(value);
-
-  if (str == NULL || str[0] == '\0')
-    return TRUE;
-
-  for (values = paramspec->filter_data; *values; values++)
-    if (strcmp(str, *values) == 0)
-      return TRUE;
-
-  g_set_error (error, TP_ERRORS, TP_ERROR_INVALID_ARGUMENT,
-    "Account parameter '%s' with invalid value",
-    paramspec->name);
-  return FALSE;
-}
-#endif
 
 /* Validate ISDN number */
 static gboolean
@@ -652,8 +600,6 @@ TpCMParamSpec ring_connection_params[] = {
     DBUS_TYPE_STRING_AS_STRING, G_TYPE_STRING,
     TP_CONN_MGR_PARAM_FLAG_DBUS_PROPERTY,
     "",
-    G_STRUCT_OFFSET(RingConnectionParams, imsi),
-    NULL,
   },
 
 #define CELLULAR_SMS_VALIDITY_PERIOD_PARAM_SPEC (ring_connection_params + 1)
@@ -661,8 +607,9 @@ TpCMParamSpec ring_connection_params[] = {
     DBUS_TYPE_UINT32_AS_STRING, G_TYPE_UINT,
     TP_CONN_MGR_PARAM_FLAG_DBUS_PROPERTY,
     GUINT_TO_POINTER(0),
-    G_STRUCT_OFFSET(RingConnectionParams, sms_validity_period),
+    0,
     param_filter_validity,
+    .setter_data = "sms-validity-period",
   },
 
 #define CELLULAR_SMS_SERVICE_CENTRE_PARAM_SPEC (ring_connection_params + 2)
@@ -670,8 +617,9 @@ TpCMParamSpec ring_connection_params[] = {
     DBUS_TYPE_STRING_AS_STRING, G_TYPE_STRING,
     TP_CONN_MGR_PARAM_FLAG_DBUS_PROPERTY,
     "",
-    G_STRUCT_OFFSET(RingConnectionParams, sms_service_centre),
+    0,
     param_filter_isdn,
+    .setter_data = "sms-service-centre",
   },
 
 #define CELLULAR_SMS_REDUCED_CHARSET_PARAM_SPEC (ring_connection_params + 3)
@@ -679,24 +627,25 @@ TpCMParamSpec ring_connection_params[] = {
     DBUS_TYPE_BOOLEAN_AS_STRING, G_TYPE_BOOLEAN,
     TP_CONN_MGR_PARAM_FLAG_DBUS_PROPERTY,
     GUINT_TO_POINTER(0),
-    G_STRUCT_OFFSET(RingConnectionParams, sms_reduced_charset),
+    0,
     NULL,
+    .setter_data = "sms-validity-period",
   },
 
   { TP_IFACE_CONNECTION_INTERFACE_ANONYMITY ".AnonymityMandatory",
     DBUS_TYPE_BOOLEAN_AS_STRING, G_TYPE_BOOLEAN,
     TP_CONN_MGR_PARAM_FLAG_DBUS_PROPERTY,
     GUINT_TO_POINTER(FALSE),
-    G_STRUCT_OFFSET(RingConnectionParams, anon_mandatory),
-    NULL,
+    .setter_data = "anon-mandatory",
   },
 
   { TP_IFACE_CONNECTION_INTERFACE_ANONYMITY ".AnonymityModes",
     DBUS_TYPE_UINT32_AS_STRING, G_TYPE_UINT,
     TP_CONN_MGR_PARAM_FLAG_DBUS_PROPERTY,
     GUINT_TO_POINTER(0),
-    G_STRUCT_OFFSET(RingConnectionParams, anon_modes),
+    0,
     param_filter_anon_modes,
+    .setter_data = "anon-supported-modes",
   },
 
 #define MODEM_PARAM_SPEC (ring_connection_params + 6)
@@ -708,19 +657,16 @@ TpCMParamSpec ring_connection_params[] = {
     (GType) 0,
     0,
     NULL,
-    G_STRUCT_OFFSET(RingConnectionParams, modem),
+    0,
     param_filter_valid_object_path,
+    .setter_data = "modem-path",
   },
 
   /* Deprecated... */
-  { "account", DBUS_TYPE_STRING_AS_STRING, G_TYPE_STRING,
-    0, NULL,
-    G_STRUCT_OFFSET (RingConnectionParams, account),
-  },
+  { "account", DBUS_TYPE_STRING_AS_STRING, G_TYPE_STRING, },
 
   { "password", DBUS_TYPE_STRING_AS_STRING, G_TYPE_STRING,
-    TP_CONN_MGR_PARAM_FLAG_SECRET, NULL,
-    G_STRUCT_OFFSET (RingConnectionParams, password),
+    TP_CONN_MGR_PARAM_FLAG_SECRET,
   },
 
   { NULL }
@@ -729,47 +675,38 @@ TpCMParamSpec ring_connection_params[] = {
 TpCMParamSpec *
 ring_connection_get_param_specs (void)
 {
-  TpCMParamSpec *modem = MODEM_PARAM_SPEC;
+  static gsize once;
 
-  modem->gtype = DBUS_TYPE_G_OBJECT_PATH;
+  if (g_once_init_enter (&once))
+    {
+      TpCMParamSpec *modem = MODEM_PARAM_SPEC;
+
+      modem->gtype = DBUS_TYPE_G_OBJECT_PATH;
+
+      g_once_init_leave (&once, 1);
+    }
 
   return ring_connection_params;
 }
 
-gpointer
-ring_connection_params_alloc(void)
-{
-  return g_slice_new0(RingConnectionParams);
-}
-
-void
-ring_connection_params_free(gpointer p)
-{
-  RingConnectionParams *params = p;
-
-  g_free(params->modem);
-  g_free(params->account);
-  g_free(params->password);
-
-  g_slice_free(RingConnectionParams, params);
-}
-
 RingConnection *
-ring_connection_new(TpIntSet *params_present,
-  gpointer parsed_params)
+ring_connection_new(GHashTable *params)
 {
-  RingConnectionParams *params = parsed_params;
-  char *sms_service_centre = params->sms_service_centre;
+  gpointer conn = g_object_new(RING_TYPE_CONNECTION, "protocol", "tel", NULL);
+  guint i;
+  GValue *value;
+  TpCMParamSpec *specs = ring_connection_get_param_specs ();
 
-  return (RingConnection *) g_object_new(RING_TYPE_CONNECTION,
-      "protocol", "tel",
-      "modem-path", params->modem,
-      "sms-service-centre", sms_service_centre ? sms_service_centre : "",
-      "sms-validity-period", params->sms_validity_period,
-      "sms-reduced-charset", params->sms_reduced_charset,
-      "anon-modes", params->anon_modes,
-      "anon-mandatory", params->anon_mandatory,
-      NULL);
+  for (i = 0; specs[i].name; i++) {
+    if (!specs[i].setter_data)
+      continue;
+
+    value = g_hash_table_lookup(params, specs[i].name);
+    if (value)
+      g_object_set_property (conn, specs[i].setter_data, value);
+  }
+
+  return conn;
 }
 
 
@@ -789,14 +726,12 @@ gpointer ring_network_normalization_context(void)
  * international phone number ("'+' and up to 20 digits), SOS URN or
  * an alphanumeric address with up to 11 GSM characters.
  *
- * Normalize a telephone number can contain an an optional service prefix
+ * Normalized telephone number can contain an an optional service prefix
  * and dial string.
  */
-static char *
-ring_normalize_name(TpHandleRepoIface *repo,
-  char const *input,
-  gpointer context,
-  GError **return_error)
+char *
+ring_normalize_contact (char const *input,
+                        GError **return_error)
 {
   char const *sos;
   char *s;
@@ -816,9 +751,6 @@ ring_normalize_name(TpHandleRepoIface *repo,
     input = s;
 
   s = g_strdup(input);
-
-  if (context == ring_network_normalization_context())
-    return s;
 
   /* Remove usual extra chars like (-. ) */
   for (i = j = 0; s[i]; i++) {
@@ -849,6 +781,18 @@ ring_normalize_name(TpHandleRepoIface *repo,
                   TP_ERROR_INVALID_ARGUMENT, "invalid phone number");
   g_free(s);
   return NULL;
+}
+
+static char *
+ring_normalize_name (TpHandleRepoIface *repo G_GNUC_UNUSED,
+                     char const *input,
+                     gpointer context,
+                     GError **return_error)
+{
+  if (context == ring_network_normalization_context ())
+    return g_strdup (input);
+
+  return ring_normalize_contact (input, return_error);
 }
 
 static void
@@ -1064,6 +1008,12 @@ ring_connection_class_init_base_connection(TpBaseConnectionClass *klass)
 
 /* ---------------------------------------------------------------------- */
 /* RingConnection interface */
+
+gchar **
+ring_connection_dup_implemented_interfaces (void)
+{
+  return g_strdupv ((GStrv)ring_connection_interfaces_always_present);
+}
 
 static gboolean
 ring_connection_connecting_timeout (gpointer _self)

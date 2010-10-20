@@ -45,6 +45,7 @@ test_ring_LDADD = \
 
 libtpring_la_SOURCES = \
     ring-connection-manager.h ring-connection-manager.c \
+    ring-protocol.h ring-protocol.c \
     ring-connection.h ring-connection.c \
     ring-debug.h ring-debug.c \
     ring-text-manager.h ring-text-manager.c \

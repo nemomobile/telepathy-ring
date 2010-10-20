@@ -69,8 +69,11 @@ TpCMParamSpec *ring_connection_get_param_specs (void);
 gpointer ring_connection_params_alloc(void);
 void ring_connection_params_free(gpointer p);
 
-RingConnection *ring_connection_new(
-  TpIntSet *params_present, gpointer ring_connection_params);
+gchar **ring_connection_dup_implemented_interfaces (void);
+
+char *ring_normalize_contact (char const *input, GError **return_error);
+
+RingConnection *ring_connection_new(GHashTable *params);
 
 gboolean ring_connection_check_status(RingConnection *self);
 
