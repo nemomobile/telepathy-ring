@@ -558,7 +558,7 @@ modem_sms_service_connect (ModemSMSService *self, char const *object_path)
   modem_ofono_proxy_connect_to_property_changed (p,
       on_manager_property_changed, self);
 
-#define CONNECT (handler, name, signature...)                           \
+#define CONNECT(handler, name, signature...)                           \
     dbus_g_proxy_add_signal (p, (name), ##signature);                   \
   dbus_g_proxy_connect_signal (p, (name), G_CALLBACK (handler), self, NULL)
 

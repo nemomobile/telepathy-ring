@@ -53,17 +53,17 @@ struct _ModemSMSService
 GType modem_sms_service_get_type (void);
 
 /* TYPE MACROS */
-#define MODEM_TYPE_SMS_SERVICE                  \
+#define MODEM_TYPE_SMS_SERVICE \
   (modem_sms_service_get_type ())
-#define MODEM_SMS_SERVICE (obj)                                          \
+#define MODEM_SMS_SERVICE(obj) \
   (G_TYPE_CHECK_INSTANCE_CAST ((obj), MODEM_TYPE_SMS_SERVICE, ModemSMSService))
-#define MODEM_SMS_SERVICE_CLASS (klass)                                  \
+#define MODEM_SMS_SERVICE_CLASS(klass) \
   (G_TYPE_CHECK_CLASS_CAST ((klass), MODEM_TYPE_SMS_SERVICE, ModemSMSServiceClass))
-#define MODEM_IS_SMS_SERVICE (obj)                               \
+#define MODEM_IS_SMS_SERVICE(obj) \
   (G_TYPE_CHECK_INSTANCE_TYPE ((obj), MODEM_TYPE_SMS_SERVICE))
-#define MODEM_IS_SMS_SERVICE_CLASS (klass)                       \
+#define MODEM_IS_SMS_SERVICE_CLASS(klass) \
   (G_TYPE_CHECK_CLASS_TYPE ((klass), MODEM_TYPE_SMS_SERVICE))
-#define MODEM_SMS_SERVICE_GET_CLASS (obj)                                \
+#define MODEM_SMS_SERVICE_GET_CLASS(obj) \
   (G_TYPE_INSTANCE_GET_CLASS ((obj), MODEM_TYPE_SMS_SERVICE, ModemSMSServiceClass))
 
 /* ---------------------------------------------------------------------- */
