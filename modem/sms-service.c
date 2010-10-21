@@ -799,26 +799,25 @@ reply_to_send_message (DBusGProxy *proxy,
                        DBusGProxyCall *call,
                        void *_request)
 {
-  char *token = NULL;
   ModemRequest *request = _request;
   ModemSMSService *self = modem_request_object (request);
   ModemSMSServiceSendReply *callback = modem_request_callback (request);
   gpointer user_data = modem_request_user_data (request);
+  char const *message_path = NULL;
 
   GError *error = NULL;
 
-  if (dbus_g_proxy_end_call (proxy, call, &error, G_TYPE_INVALID))
+  if (dbus_g_proxy_end_call (proxy, call, &error,
+          DBUS_TYPE_G_OBJECT_PATH, &message_path,
+          G_TYPE_INVALID))
     {
       char const *destination;
 
       destination = modem_request_get_data (request, "destination");
-
-      token = modem_sms_generate_token ();
     }
 
-  callback (self, request, token, error, user_data);
+  callback (self, request, message_path, error, user_data);
 
-  g_free (token);
   g_clear_error (&error);
 }
 
@@ -839,8 +838,7 @@ modem_sms_request_send (ModemSMSService *self,
       G_TYPE_INVALID);
 
   if (request)
-    modem_request_add_data_full (request, "destination",
-        g_strdup (to), g_free);
+    modem_request_add_data_full (request, "destination", g_strdup (to), g_free);
 
   return request;
 }
