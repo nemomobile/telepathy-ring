@@ -49,12 +49,11 @@
 
 /* ---------------------------------------------------------------------- */
 
-G_DEFINE_TYPE (ModemSMSService, modem_sms_service, G_TYPE_OBJECT)
+G_DEFINE_TYPE (ModemSMSService, modem_sms_service, MODEM_TYPE_OFACE)
 
 /* Signals we emit */
 enum
 {
-  SIGNAL_CONNECTED,
   SIGNAL_DELIVER,
   SIGNAL_OUTGOING_COMPLETE,
   SIGNAL_OUTGOING_ERROR,
@@ -78,22 +77,10 @@ enum
 /* private data */
 struct _ModemSMSServicePrivate
 {
-  char *client_id;
-  char *bus_name;
-
   time_t connected;             /* Timestamp when got connected */
 
   char *smsc;
   guint validity_period;
-
-  DBusGProxy *proxy;
-
-  struct
-  {
-    GQueue queue[1];
-    GError *error;
-    int read;
-  } connecting;
 
   char **content_types;
 
@@ -101,22 +88,17 @@ struct _ModemSMSServicePrivate
 
   unsigned reduced_charset:1;
   unsigned loopback:1;
-  unsigned dispose_has_run:1;
-  unsigned :0;
+  unsigned signals:1, :0;
 };
 
 /* ------------------------------------------------------------------------ */
 
-static ModemOfonoPropChangedCb on_manager_property_changed;
-static ModemOfonoPropsReply reply_to_sms_manager_get_properties;
-
-static void modem_sms_check_connected (ModemSMSService *self,
-    ModemRequest *request,
-    char const *operation,
-    const GError *error);
-
 static void modem_sms_incoming_deliver (ModemSMSService *self,
     SMSGDeliver *deliver);
+static void on_incoming_message (DBusGProxy *, char const *, GHashTable *, gpointer);
+static void on_manager_message_added (DBusGProxy *, char const *, GHashTable *,
+    gpointer);
+static void on_manager_message_removed (DBusGProxy *, char const *, gpointer);
 
 /* ------------------------------------------------------------------------ */
 /* GObject interface */
@@ -128,8 +110,6 @@ modem_sms_service_init (ModemSMSService *self)
 
   self->priv = G_TYPE_INSTANCE_GET_PRIVATE (self,
       MODEM_TYPE_SMS_SERVICE, ModemSMSServicePrivate);
-
-  g_queue_init (self->priv->connecting.queue);
 
   self->priv->received = g_hash_table_new_full (g_str_hash, g_str_equal,
       NULL, /* Message object stored in hash owns the key */
@@ -212,23 +192,14 @@ modem_sms_service_constructed (GObject *object)
 {
   if (G_OBJECT_CLASS (modem_sms_service_parent_class)->constructed)
     G_OBJECT_CLASS (modem_sms_service_parent_class)->constructed (object);
+
+  if (modem_oface_dbus_proxy (MODEM_OFACE (object)) == NULL)
+	  g_warning("object created without dbus-proxy set");
 }
 
 static void
 modem_sms_service_dispose (GObject *object)
 {
-  ModemSMSService *self = MODEM_SMS_SERVICE (object);
-  ModemSMSServicePrivate *priv = self->priv;
-
-  if (priv->dispose_has_run)
-    return;
-  priv->dispose_has_run = TRUE;
-
-  modem_sms_service_disconnect (self);
-
-  if (priv->proxy)
-    g_object_run_dispose (G_OBJECT (priv->proxy));
-
   if (G_OBJECT_CLASS (modem_sms_service_parent_class)->dispose)
     G_OBJECT_CLASS (modem_sms_service_parent_class)->dispose (object);
 }
@@ -242,15 +213,7 @@ modem_sms_service_finalize (GObject *object)
   DEBUG ("enter");
 
   /* Free any data held directly by the object here */
-  g_free (priv->client_id);
-  g_free (priv->bus_name);
   g_free (priv->smsc);
-
-  if (priv->proxy)
-    g_object_unref (priv->proxy);
-
-  if (priv->connecting.error)
-    g_clear_error (&priv->connecting.error);
 
   if (priv->content_types)
     g_boxed_free (G_TYPE_STRV, priv->content_types);
@@ -261,11 +224,148 @@ modem_sms_service_finalize (GObject *object)
   G_OBJECT_CLASS (modem_sms_service_parent_class)->finalize (object);
 }
 
+/* ------------------------------------------------------------------------- */
+/* oface */
 
+static void reply_to_sms_manager_get_messages (ModemOface *_self,
+    ModemRequest *request, GPtrArray *array, GError const *error,
+    gpointer user_data);
+
+static char const *
+modem_sms_service_property_mapper (char const *name)
+{
+  if (!strcmp (name, "UseDeliveryReports"))
+    return NULL;
+  if (!strcmp (name, "ServiceCenterAddress"))
+    return "service-centre";
+  if (!strcmp (name, "Bearer"))
+    return NULL;
+
+  return NULL;
+}
+
+static void
+modem_sms_service_connect (ModemOface *_self)
+{
+  DEBUG ("(%p): enter", _self);
+
+  ModemSMSService *self = MODEM_SMS_SERVICE (_self);
+  ModemSMSServicePrivate *priv = self->priv;
+  DBusGProxy *proxy = modem_oface_dbus_proxy (_self);
+
+  if (!priv->signals)
+    {
+      priv->signals = TRUE;
+
+#define CONNECT(handler, name, signature...) \
+    dbus_g_proxy_add_signal (proxy, (name), ##signature); \
+    dbus_g_proxy_connect_signal (proxy, (name), G_CALLBACK (handler), self, NULL)
+
+      /* XXX: SMS class 0. Does Ofono actually need a separate
+       * signal for them instead of providing the class in the
+       * properties dict? */
+      CONNECT (on_incoming_message, "ImmediateMessage",
+          G_TYPE_STRING, MODEM_TYPE_DBUS_DICT, G_TYPE_INVALID);
+
+      CONNECT (on_incoming_message, "IncomingMessage",
+          G_TYPE_STRING, MODEM_TYPE_DBUS_DICT, G_TYPE_INVALID);
+
+      CONNECT (on_manager_message_added, "MessageAdded",
+          DBUS_TYPE_G_OBJECT_PATH, MODEM_TYPE_DBUS_DICT, G_TYPE_INVALID);
+
+      CONNECT (on_manager_message_added, "MessageRemoved",
+          DBUS_TYPE_G_OBJECT_PATH, MODEM_TYPE_DBUS_DICT, G_TYPE_INVALID);
+    }
+
+  modem_oface_connect_properties (_self, TRUE);
+
+  modem_oface_add_connect_request (_self,
+      modem_oface_request_managed (_self, "GetMessages",
+          reply_to_sms_manager_get_messages, NULL));
+}
+
+static void
+reply_to_sms_manager_get_messages (ModemOface *_self,
+                                   ModemRequest *request,
+                                   GPtrArray *array,
+                                   GError const *error,
+                                   gpointer user_data)
+{
+  ModemSMSService *self = MODEM_SMS_SERVICE (_self);
+
+  DEBUG ("(%p): enter", _self);
+
+  if (!error)
+    {
+      guint i;
+
+      for (i = 0; i < array->len; i++)
+        {
+          GValueArray *va = g_ptr_array_index (array, i);
+          char const *path = g_value_get_boxed (va->values + 0);
+          GHashTable *properties = g_value_get_boxed (va->values + 1);
+
+          on_manager_message_added (NULL, path, properties, self);
+        }
+    }
+
+  modem_oface_check_connected (_self, request, error);
+}
+
+static void
+modem_sms_service_connected (ModemOface *_self)
+{
+  DEBUG ("(%p): enter", _self);
+
+  ModemSMSService *self = MODEM_SMS_SERVICE (_self);
+  ModemSMSServicePrivate *priv = self->priv;
+  time_t now = time (NULL);
+  GHashTableIter i[1];
+  gpointer key, value;
+
+  priv->connected = now;
+
+  for (g_hash_table_iter_init (i, priv->received);
+       g_hash_table_iter_next (i, &key, &value);)
+    {
+      g_object_set (value, "time-delivered", (guint64)now, NULL);
+    }
+}
+
+static void
+modem_sms_service_disconnect (ModemOface *_self)
+{
+  DEBUG ("(%p): enter", _self);
+
+  ModemSMSService *self = MODEM_SMS_SERVICE (_self);
+  ModemSMSServicePrivate *priv = self->priv;
+  DBusGProxy *proxy = modem_oface_dbus_proxy (_self);
+
+  if (priv->signals)
+    {
+      priv->signals = FALSE;
+
+      dbus_g_proxy_disconnect_signal (proxy, "IncomingMessage",
+          G_CALLBACK (on_incoming_message), self);
+      dbus_g_proxy_disconnect_signal (proxy, "ImmediateMessage",
+          G_CALLBACK (on_incoming_message), self);
+      dbus_g_proxy_disconnect_signal (proxy, "MessageAdded",
+          G_CALLBACK (on_manager_message_added), self);
+      dbus_g_proxy_disconnect_signal (proxy, "MessageRemoved",
+          G_CALLBACK (on_manager_message_removed), self);
+    }
+
+  g_hash_table_remove_all (priv->received);
+
+  modem_oface_disconnect_properties (_self);
+}
+
+/* ------------------------------------------------------------------------- */
 static void
 modem_sms_service_class_init (ModemSMSServiceClass *klass)
 {
   GObjectClass *object_class = G_OBJECT_CLASS (klass);
+  ModemOfaceClass *oface_class = MODEM_OFACE_CLASS (klass);
 
   DEBUG ("enter");
 
@@ -274,6 +374,11 @@ modem_sms_service_class_init (ModemSMSServiceClass *klass)
   object_class->constructed = modem_sms_service_constructed;
   object_class->dispose = modem_sms_service_dispose;
   object_class->finalize = modem_sms_service_finalize;
+
+  oface_class->property_mapper = modem_sms_service_property_mapper;
+  oface_class->connect = modem_sms_service_connect;
+  oface_class->connected = modem_sms_service_connected;
+  oface_class->disconnect = modem_sms_service_disconnect;
 
   g_object_class_install_property (object_class, PROP_CONTENT_TYPES,
       g_param_spec_boxed ("content-types",
@@ -311,15 +416,6 @@ modem_sms_service_class_init (ModemSMSServiceClass *klass)
           FALSE,
           G_PARAM_READWRITE | G_PARAM_CONSTRUCT |
           G_PARAM_STATIC_STRINGS));
-
-  signals[SIGNAL_CONNECTED] =
-    g_signal_new ("connected",
-        G_OBJECT_CLASS_TYPE (klass),
-        G_SIGNAL_RUN_LAST | G_SIGNAL_DETAILED,
-        0,
-        NULL, NULL,
-        g_cclosure_marshal_VOID__VOID,
-        G_TYPE_NONE, 0);
 
   signals[SIGNAL_DELIVER] =
     g_signal_new ("deliver",
@@ -365,50 +461,6 @@ modem_sms_service_class_init (ModemSMSServiceClass *klass)
 }
 
 /* ---------------------------------------------------------------------- */
-/* Properties */
-static void
-on_manager_property_changed (DBusGProxy *proxy,
-                             char const *property,
-                             GValue const *value,
-                             gpointer user_data)
-{
-  char *s;
-
-  s = g_strdup_value_contents (value);
-  DEBUG ("%s = %s", property, s);
-  g_free (s);
-}
-
-static void
-reply_to_sms_manager_get_properties (gpointer _self,
-                                     ModemRequest *request,
-                                     GHashTable *properties,
-                                     GError const *error,
-                                     gpointer user_data)
-{
-  ModemSMSService *self = MODEM_SMS_SERVICE (_self);
-
-  DEBUG ("enter");
-
-  if (!error) {
-    char *key;
-    GValue *value;
-    GHashTableIter iter[1];
-
-    g_hash_table_iter_init (iter, properties);
-    while (g_hash_table_iter_next (iter,
-            (gpointer)&key, (gpointer)&value))
-      {
-        char *s = g_strdup_value_contents (value);
-        DEBUG ("%s = %s", key, s);
-        g_free (s);
-      }
-  }
-
-  modem_sms_check_connected (self, request, "GetProperties", error);
-}
-
-/* ---------------------------------------------------------------------- */
 /* Signal connection helpers */
 
 gulong
@@ -430,19 +482,6 @@ modem_sms_connect_to_deliver (ModemSMSService *self,
 /* ------------------------------------------------------------------------- */
 /* modem_sms_service interface */
 
-gboolean
-modem_sms_service_is_connected (ModemSMSService const *self)
-{
-  return MODEM_IS_SMS_SERVICE (self) && self->priv->connected != 0;
-}
-
-gboolean
-modem_sms_service_is_connecting (ModemSMSService const *self)
-{
-  return MODEM_IS_SMS_SERVICE (self) &&
-    !g_queue_is_empty (self->priv->connecting.queue);
-}
-
 guint64
 modem_sms_service_time_connected (ModemSMSService const *self)
 {
@@ -453,6 +492,31 @@ modem_sms_service_time_connected (ModemSMSService const *self)
 }
 
 /* ------------------------------------------------------------------------- */
+
+static void
+on_manager_message_added (DBusGProxy *proxy,
+                          char const *path,
+                          GHashTable *properties,
+                          gpointer user_data)
+{
+  ModemSMSService *self = MODEM_SMS_SERVICE (user_data);
+
+  DEBUG ("%s", path);
+
+  (void)self;
+}
+
+static void
+on_manager_message_removed (DBusGProxy *proxy,
+                            char const *path,
+                            gpointer user_data)
+{
+  ModemSMSService *self = MODEM_SMS_SERVICE (user_data);
+
+  DEBUG ("%s", path);
+
+  (void)self;
+}
 
 /* FIXME: something for Ofono... */
 static char *
@@ -531,62 +595,6 @@ on_incoming_message (DBusGProxy *proxy,
 
 /* ------------------------------------------------------------------------- */
 
-/* Connect to SMS */
-gboolean
-modem_sms_service_connect (ModemSMSService *self, char const *object_path)
-{
-  DBusGProxy *p;
-  ModemRequest *request;
-
-  DEBUG ("enter");
-
-  ModemSMSServicePrivate *priv = self->priv;
-
-  if (priv->dispose_has_run)
-    return FALSE;
-  if (modem_sms_service_is_connected (self))
-    return TRUE;
-  if (modem_sms_service_is_connecting (self))
-    return TRUE;
-
-  if (!priv->proxy)
-    priv->proxy = modem_ofono_proxy (object_path, OFONO_IFACE_SMS);
-  if (!priv->proxy)
-    g_error ("Failed to proxy the SMS service");
-
-  p = priv->proxy;
-  modem_ofono_proxy_connect_to_property_changed (p,
-      on_manager_property_changed, self);
-
-#define CONNECT(handler, name, signature...)                           \
-    dbus_g_proxy_add_signal (p, (name), ##signature);                   \
-  dbus_g_proxy_connect_signal (p, (name), G_CALLBACK (handler), self, NULL)
-
-  /* XXX: SMS class 0. Does Ofono actually need a separate
-   * signal for them instead of providing the class in the
-   * properties dict? */
-  CONNECT (on_incoming_message, "ImmediateMessage",
-      G_TYPE_STRING, MODEM_TYPE_DBUS_DICT, G_TYPE_INVALID);
-  CONNECT (on_incoming_message, "IncomingMessage",
-      G_TYPE_STRING, MODEM_TYPE_DBUS_DICT, G_TYPE_INVALID);
-
-  request = modem_ofono_proxy_request_properties (p,
-      reply_to_sms_manager_get_properties, self, NULL);
-
-  g_queue_push_tail (priv->connecting.queue, request);
-
-  return TRUE;
-}
-
-GError *
-modem_sms_service_connection_error (ModemSMSService *self)
-{
-  return MODEM_SMS_SERVICE (self)
-    && self->priv->connecting.error
-    ? g_error_copy (self->priv->connecting.error)
-    : NULL;
-}
-
 gboolean
 modem_sms_service_is_error_serious (GError *error)
 {
@@ -596,93 +604,8 @@ modem_sms_service_is_error_serious (GError *error)
   return TRUE;
 }
 
-static void
-modem_sms_check_connected (ModemSMSService *self,
-                           ModemRequest *request,
-                           char const *operation,
-                           const GError *error)
-{
-  ModemSMSServicePrivate *priv = self->priv;
-
-  if (g_queue_find (priv->connecting.queue, request))
-    {
-      g_queue_remove (priv->connecting.queue, request);
-
-      if (error)
-        {
-          if (!modem_sms_service_is_error_serious (priv->connecting.error))
-            {
-              g_clear_error (&priv->connecting.error);
-              g_set_error (&priv->connecting.error,
-                  error->domain, error->code,
-                  "%s.%s (): %s", OFONO_IFACE_SMS, operation, error->message);
-            }
-
-          modem_critical (MODEM_SERVICE_SMS, GERROR_MSG_FMT,
-              GERROR_MSG_CODE (priv->connecting.error));
-        }
-
-      if (g_queue_is_empty (priv->connecting.queue))
-        {
-          if (priv->connecting.error)
-            {
-              priv->connected = 0;
-            }
-          else {
-            GHashTableIter i[1];
-            time_t now = time (NULL);
-            gpointer key, value;
-
-            for (g_hash_table_iter_init (i, priv->received);
-                 g_hash_table_iter_next (i, &key, &value);)
-              {
-                g_object_set (value, "time-delivered", (guint64)now, NULL);
-              }
-
-            priv->connected = now;
-          }
-
-          g_signal_emit (self, signals[SIGNAL_CONNECTED], 0);
-        }
-    }
-}
-
-void
-modem_sms_service_disconnect (ModemSMSService *self)
-{
-  ModemSMSServicePrivate *priv = self->priv;
-
-  DEBUG ("enter");
-
-  priv->connected = 0;
-
-  while (!g_queue_is_empty (priv->connecting.queue))
-    modem_request_cancel (g_queue_pop_head (priv->connecting.queue));
-
-  g_hash_table_remove_all (priv->received);
-}
-
 /* ---------------------------------------------------------------------- */
 /* Properties */
-
-static void
-reply_to_modem_sms_request (DBusGProxy *proxy,
-                            DBusGProxyCall *call,
-                            void *_request)
-{
-  ModemRequest *request = _request;
-  ModemSMSService *self = modem_request_object (request);
-  ModemSMSServiceReply *callback = modem_request_callback (request);
-  gpointer user_data = modem_request_user_data (request);
-
-  GError *error = NULL;
-
-  dbus_g_proxy_end_call (proxy, call, &error, G_TYPE_INVALID);
-  if (callback)
-    callback (self, request, error, user_data);
-  g_clear_error (&error);
-}
-
 
 ModemRequest *
 modem_sms_set_sc_address (ModemSMSService *self,
@@ -690,21 +613,13 @@ modem_sms_set_sc_address (ModemSMSService *self,
                           ModemSMSServiceReply *callback,
                           gpointer user_data)
 {
-  ModemSMSServicePrivate *priv = self->priv;
   GValue value[1];
 
   g_value_init (memset (value, 0, sizeof value), G_TYPE_STRING);
   g_value_set_string (value, address);
 
-  DEBUG (OFONO_IFACE_SMS ".SetProperty (%s, %s)",
-      "ServiceCenterAddress", address);
-
-  return modem_request_begin (self, priv->proxy, "SetProperty",
-      reply_to_modem_sms_request,
-      G_CALLBACK (callback), user_data,
-      G_TYPE_STRING, "ServiceCenterAddress",
-      G_TYPE_VALUE, value,
-      G_TYPE_INVALID);
+  return modem_oface_set_property_req (MODEM_OFACE (self),
+      "ServiceCenterAddress", value, (void *)callback, user_data);
 }
 
 ModemRequest *
@@ -713,21 +628,13 @@ modem_sms_set_srr (ModemSMSService *self,
                    ModemSMSServiceReply *callback,
                    gpointer user_data)
 {
-  ModemSMSServicePrivate *priv = self->priv;
   GValue value[1];
 
   g_value_init (memset (value, 0, sizeof value), G_TYPE_BOOLEAN);
   g_value_set_boolean (value, srr);
 
-  DEBUG (OFONO_IFACE_SMS ".SetProperty (%s, %s)",
-      "UseDeliveryReports", srr ? "true" : "false");
-
-  return modem_request_begin (self, priv->proxy, "SetProperty",
-      reply_to_modem_sms_request,
-      G_CALLBACK (callback), user_data,
-      G_TYPE_STRING, "UseDeliveryReports",
-      G_TYPE_VALUE, value,
-      G_TYPE_INVALID);
+  return modem_oface_set_property_req (MODEM_OFACE (self),
+      "UseDeliveryReports", value, (void *)callback, user_data);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -827,10 +734,11 @@ modem_sms_request_send (ModemSMSService *self,
                         ModemSMSServiceSendReply *reply, gpointer user_data)
 {
   ModemRequest *request;
-  ModemSMSServicePrivate *priv = self->priv;
 
   DEBUG (OFONO_IFACE_SMS ".SendMessage (%s,%s)", to, message);
-  request = modem_request (self, priv->proxy,
+
+  request = modem_request (self,
+      modem_oface_dbus_proxy (MODEM_OFACE (self)),
       "SendMessage", reply_to_send_message,
       G_CALLBACK (reply), user_data,
       G_TYPE_STRING, to,

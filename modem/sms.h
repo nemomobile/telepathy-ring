@@ -36,17 +36,18 @@ G_END_DECLS
 #include <sms-glib/status-report.h>
 #include <sms-glib/submit.h>
 #include <modem/request.h>
+#include <modem/oface.h>
 
 G_BEGIN_DECLS
 
 struct _ModemSMSServiceClass
 {
-  GObjectClass parent_class;
+  ModemOfaceClass parent_class;
 };
 
 struct _ModemSMSService
 {
-  GObject parent;
+  ModemOface parent;
   ModemSMSServicePrivate *priv;
 };
 
@@ -85,6 +86,8 @@ typedef void ModemSMSServiceSendReply (ModemSMSService *self,
 
 /* ---------------------------------------------------------------------- */
 
+char const *modem_sms_service_property_name_by_ofono_name (char const *);
+
 gulong modem_sms_connect_to_connected (ModemSMSService *self,
   ModemSMSConnectedHandler *user_function,
   gpointer user_data);
@@ -92,13 +95,6 @@ gulong modem_sms_connect_to_connected (ModemSMSService *self,
 gulong modem_sms_connect_to_deliver (ModemSMSService *self,
   ModemSMSDeliverHandler *user_function,
   gpointer user_data);
-
-gboolean modem_sms_service_connect (ModemSMSService *self, char const *);
-void modem_sms_service_disconnect (ModemSMSService *self);
-
-GError *modem_sms_service_connection_error (ModemSMSService *self);
-gboolean modem_sms_service_is_connected (ModemSMSService const *self);
-gboolean modem_sms_service_is_connecting (ModemSMSService const *self);
 
 guint64 modem_sms_service_time_connected (ModemSMSService const *self);
 
