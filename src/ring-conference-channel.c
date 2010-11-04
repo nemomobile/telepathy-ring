@@ -1105,6 +1105,8 @@ ring_conference_channel_set_call_instance(RingMediaChannel *_self,
 {
   DEBUG("(%p, %p): enter", _self, ci);
 
+#if XXX
+
   RingConferenceChannel *self = RING_CONFERENCE_CHANNEL(_self);
   RingConferenceChannelPrivate *priv = self->priv;
 
@@ -1136,6 +1138,7 @@ ring_conference_channel_set_call_instance(RingMediaChannel *_self,
 
     priv->cc = NULL;
   }
+#endif
 }
 
 static gboolean

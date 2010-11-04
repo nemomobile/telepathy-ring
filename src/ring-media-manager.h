@@ -64,12 +64,6 @@ GType ring_media_manager_get_type(void);
 #define RING_MEDIA_MANAGER_GET_CLASS(obj) (G_TYPE_INSTANCE_GET_CLASS((obj), \
       RING_TYPE_MEDIA_MANAGER, RingMediaManagerClass))
 
-gboolean ring_media_manager_start_connecting(RingMediaManager *,
-  char const *modem_path,
-  GError **return_error);
-
-TpConnectionStatus ring_media_manager_get_status(RingMediaManager *);
-
 RingMediaChannel *ring_media_manager_lookup(RingMediaManager *self,
   char const *object_path);
 

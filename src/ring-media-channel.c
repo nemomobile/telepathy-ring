@@ -324,10 +324,10 @@ ring_media_channel_get_property(GObject *obj,
       g_value_set_object(value, self->connection);
       break;
     case PROP_CALL_SERVICE:
-      g_value_set_object(value, self->call_service);
+      g_value_set_pointer(value, self->call_service);
       break;
     case PROP_CALL_INSTANCE:
-      g_value_set_object(value, self->call_instance);
+      g_value_set_pointer(value, self->call_instance);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID(obj, property_id, pspec);
@@ -375,11 +375,14 @@ ring_media_channel_set_property(GObject *obj,
       self->connection = g_value_get_object(value);
       break;
     case PROP_CALL_SERVICE:
-      self->call_service = g_value_get_object(value);
+      if (self->call_service)
+        g_object_unref (self->call_service);
+      self->call_service = g_value_get_pointer (value);
+      if (self->call_service)
+        g_object_ref (MODEM_CALL_SERVICE (self->call_service));
       break;
     case PROP_CALL_INSTANCE:
-      ring_media_channel_set_call_instance(
-        self, g_value_get_object(value));
+      ring_media_channel_set_call_instance (self, g_value_get_pointer (value));
       break;
     case PROP_TONES:
       /* media manager owns tones as well as a reference to this channel */
@@ -549,25 +552,24 @@ ring_media_channel_class_init(RingMediaChannelClass *klass)
       G_PARAM_READABLE |
       G_PARAM_STATIC_STRINGS));
 
-  g_object_class_install_property(
-    object_class, PROP_CALL_SERVICE,
-    g_param_spec_object("call-service",
-      "ModemCallService Object",
-      "ModemCallService for this channel",
-      MODEM_TYPE_CALL_SERVICE,
-      G_PARAM_READWRITE |
-      G_PARAM_CONSTRUCT_ONLY |
-      G_PARAM_STATIC_STRINGS));
+  g_object_class_install_property (object_class,
+      PROP_CALL_SERVICE,
+      g_param_spec_pointer ("call-service",
+          "ModemCallService Object",
+          "ModemCallService for this channel",
+          /* MODEM_TYPE_CALL_SERVICE, */
+          G_PARAM_READWRITE |
+          G_PARAM_CONSTRUCT_ONLY |
+          G_PARAM_STATIC_STRINGS));
 
-  g_object_class_install_property(
-    object_class, PROP_CALL_INSTANCE,
-    g_param_spec_object("call-instance",
-      "ModemCall Object",
-      "ModemCall instance for this channel",
-      MODEM_TYPE_CALL,
-      G_PARAM_READWRITE |
-      G_PARAM_CONSTRUCT |
-      G_PARAM_STATIC_STRINGS));
+  g_object_class_install_property (object_class,
+      PROP_CALL_INSTANCE,
+      g_param_spec_pointer ("call-instance",
+          "ModemCall Object",
+          "ModemCall instance for this channel",
+          /* MODEM_TYPE_CALL, */
+          G_PARAM_READWRITE |
+          G_PARAM_STATIC_STRINGS));
 
   g_object_class_install_property(
     object_class, PROP_TONES,
@@ -696,7 +698,7 @@ ring_media_channel_close(RingMediaChannel *self)
   RingMediaChannelClass *cls = RING_MEDIA_CHANNEL_GET_CLASS(self);
   gboolean ready = TRUE;
 
-  if (priv->closed)
+  if (priv->closed || priv->closing)
     return;
   priv->closing = TRUE;
 
@@ -1690,7 +1692,7 @@ void request_hold(TpSvcChannelInterfaceHold *iface,
       modem_call_get_state_name(priv->state));
   }
   else {
-    g_object_ref(self);
+    g_object_ref (self);
     priv->hold.requested = hold;
     priv->control = modem_call_request_hold(instance, hold, response_to_hold, self);
     ring_media_channel_queue_request(self, priv->control);
@@ -2042,16 +2044,17 @@ ring_media_channel_send_dialstring(RingMediaChannel *self,
 /* Signals from ModemCall */
 
 static void
-ring_media_channel_set_call_instance(RingMediaChannel *self,
-  ModemCall *ci)
+ring_media_channel_set_call_instance (RingMediaChannel *self,
+                                      ModemCall *ci)
 {
   RingMediaChannelPrivate *priv = self->priv;
+  ModemCall *old = self->call_instance;
 
-  if (ci == self->call_instance)
+  if (ci == old)
     return;
 
   if (ci) {
-    modem_call_set_handler(self->call_instance = ci, self);
+    modem_call_set_handler(self->call_instance = MODEM_CALL (ci), self);
 
 #define CONNECT(n, f)                                           \
     g_signal_connect(ci, n, G_CALLBACK(on_modem_call_ ## f), self)
@@ -2082,7 +2085,12 @@ ring_media_channel_set_call_instance(RingMediaChannel *self,
   }
 
   RING_MEDIA_CHANNEL_GET_CLASS(self)->set_call_instance(self, ci);
+
+  if (old)
+    g_object_unref (old);
   self->call_instance = ci;
+  if (ci)
+    g_object_ref (ci);
 
   if (ci == NULL && !priv->playing)
     ring_media_channel_close(self);
@@ -2313,6 +2321,10 @@ ring_media_channel_play_tone(RingMediaChannel *self,
   RingMediaChannelPrivate *priv = self->priv;
 
   if (priv->closing)
+    return;
+
+  if (1)
+    /* XXX - no tones so far */
     return;
 
   if ((tone >= 0 && !modem_tones_is_playing(priv->tones, 0))

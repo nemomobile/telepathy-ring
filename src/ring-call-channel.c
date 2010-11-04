@@ -953,9 +953,10 @@ ring_call_channel_create_streams(RingMediaChannel *_self,
     return FALSE;
   }
 
-  if (!modem_call_service_is_connected(self->base.call_service)) {
+  if (self->base.call_service == NULL ||
+      !modem_oface_is_connected (MODEM_OFACE (self->base.call_service))) {
     g_set_error(error, TP_ERRORS, TP_ERROR_DISCONNECTED,
-      "not connected to call service");
+        "not connected to call service");
     return FALSE;
   }
 
