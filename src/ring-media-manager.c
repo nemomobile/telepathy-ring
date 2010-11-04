@@ -495,7 +495,7 @@ ring_media_manager_add_capabilities(RingMediaManager *self,
           TP_CONNECTION_CAPABILITY_FLAG_INVITE,
           RING_MEDIA_CHANNEL_CAPABILITY_FLAGS));
   }
-  else if (modem_call_is_valid_address(id) && !strchr(id, 'w')) {
+  else if (modem_call_is_valid_address (id)) {
     g_ptr_array_add(returns,
       ring_contact_capability_new(handle,
         TP_IFACE_CHANNEL_TYPE_STREAMED_MEDIA,
