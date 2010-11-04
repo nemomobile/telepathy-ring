@@ -45,7 +45,7 @@
 
 /* ------------------------------------------------------------------------ */
 
-G_DEFINE_TYPE (ModemSIMService, modem_sim_service, G_TYPE_OBJECT);
+G_DEFINE_TYPE (ModemSIMService, modem_sim_service, MODEM_TYPE_OFACE);
 
 /* Signals we send */
 enum
@@ -61,7 +61,6 @@ static guint signals[N_SIGNALS] = {0};
 enum
 {
   PROP_NONE,
-  PROP_OBJECT_PATH,
   PROP_STATUS,
   PROP_IMSI,
   LAST_PROPERTY
@@ -72,11 +71,8 @@ struct _ModemSIMServicePrivate
 {
   guint state;
   char *imsi;
-  char *object_path;
 
   GQueue queue[1];
-
-  DBusGProxy *proxy;
 
   unsigned dispose_has_run:1, connected:1, signals:1, disconnected:1;
   unsigned connection_error:1;
@@ -85,11 +81,6 @@ struct _ModemSIMServicePrivate
 
 /* ------------------------------------------------------------------------ */
 /* Local functions */
-
-static void on_sim_property_changed (DBusGProxy *,
-    char const *, GValue const *, gpointer);
-
-static ModemOfonoPropsReply reply_to_sim_get_properties;
 
 /* ------------------------------------------------------------------------ */
 
@@ -113,10 +104,6 @@ modem_sim_service_get_property (GObject *object,
 
   switch (property_id)
     {
-    case PROP_OBJECT_PATH:
-      g_value_set_string (value, priv->object_path);
-      break;
-
     case PROP_STATUS:
       g_value_set_uint (value, priv->state);
       break;
@@ -143,10 +130,6 @@ modem_sim_service_set_property (GObject *object,
 
   switch (property_id)
     {
-    case PROP_OBJECT_PATH:
-      priv->object_path = g_value_dup_string (value);
-      break;
-
     case PROP_STATUS:
       priv->state = g_value_get_uint (value);
       break;
@@ -166,10 +149,11 @@ modem_sim_service_set_property (GObject *object,
 static void
 modem_sim_service_constructed (GObject *object)
 {
-  ModemSIMService *self = MODEM_SIM_SERVICE (object);
-  ModemSIMServicePrivate *priv = self->priv;
+  if (G_OBJECT_CLASS (modem_sim_service_parent_class)->constructed)
+    G_OBJECT_CLASS (modem_sim_service_parent_class)->constructed (object);
 
-  priv->proxy = modem_ofono_proxy (priv->object_path, OFONO_IFACE_SIM);
+  if (modem_oface_dbus_proxy (MODEM_OFACE (object)) == NULL)
+	  g_warning("object created without dbus-proxy set");
 }
 
 static void
@@ -190,8 +174,6 @@ modem_sim_service_dispose (GObject *object)
   while (!g_queue_is_empty (priv->queue))
     modem_request_cancel (g_queue_pop_head (priv->queue));
 
-  g_object_run_dispose (G_OBJECT (priv->proxy));
-
   if (G_OBJECT_CLASS (modem_sim_service_parent_class)->dispose)
     G_OBJECT_CLASS (modem_sim_service_parent_class)->dispose (object);
 }
@@ -206,17 +188,68 @@ modem_sim_service_finalize (GObject *object)
 
   /* Free any data held directly by the object here */
   g_free (priv->imsi);
-  g_free (priv->object_path);
-  g_object_unref (priv->proxy);
 
   G_OBJECT_CLASS (modem_sim_service_parent_class)->finalize (object);
 }
 
+/* ------------------------------------------------------------------------- */
+/* ModemOface interface */
+
+static char const *
+modem_sim_service_property_mapper (char const *name)
+{
+  if (!strcmp (name, "SubscriberIdentity"))
+    return "imsi";
+  if (!strcmp(name, "Present"))
+      return NULL;
+  if (!strcmp (name, "CardIdentifier"))
+    return NULL;
+  if (!strcmp (name, "MobileCountryCode"))
+    return NULL;
+  if (!strcmp (name, "MobileNetworkCode"))
+    return NULL;
+  if (!strcmp (name, "SubscriberNumbers"))
+    return NULL;
+  if (!strcmp (name, "ServiceNumbers"))
+    return NULL;
+  if (!strcmp (name, "PinRequired"))
+    return NULL;
+  if (!strcmp (name, "LockedPins"))
+    return NULL;
+  if (!strcmp (name, "FixedDialing"))
+    return NULL;
+  if (!strcmp (name, "BarredDialing"))
+    return NULL;
+  return NULL;
+}
+
+static void
+modem_sim_service_connect (ModemOface *_self)
+{
+  DEBUG ("(%p): enter", _self);
+
+  modem_oface_connect_properties (_self, TRUE);
+}
+
+static void
+modem_sim_service_connected (ModemOface *_self)
+{
+  DEBUG ("(%p): enter", _self);
+}
+
+static void
+modem_sim_service_disconnect (ModemOface *_self)
+{
+  DEBUG ("(%p): enter", _self);
+
+  modem_oface_disconnect_properties (_self);
+}
 
 static void
 modem_sim_service_class_init (ModemSIMServiceClass *klass)
 {
   GObjectClass *object_class = G_OBJECT_CLASS (klass);
+  ModemOfaceClass *oface_class = MODEM_OFACE_CLASS (klass);
 
   DEBUG ("enter");
 
@@ -226,14 +259,12 @@ modem_sim_service_class_init (ModemSIMServiceClass *klass)
   object_class->dispose = modem_sim_service_dispose;
   object_class->finalize = modem_sim_service_finalize;
 
-  g_object_class_install_property (object_class, PROP_OBJECT_PATH,
-      g_param_spec_string ("object-path",
-          "Modem object path",
-          "D-Bus object path used to identify the modem",
-          "/", /* default value */
-          G_PARAM_READWRITE | G_PARAM_CONSTRUCT_ONLY |
-          G_PARAM_STATIC_STRINGS));
+  oface_class->property_mapper = modem_sim_service_property_mapper;
+  oface_class->connect = modem_sim_service_connect;
+  oface_class->connected = modem_sim_service_connected;
+  oface_class->disconnect = modem_sim_service_disconnect;
 
+  /* Properties */
   g_object_class_install_property (object_class, PROP_STATUS,
       g_param_spec_uint ("state",
           "SIM Status",
@@ -252,15 +283,6 @@ modem_sim_service_class_init (ModemSIMServiceClass *klass)
           G_PARAM_READWRITE | G_PARAM_CONSTRUCT |
           G_PARAM_STATIC_STRINGS));
 
-  signals[SIGNAL_CONNECTED] =
-    g_signal_new ("connected",
-        G_OBJECT_CLASS_TYPE (klass),
-        G_SIGNAL_RUN_LAST | G_SIGNAL_DETAILED,
-        0,
-        NULL, NULL,
-        g_cclosure_marshal_VOID__VOID,
-        G_TYPE_NONE, 0);
-
   signals[SIGNAL_STATUS] =
     g_signal_new ("state",
         G_OBJECT_CLASS_TYPE (klass),
@@ -276,168 +298,11 @@ modem_sim_service_class_init (ModemSIMServiceClass *klass)
   modem_error_domain_prefix (0); /* Init errors */
 }
 
-
-/* -------------------------------------------------------------------------- */
-/* modem_sim_service interface */
-
-/* Connect to SIM service */
-gboolean
-modem_sim_service_connect (ModemSIMService *self)
-{
-  ModemSIMServicePrivate *priv = self->priv;
-
-  DEBUG ("enter");
-
-  if (self->priv->connected)
-    {
-      DEBUG ("already connected");
-      return TRUE;
-    }
-
-  if (self->priv->disconnected)
-    {
-      DEBUG ("already disconnected");
-      return TRUE;
-    }
-
-  modem_ofono_proxy_connect_to_property_changed (priv->proxy,
-      on_sim_property_changed, self);
-
-  priv->signals = TRUE;
-  priv->connection_error = FALSE;
-
-  g_queue_push_tail (priv->queue,
-      modem_ofono_proxy_request_properties (priv->proxy,
-          reply_to_sim_get_properties, self, NULL));
-
-  DEBUG ("connecting");
-
-  return TRUE;
-}
-
-
-static void
-modem_sim_check_connected (ModemSIMService *self,
-                           ModemRequest *request,
-                           GError const **error)
-{
-  ModemSIMServicePrivate *priv = self->priv;
-
-  if (g_queue_find (priv->queue, request))
-    {
-      g_queue_remove (priv->queue, request);
-
-      if (*error)
-        {
-          GError const *e = *error;
-
-          modem_critical (MODEM_SERVICE_SIM, GERROR_MSG_FMT,
-              GERROR_MSG_CODE (e));
-
-          /* We are 'connected' even if the SIM is not ready */
-          if (e->domain == DBUS_GERROR &&
-              e->code != DBUS_GERROR_REMOTE_EXCEPTION)
-            priv->connection_error = TRUE;
-        }
-
-      if (g_queue_is_empty (priv->queue))
-        {
-          DEBUG ("got connected (error = %d), emitting",
-              priv->connection_error);
-          self->priv->connected = TRUE;
-          g_signal_emit (self, signals[SIGNAL_CONNECTED], 0);
-        }
-    }
-}
-
-gboolean
-modem_sim_service_is_connected (ModemSIMService *self)
-{
-  return MODEM_IS_SIM_SERVICE (self) && self->priv->connected &&
-    !self->priv->connection_error;
-}
-
-gboolean
-modem_sim_service_is_connecting (ModemSIMService *self)
-{
-  return MODEM_IS_SIM_SERVICE (self) &&
-    !g_queue_is_empty (self->priv->queue);
-}
-
-void
-modem_sim_service_disconnect (ModemSIMService *self)
-{
-  ModemSIMServicePrivate *priv = self->priv;
-  int was_connected = priv->connected;
-
-  if (priv->disconnected)
-    return;
-
-  DEBUG ("enter");
-
-  priv->disconnected = TRUE;
-  priv->connected = FALSE;
-
-  g_object_set (self, "state", MODEM_SIM_STATE_UNKNOWN, NULL);
-
-  if (priv->signals)
-    {
-      priv->signals = FALSE;
-      modem_ofono_proxy_disconnect_from_property_changed (priv->proxy,
-          on_sim_property_changed, self);
-    }
-
-  while (!g_queue_is_empty (priv->queue))
-    modem_request_cancel (g_queue_pop_head (priv->queue));
-
-  if (was_connected)
-    g_signal_emit (self, signals[SIGNAL_CONNECTED], 0);
-}
-
-/* ---------------------------------------------------------------------- */
-
-static void
-reply_to_sim_get_properties (gpointer _self,
-                             ModemRequest *request,
-                             GHashTable *properties,
-                             GError const *error,
-                             gpointer user_data)
-{
-  ModemSIMService *self = MODEM_SIM_SERVICE (_self);
-
-  DEBUG ("enter");
-
-  if (!error)
-    {
-      GValue *value;
-
-      value = g_hash_table_lookup (properties, "SubscriberIdentity");
-      if (value)
-        g_object_set_property (G_OBJECT (self), "imsi", value);
-    }
-
-  modem_sim_check_connected (self, request, &error);
-}
-
-static void
-on_sim_property_changed (DBusGProxy *proxy,
-                         char const *property,
-                         GValue const *value,
-                         gpointer _self)
-{
-  ModemSIMService *self = MODEM_SIM_SERVICE (_self);
-
-  if (!strcmp (property, "SubscriberIdentity"))
-    g_object_set_property (G_OBJECT (self), "imsi", value);
-}
-
 ModemSIMState
 modem_sim_get_state (ModemSIMService const *self)
 {
   return MODEM_IS_SIM_SERVICE (self) ? self->priv->state : 0;
 }
-
-/* ---------------------------------------------------------------------- */
 
 char const *
 modem_sim_get_imsi (ModemSIMService const *self)

@@ -24,6 +24,7 @@
 
 #include <glib-object.h>
 #include <modem/request.h>
+#include <modem/oface.h>
 
 G_BEGIN_DECLS
 
@@ -34,12 +35,12 @@ typedef enum _ModemSIMState ModemSIMState;
 
 struct _ModemSIMServiceClass
 {
-  GObjectClass parent_class;
+  ModemOfaceClass parent_class;
 };
 
 struct _ModemSIMService
 {
-  GObject parent;
+  ModemOface parent;
   ModemSIMServicePrivate *priv;
 };
 
@@ -78,11 +79,6 @@ enum _ModemSIMState
 };
 
 /* ---------------------------------------------------------------------- */
-
-gboolean modem_sim_service_connect (ModemSIMService *self);
-gboolean modem_sim_service_is_connected (ModemSIMService *self);
-gboolean modem_sim_service_is_connecting (ModemSIMService *self);
-void modem_sim_service_disconnect (ModemSIMService *self);
 
 typedef void ModemSIMStringReply (ModemSIMService *self,
     ModemRequest *request,
