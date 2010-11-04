@@ -376,7 +376,7 @@ ring_text_channel_get_property(GObject *object,
       ring_text_channel_set_target_match(value, priv->destination, priv->sms_flash);
       break;
     case PROP_SMS_SERVICE:
-      g_value_set_object (value, priv->sms_service);
+      g_value_set_pointer (value, priv->sms_service);
       break;
     case PROP_CONNECTION:
       g_value_set_object (value, priv->connection);
@@ -426,11 +426,18 @@ ring_text_channel_set_property(GObject *object,
       break;
 
     case PROP_SMS_SERVICE:
-      priv->sms_service = g_value_get_object (value);
+      if (priv->sms_service)
+        g_object_unref (priv->sms_service);
+      priv->sms_service = g_value_get_pointer (value);
+      if (priv->sms_service)
+        g_object_ref (priv->sms_service);
       break;
+
     case PROP_CONNECTION:
+      /* Connection owns channel object, no reference needed */
       priv->connection = g_value_get_object (value);
       break;
+
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
       break;
@@ -543,14 +550,8 @@ ring_text_channel_class_init(RingTextChannelClass *klass)
 
   g_object_class_install_property(
     object_class, PROP_CONNECTION, ring_param_spec_connection());
-  g_object_class_install_property(
-    object_class, PROP_SMS_SERVICE,
-    g_param_spec_object("sms-service",
-      "SMS Service",
-      "Modem SMS Service Object",
-      MODEM_TYPE_SMS_SERVICE,
-      G_PARAM_READWRITE | G_PARAM_CONSTRUCT_ONLY |
-      G_PARAM_STATIC_STRINGS));
+  g_object_class_install_property (object_class,
+      PROP_SMS_SERVICE, ring_param_spec_sms_service (0));
 
   klass->dbus_properties_class.interfaces =
     ring_text_channel_dbus_property_interfaces;

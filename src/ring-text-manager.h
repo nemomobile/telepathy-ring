@@ -57,11 +57,6 @@ GType ring_text_manager_get_type(void);
 #define RING_TEXT_MANAGER_GET_CLASS(obj) (G_TYPE_INSTANCE_GET_CLASS(    \
   (obj), RING_TYPE_TEXT_MANAGER, RingTextManagerClass))
 
-gboolean ring_text_manager_start_connecting(RingTextManager *,
-  char const *, GError **);
-
-TpConnectionStatus ring_text_manager_get_status(RingTextManager *);
-
 gpointer ring_text_manager_lookup(RingTextManager *self,
   char const *object_path);
 
