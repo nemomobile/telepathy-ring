@@ -99,6 +99,8 @@ tcase_for_modem_call_address_validator(void)
   return tc;
 }
 
+#if XXX
+
 /* Speaking Clock in NTN */
 char const *destination = /*"+3584544"*/ "99901";
 
@@ -414,16 +416,20 @@ START_TEST(modem_call_internal)
 }
 END_TEST
 
+#endif
+
 static TCase *
 tcase_for_modem_call_service(void)
 {
   TCase *tc = tcase_create("Test for ModemCallService");
 
+#if XXX
   tcase_add_checked_fixture(tc, setup, teardown);
 
   tcase_add_test(tc, modem_call_api);
   tcase_add_test(tc, modem_call_api2);
   tcase_add_test(tc, modem_call_internal);
+#endif
 
   tcase_set_timeout(tc, 60);
   return tc;
