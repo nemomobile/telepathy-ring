@@ -47,6 +47,10 @@ GParamSpec *ring_param_spec_type_specific_capability_flags(guint flags,
 
 GParamSpec *ring_param_spec_anon_modes(void);
 
+GParamSpec *ring_param_spec_service (char const *name, guint flags);
+
+GParamSpec *ring_param_spec_sms_service (guint flags);
+
 G_END_DECLS
 
 #endif /* #ifndef __RING_PARAM_SPEC_H__*/
