@@ -26,7 +26,7 @@
 
 G_BEGIN_DECLS
 
-GParamSpec *ring_param_spec_imsi(void);
+GParamSpec *ring_param_spec_imsi (guint flags);
 GParamSpec *ring_param_spec_sms_valid(void);
 GParamSpec *ring_param_spec_smsc(void);
 GParamSpec *ring_param_spec_sms_reduced_charset(void);

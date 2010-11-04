@@ -23,14 +23,14 @@
 #include "ring-param-spec.h"
 #include "ring-connection.h"
 
-GParamSpec *ring_param_spec_imsi(void)
+GParamSpec *ring_param_spec_imsi(guint flags)
 {
   return
     g_param_spec_string("imsi",
       "IMSI",
       "Internation Mobile Subscriber Identifer",
       "", /* default value */
-      G_PARAM_READABLE | G_PARAM_STATIC_STRINGS);
+      flags | G_PARAM_READABLE | G_PARAM_STATIC_STRINGS);
 }
 
 GParamSpec *ring_param_spec_sms_valid(void)

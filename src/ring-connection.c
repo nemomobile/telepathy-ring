@@ -393,8 +393,8 @@ ring_connection_class_init(RingConnectionClass *ring_connection_class)
   object_class->set_property = ring_connection_set_property;
   object_class->get_property = ring_connection_get_property;
 
-  g_object_class_install_property(
-    object_class, PROP_IMSI, ring_param_spec_imsi());
+  g_object_class_install_property (object_class,
+      PROP_IMSI, ring_param_spec_imsi (G_PARAM_WRITABLE));
 
   g_object_class_install_property(
     object_class, PROP_SMSC, ring_param_spec_smsc());
