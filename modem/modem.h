@@ -1,7 +1,7 @@
 /*
  * modem/modem.h - Interface towards oFono modem instance
  *
- * Copyright (C) 2009 Nokia Corporation
+ * Copyright (C) 2009,2010 Nokia Corporation
  *   @author Pekka Pessi <first.surname@nokia.com>
  *
  * This work is free software; you can redistribute it and/or
@@ -24,6 +24,7 @@
 
 #include <glib-object.h>
 #include <modem/request.h>
+#include <modem/oface.h>
 
 G_BEGIN_DECLS
 
@@ -32,11 +33,11 @@ typedef struct _ModemClass ModemClass;
 typedef struct _ModemPrivate ModemPrivate;
 
 struct _ModemClass {
-  GObjectClass parent_class;
+  ModemOfaceClass parent_class;
 };
 
 struct _Modem {
-  GObject parent;
+  ModemOface parent;
   ModemPrivate *priv;
 };
 
@@ -57,16 +58,21 @@ GType modem_get_type (void);
 
 /* ---------------------------------------------------------------------- */
 
-char const *modem_property_name_by_ofono_name (char const *name);
-
 char const *modem_get_modem_path (Modem const *self);
 
 gboolean modem_is_powered (Modem const *self);
 gboolean modem_is_online (Modem const *self);
 gboolean modem_has_interface (Modem const *self, char const *interface);
+
+ModemOface **modem_list_interfaces (Modem const *self);
+
 gboolean modem_supports_sim (Modem const *self);
 gboolean modem_supports_call (Modem const *self);
 gboolean modem_supports_sms (Modem const *self);
+
+gboolean modem_has_imsi (Modem const *self, gchar const *imsi);
+
+gboolean modem_has_imei (Modem const *self, gchar const *imei);
 
 G_END_DECLS
 
