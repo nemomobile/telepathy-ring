@@ -39,7 +39,7 @@ RingEmergencyService *ring_emergency_service_new(char const *service);
 void ring_emergency_service_free(RingEmergencyService *service);
 
 RingEmergencyServiceInfo *ring_emergency_service_info_new(char const *service,
-  char const * const *aliases);
+  char * const *aliases);
 
 void ring_emergency_service_info_free(RingEmergencyServiceInfo *service);
 
@@ -49,7 +49,7 @@ RingEmergencyServiceInfoList *ring_emergency_service_info_list_new(
 void ring_emergency_service_info_list_free(RingEmergencyServiceInfoList *);
 
 RingEmergencyServiceInfoList *ring_emergency_service_info_list_default(
-  char const * const *numbers);
+  char * const *numbers);
 
 G_END_DECLS
 

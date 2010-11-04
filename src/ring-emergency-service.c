@@ -65,7 +65,7 @@ ring_emergency_service_free(RingEmergencyService *service)
 /* Return a pointer to a boxed service struct */
 RingEmergencyServiceInfo *
 ring_emergency_service_info_new(char const *service,
-  char const * const *aliases)
+  char * const *aliases)
 {
   RingEmergencyService *es;
   GValue value[1] = {{ 0 }};
@@ -117,10 +117,11 @@ ring_emergency_service_info_list_free(RingEmergencyServiceInfoList *list)
 }
 
 RingEmergencyServiceInfoList *
-ring_emergency_service_info_list_default(char const * const * numbers)
+ring_emergency_service_info_list_default (char * const *numbers)
 {
-  return ring_emergency_service_info_list_new(
-    ring_emergency_service_info_new(RING_EMERGENCY_SERVICE_URN,
-      numbers),
-    NULL);
+  RingEmergencyServiceInfo *base;
+
+  base = ring_emergency_service_info_new(RING_EMERGENCY_SERVICE_URN, numbers);
+
+  return ring_emergency_service_info_list_new(base, NULL);
 }
