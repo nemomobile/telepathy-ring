@@ -35,7 +35,7 @@ modemdir = ${includemodemdir}/modem
 modem_HEADERS = request.h errors.h
 
 libmodem_glib_la_SOURCES = request.c request-private.h \
-	ofono.h ofono.c errors.c \
+	ofono.h ofono.c errors.c oface.h oface.c \
 	service.c service.h modem.c modem.h \
 	debug.h debug.c
 
