@@ -53,32 +53,14 @@ G_BEGIN_DECLS
 #define MODEM_TYPE_DBUS_DICT modem_type_dbus_dict ()
 #define MODEM_TYPE_ARRAY_OF_PATHS modem_type_dbus_ao ()
 
-/* D-Bus type a{oa{sv}} for oFono path-property list */
-#define MODEM_TYPE_DBUS_DESC_ARRAY modem_type_dbus_desc_array ()
-
-/* ---------------------------------------------------------------------- */
-
-typedef void ModemOfonoPropChangedCb (DBusGProxy *proxy,
-    char const *property,
-    GValue const *value, gpointer user_data);
-
-typedef void ModemOfonoPropsReply (gpointer object,
-    ModemRequest *request, GHashTable *properties,
-    GError const *error, gpointer user_data);
-
-typedef void ModemOfonoVoidReply (gpointer object,
-    ModemRequest *request,
-    GError const *error, gpointer user_data);
-
-typedef void ModemOfonoGetDescsReply (gpointer object,
-    ModemRequest *request, GPtrArray *descs,
-    GError const *error, gpointer user_data);
+/* D-Bus type a{oa{sv}} for oFono managed object list */
+#define MODEM_TYPE_DBUS_MANAGED_ARRAY modem_type_dbus_managed_array ()
 
 /* ---------------------------------------------------------------------- */
 
 GType modem_type_dbus_dict (void);
 GType modem_type_dbus_ao (void);
-GType modem_type_dbus_desc_array (void);
+GType modem_type_dbus_managed_array (void);
 GQuark modem_ofono_iface_quark_sim (void);
 GQuark modem_ofono_iface_quark_call_manager (void);
 GQuark modem_ofono_iface_quark_sms (void);
@@ -86,28 +68,7 @@ void modem_ofono_init_quarks (void);
 
 DBusGProxy *modem_ofono_proxy (char const *object_path, char const *interface);
 
-ModemRequest *modem_ofono_proxy_set_property (DBusGProxy *proxy,
-  char const *property, GValue *value,
-  ModemOfonoVoidReply *callback,
-  gpointer object, gpointer user_data);
-
-ModemRequest *modem_ofono_proxy_request_properties (DBusGProxy *proxy,
-    ModemOfonoPropsReply *callback,
-    gpointer object, gpointer user_data);
-
-void modem_ofono_proxy_connect_to_property_changed (DBusGProxy *proxy,
-    ModemOfonoPropChangedCb callback,
-    gpointer user_data);
-
-void modem_ofono_proxy_disconnect_from_property_changed (DBusGProxy *proxy,
-    ModemOfonoPropChangedCb callback,
-    gpointer user_data);
-
-ModemRequest *modem_ofono_request_descs (gpointer object,
-    DBusGProxy *proxy, char const *method,
-    ModemOfonoGetDescsReply *callback, gpointer user_dat);
-
-void modem_ofono_debug_desc (char const *name,
+void modem_ofono_debug_managed (char const *name,
     char const *object_path,
     GHashTable *properties);
 
