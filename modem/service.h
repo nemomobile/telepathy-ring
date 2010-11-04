@@ -24,6 +24,7 @@
 
 #include <glib-object.h>
 
+#include <modem/oface.h>
 #include <modem/modem.h>
 
 G_BEGIN_DECLS
@@ -33,11 +34,11 @@ typedef struct _ModemServiceClass ModemServiceClass;
 typedef struct _ModemServicePrivate ModemServicePrivate;
 
 struct _ModemServiceClass {
-  GObjectClass parent_class;
+  ModemOfaceClass parent_class;
 };
 
 struct _ModemService {
-  GObject parent;
+  ModemOface parent;
   ModemServicePrivate *priv;
 };
 
@@ -67,9 +68,13 @@ GType modem_service_get_type(void);
 
 ModemService *modem_service(void);
 
-void modem_service_refresh(ModemService *self);
+void modem_service_refresh (ModemService *self);
 
-Modem *modem_service_find_modem(ModemService *self, char const *object_path);
+Modem *modem_service_find_by_imsi (ModemService *self, char const *imsi);
+Modem *modem_service_find_by_imei (ModemService *self, char const *imei);
+Modem *modem_service_find_by_path (ModemService *self, char const *path);
+Modem *modem_service_find_best (ModemService *self);
+
 Modem **modem_service_get_modems(ModemService *self);
 
 G_END_DECLS

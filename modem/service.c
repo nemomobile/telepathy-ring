@@ -25,10 +25,15 @@
 
 #include "debug.h"
 
+#include "modem/oface.h"
 #include "modem/service.h"
 #include "modem/request-private.h"
 #include "modem/ofono.h"
 #include "modem/errors.h"
+#include "modem/modem.h"
+#include "modem/sim.h"
+#include "modem/call.h"
+#include "modem/sms.h"
 
 #include <dbus/dbus-glib.h>
 #include <dbus/dbus.h>
@@ -49,11 +54,14 @@
 
 /* ------------------------------------------------------------------------ */
 
-G_DEFINE_TYPE(ModemService, modem_service, G_TYPE_OBJECT);
+G_DEFINE_TYPE(ModemService, modem_service, MODEM_TYPE_OFACE);
 
 enum {
   SIGNAL_MODEM_ADDED,
+  SIGNAL_MODEM_POWERED,
   SIGNAL_MODEM_REMOVED,
+  SIGNAL_IMEI_ADDED,
+  SIGNAL_IMSI_ADDED,
   N_SIGNALS
 };
 
@@ -61,22 +69,21 @@ static guint signals[N_SIGNALS] = {0};
 
 struct _ModemServicePrivate
 {
-  ModemRequest *refresh;
-
-  DBusGProxy *proxy;
-
   GHashTable *modems;
 
-  unsigned dispose_has_run:1, signals:1, subscribed:1;
+  unsigned signals:1, subscribed:1;
   unsigned :0;
 };
 
 /* ------------------------------------------------------------------------ */
 /* Local functions */
 
-static void reply_to_get_modems (gpointer _self, ModemRequest *request,
+static void reply_to_get_modems (ModemOface *_self, ModemRequest *request,
     GPtrArray *modems, GError const *error, gpointer user_data);
 static void on_modem_added (DBusGProxy *, char const *, GHashTable *, gpointer);
+static void on_modem_notify_imei (Modem *, GParamSpec *, ModemService *);
+static void on_modem_notify_powered (Modem *, GParamSpec *, ModemService *);
+static void on_modem_imsi_added (Modem *, char const *imsi, ModemService *);
 static void on_modem_removed (DBusGProxy *, char const *, gpointer);
 
 /* ------------------------------------------------------------------------ */
@@ -86,8 +93,8 @@ modem_service_init(ModemService *self)
 {
   DEBUG("enter");
 
-  self->priv = G_TYPE_INSTANCE_GET_PRIVATE(
-    self, MODEM_TYPE_SERVICE, ModemServicePrivate);
+  self->priv = G_TYPE_INSTANCE_GET_PRIVATE(self, MODEM_TYPE_SERVICE,
+      ModemServicePrivate);
 
   self->priv->modems = g_hash_table_new_full (g_str_hash, g_str_equal,
       g_free, g_object_unref);
@@ -96,34 +103,13 @@ modem_service_init(ModemService *self)
 static void
 modem_service_constructed(GObject *object)
 {
-  ModemService *self = MODEM_SERVICE(object);
-  ModemServicePrivate *priv = self->priv;
-
-  priv->proxy = modem_ofono_proxy("/", OFONO_IFACE_MANAGER);
-
-  if (!priv->proxy) {
-    g_error("Unable to proxy oFono");
-  }
+  if (G_OBJECT_CLASS(modem_service_parent_class)->constructed)
+    G_OBJECT_CLASS(modem_service_parent_class)->constructed(object);
 }
 
 static void
 modem_service_dispose(GObject *object)
 {
-  ModemService *self = MODEM_SERVICE(object);
-  ModemServicePrivate *priv = self->priv;
-
-  if (priv->dispose_has_run)
-    return;
-
-  priv->dispose_has_run = TRUE;
-  priv->signals = FALSE;
-
-  if (priv->refresh)
-    modem_request_cancel (priv->refresh);
-  priv->refresh = NULL;
-
-  g_object_run_dispose(G_OBJECT(priv->proxy));
-
   if (G_OBJECT_CLASS(modem_service_parent_class)->dispose)
     G_OBJECT_CLASS(modem_service_parent_class)->dispose(object);
 }
@@ -137,150 +123,65 @@ modem_service_finalize(GObject *object)
   DEBUG("enter");
 
   /* Free any data held directly by the object here */
-
-  g_object_unref (priv->proxy);
-
   g_hash_table_unref (priv->modems);
 
   G_OBJECT_CLASS(modem_service_parent_class)->finalize(object);
 }
 
+/* ------------------------------------------------------------------------- */
+/* ModemOface implementation */
+
 static void
-modem_service_class_init(ModemServiceClass *klass)
+reply_to_get_modems (ModemOface *_self,
+                     ModemRequest *request,
+                     GPtrArray *modem_list,
+                     GError const *error,
+                     gpointer user_data)
 {
-  GObjectClass *object_class = G_OBJECT_CLASS(klass);
+  DEBUG ("enter");
 
-  DEBUG("enter");
-
-  object_class->constructed = modem_service_constructed;
-  object_class->dispose = modem_service_dispose;
-  object_class->finalize = modem_service_finalize;
-
-  signals[SIGNAL_MODEM_ADDED] = g_signal_new ("modem-added",
-      G_OBJECT_CLASS_TYPE (klass),
-      G_SIGNAL_RUN_LAST | G_SIGNAL_DETAILED,
-      0,
-      NULL, NULL,
-      g_cclosure_marshal_VOID__OBJECT,
-      G_TYPE_NONE, 1, MODEM_TYPE_MODEM);
-
-  signals[SIGNAL_MODEM_REMOVED] = g_signal_new ("modem-removed",
-      G_OBJECT_CLASS_TYPE (klass),
-      G_SIGNAL_RUN_LAST | G_SIGNAL_DETAILED,
-      0,
-      NULL, NULL,
-      g_cclosure_marshal_VOID__OBJECT,
-      G_TYPE_NONE, 1, MODEM_TYPE_MODEM);
-
-  g_type_class_add_private(klass, sizeof (ModemServicePrivate));
-
-  dbus_g_object_register_marshaller (_modem__marshal_VOID__STRING_BOXED,
-      G_TYPE_NONE,
-      G_TYPE_STRING, G_TYPE_VALUE, G_TYPE_INVALID);
-
-  dbus_g_object_register_marshaller (_modem__marshal_VOID__BOXED_BOXED,
-      G_TYPE_NONE,
-      DBUS_TYPE_G_OBJECT_PATH, MODEM_TYPE_DBUS_DICT, G_TYPE_INVALID);
-
-  dbus_g_object_register_marshaller (_modem__marshal_VOID__BOXED,
-      G_TYPE_NONE,
-      DBUS_TYPE_G_OBJECT_PATH, G_TYPE_INVALID);
-
-  modem_error_domain_prefix (0); /* Init errors */
-
-  modem_ofono_init_quarks ();
-}
-
-/* ------------------------------------------------------------------------ */
-/* modem_service interface */
-
-ModemService *modem_service (void)
-{
-  static ModemService *service;
-
-  if (!service)
-    service = g_object_new (MODEM_TYPE_SERVICE, NULL);
-
-  return service;
-}
-
-Modem *modem_service_find_modem (ModemService *self, char const *object_path)
-{
-  ModemServicePrivate *priv;
-  char *key;
-  Modem *modem;
-  GHashTableIter iter[1];
-
-  g_return_val_if_fail (MODEM_IS_SERVICE (self), NULL);
-
-  priv = self->priv;
-
-  if (object_path)
-    return g_hash_table_lookup (priv->modems, object_path);
-
-  for (g_hash_table_iter_init (iter, priv->modems);
-       g_hash_table_iter_next (iter, (gpointer)&key, (gpointer)&modem);)
+  if (modem_list)
     {
-      if (modem_is_online (modem))
-        return modem;
+      guint i;
+
+      for (i = 0; i < modem_list->len; i++)
+        {
+          GValueArray *va = g_ptr_array_index (modem_list, i);
+          char const *path = g_value_get_boxed (va->values + 0);
+          GHashTable *properties = g_value_get_boxed (va->values + 1);
+
+          on_modem_added (NULL, path, properties, _self);
+        }
     }
 
-  for (g_hash_table_iter_init (iter, priv->modems);
-       g_hash_table_iter_next (iter, (gpointer)&key, (gpointer)&modem);)
-    {
-      if (modem_is_powered (modem))
-        return modem;
-    }
-
-  return NULL;
-}
-
-Modem **modem_service_get_modems(ModemService *self)
-{
-  ModemServicePrivate *priv = self->priv;
-  GPtrArray *array;
-  char *key;
-  Modem *modem;
-  GHashTableIter iter[1];
-
-  g_return_val_if_fail (MODEM_IS_SERVICE (self), NULL);
-
-  priv = self->priv;
-  array = g_ptr_array_sized_new (g_hash_table_size (priv->modems) + 1);
-
-  for (g_hash_table_iter_init (iter, priv->modems);
-       g_hash_table_iter_next (iter, (gpointer)&key, (gpointer)&modem);)
-    {
-      g_ptr_array_add(array, modem);
-    }
-
-  g_ptr_array_add (array, NULL);
-
-  return (Modem **)g_ptr_array_free (array, FALSE);
+  modem_oface_check_connected (_self, request, error);
 }
 
 void
-modem_service_refresh (ModemService *self)
+modem_service_connect (ModemOface *_self)
 {
+  ModemService *self = MODEM_SERVICE (_self);
   ModemServicePrivate *priv = self->priv;
 
   DEBUG("enter");
 
   if (!priv->signals)
     {
+      DBusGProxy *proxy = modem_oface_dbus_proxy (_self);
+
       priv->signals = TRUE;
 
-      dbus_g_proxy_add_signal (priv->proxy,
-          "ModemAdded", DBUS_TYPE_G_OBJECT_PATH, MODEM_TYPE_DBUS_DICT,
-          G_TYPE_INVALID);
-      dbus_g_proxy_connect_signal (priv->proxy,
-          "ModemAdded", G_CALLBACK (on_modem_added), self, NULL);
+#define CONNECT(p, handler, name, signature...) \
+    dbus_g_proxy_add_signal (p, (name), ##signature); \
+    dbus_g_proxy_connect_signal (p, (name), G_CALLBACK (handler), self, NULL)
 
-      dbus_g_proxy_add_signal (priv->proxy,
-          "ModemRemoved", DBUS_TYPE_G_OBJECT_PATH,
-          G_TYPE_INVALID);
-      dbus_g_proxy_connect_signal (priv->proxy,
-          "ModemRemoved", G_CALLBACK (on_modem_removed), self, NULL);
+      CONNECT (proxy, on_modem_added, "ModemAdded",
+          DBUS_TYPE_G_OBJECT_PATH, MODEM_TYPE_DBUS_DICT, G_TYPE_INVALID);
+
+      CONNECT (proxy, on_modem_removed, "ModemRemoved",
+          DBUS_TYPE_G_OBJECT_PATH, G_TYPE_INVALID);
+
+#undef CONNECT
     }
 
   if (!priv->subscribed)
@@ -344,43 +245,300 @@ modem_service_refresh (ModemService *self)
         }
     }
 
-  if (priv->refresh)
-    return;
-
-  priv->refresh = modem_ofono_request_descs (self,
-      priv->proxy, "GetModems",
-      reply_to_get_modems, NULL);
+  modem_oface_add_connect_request (_self,
+      modem_oface_request_managed (_self, "GetModems",
+          reply_to_get_modems, NULL));
 }
 
-static void
-reply_to_get_modems (gpointer _self,
-                     ModemRequest *request,
-                     GPtrArray *modem_list,
-                     GError const *error,
-                     gpointer user_data)
+void
+modem_service_disconnect (ModemOface *_self)
 {
   ModemService *self = MODEM_SERVICE (_self);
   ModemServicePrivate *priv = self->priv;
-  guint i;
 
-  DEBUG ("enter");
+  DEBUG("enter");
 
-  priv->refresh = NULL;
+  if (priv->signals)
+    {
+      DBusGProxy *proxy = modem_oface_dbus_proxy (_self);
 
-  if (error)
-    return;
+      priv->signals = FALSE;
 
-  for (i = 0; i < modem_list->len; i++) {
-    GValueArray *va = g_ptr_array_index (modem_list, i);
-    char const *path = g_value_get_boxed (va->values + 0);
-    GHashTable *properties = g_value_get_boxed (va->values + 1);
+      dbus_g_proxy_disconnect_signal (proxy, "ModemAdded",
+          G_CALLBACK (on_modem_added), self);
+      dbus_g_proxy_disconnect_signal (proxy, "ModemRemoved",
+          G_CALLBACK (on_modem_removed), self);
+    }
 
-    on_modem_added (priv->proxy, path, properties, self);
-  }
+  DEBUG("leave");
 }
 
 static void
-on_modem_added (DBusGProxy *proxy,
+modem_service_class_init(ModemServiceClass *klass)
+{
+  GObjectClass *object_class = G_OBJECT_CLASS(klass);
+  ModemOfaceClass *oface_class = MODEM_OFACE_CLASS (klass);
+
+  DEBUG("enter");
+
+  object_class->constructed = modem_service_constructed;
+  object_class->dispose = modem_service_dispose;
+  object_class->finalize = modem_service_finalize;
+
+  oface_class->connect = modem_service_connect;
+  oface_class->disconnect = modem_service_disconnect;
+
+  signals[SIGNAL_MODEM_ADDED] = g_signal_new ("modem-added",
+      G_OBJECT_CLASS_TYPE (klass),
+      G_SIGNAL_RUN_LAST | G_SIGNAL_DETAILED,
+      0,
+      NULL, NULL,
+      g_cclosure_marshal_VOID__OBJECT,
+      G_TYPE_NONE, 1, MODEM_TYPE_MODEM);
+
+  signals[SIGNAL_MODEM_POWERED] = g_signal_new ("modem-powered",
+      G_OBJECT_CLASS_TYPE (klass),
+      G_SIGNAL_RUN_LAST | G_SIGNAL_DETAILED,
+      0,
+      NULL, NULL,
+      g_cclosure_marshal_VOID__OBJECT,
+      G_TYPE_NONE, 1, MODEM_TYPE_MODEM);
+
+  signals[SIGNAL_MODEM_REMOVED] = g_signal_new ("modem-removed",
+      G_OBJECT_CLASS_TYPE (klass),
+      G_SIGNAL_RUN_LAST | G_SIGNAL_DETAILED,
+      0,
+      NULL, NULL,
+      g_cclosure_marshal_VOID__OBJECT,
+      G_TYPE_NONE, 1, MODEM_TYPE_MODEM);
+
+  signals[SIGNAL_IMEI_ADDED] = g_signal_new ("imei-added",
+      G_OBJECT_CLASS_TYPE (klass),
+      G_SIGNAL_RUN_LAST | G_SIGNAL_DETAILED,
+      0,
+      NULL, NULL,
+      _modem__marshal_VOID__OBJECT_STRING,
+      G_TYPE_NONE,
+      2, MODEM_TYPE_MODEM, G_TYPE_STRING);
+
+  signals[SIGNAL_IMSI_ADDED] = g_signal_new ("imsi-added",
+      G_OBJECT_CLASS_TYPE (klass),
+      G_SIGNAL_RUN_LAST | G_SIGNAL_DETAILED,
+      0,
+      NULL, NULL,
+      _modem__marshal_VOID__OBJECT_STRING,
+      G_TYPE_NONE,
+      2, MODEM_TYPE_MODEM, G_TYPE_STRING);
+
+  g_type_class_add_private(klass, sizeof (ModemServicePrivate));
+
+  dbus_g_object_register_marshaller (_modem__marshal_VOID__STRING_BOXED,
+      G_TYPE_NONE,
+      G_TYPE_STRING, G_TYPE_VALUE, G_TYPE_INVALID);
+
+  dbus_g_object_register_marshaller (_modem__marshal_VOID__BOXED_BOXED,
+      G_TYPE_NONE,
+      DBUS_TYPE_G_OBJECT_PATH, MODEM_TYPE_DBUS_DICT, G_TYPE_INVALID);
+
+  dbus_g_object_register_marshaller (_modem__marshal_VOID__BOXED,
+      G_TYPE_NONE,
+      DBUS_TYPE_G_OBJECT_PATH, G_TYPE_INVALID);
+
+  modem_error_domain_prefix (0); /* Init errors */
+
+  modem_ofono_init_quarks ();
+}
+
+/* ------------------------------------------------------------------------ */
+/* modem_service interface */
+
+/* -------------------------------------------------------------------------- */
+/* ModemOface factory */
+
+static GHashTable *modem_oface_types;
+
+void
+modem_service_register_oface (char const *interface,
+                              GType type)
+{
+  static gsize once = 0;
+
+  if (g_once_init_enter (&once))
+    {
+      modem_oface_types = g_hash_table_new_full (g_str_hash, g_str_equal,
+          g_free, NULL);
+      g_once_init_leave (&once, 1);
+    }
+
+  g_hash_table_insert (modem_oface_types, g_strdup (interface), (gpointer)type);
+}
+
+
+GType
+modem_oface_type (char const *interface)
+{
+  gpointer type = g_hash_table_lookup (modem_oface_types, interface);
+
+  if (type != NULL)
+    return (GType) type;
+
+  return G_TYPE_INVALID;
+}
+
+ModemOface *
+modem_oface_new (char const *interface, char const *object_path)
+{
+  GType type;
+  DBusGProxy *proxy;
+
+  type = modem_oface_type (interface);
+  if (type == G_TYPE_INVALID)
+    {
+      return NULL;
+    }
+
+  proxy = modem_ofono_proxy (object_path, interface);
+
+  DEBUG("proxy %p for interface %s, type %d", proxy, interface, type);
+
+  if (proxy == NULL)
+    {
+    return NULL;
+    }
+
+  return g_object_new (type, "dbus-proxy", proxy, NULL);
+}
+
+ModemService *modem_service (void)
+{
+  static ModemService *service;
+
+  if (!service) {
+    service = g_object_new (MODEM_TYPE_SERVICE,
+        "dbus-proxy", modem_ofono_proxy("/", OFONO_IFACE_MANAGER),
+        NULL);
+
+#define REG(iface, type) modem_service_register_oface (iface, type)
+
+    REG (OFONO_IFACE_MODEM, MODEM_TYPE_MODEM);
+    REG (OFONO_IFACE_SIM, MODEM_TYPE_SIM_SERVICE);
+    REG (OFONO_IFACE_SMS, MODEM_TYPE_SMS_SERVICE);
+    REG (OFONO_IFACE_CALL_MANAGER, MODEM_TYPE_CALL_SERVICE);
+
+#undef REG
+  }
+
+  return service;
+}
+
+void
+modem_service_refresh (ModemService *self)
+{
+  modem_oface_connect (MODEM_OFACE (self));
+}
+
+Modem *
+modem_service_find_by_path (ModemService *self, char const *object_path)
+{
+  g_return_val_if_fail (MODEM_IS_SERVICE (self), NULL);
+
+  if (object_path)
+    return g_hash_table_lookup (self->priv->modems, object_path);
+  else
+    return NULL;
+}
+
+Modem *
+modem_service_find_best (ModemService *self)
+{
+  char *key;
+  Modem *modem;
+  GHashTableIter iter[1];
+
+  g_return_val_if_fail (MODEM_IS_SERVICE (self), NULL);
+
+  for (g_hash_table_iter_init (iter, self->priv->modems);
+       g_hash_table_iter_next (iter, (gpointer)&key, (gpointer)&modem);)
+    {
+      if (modem_is_online (modem))
+        return modem;
+    }
+
+  for (g_hash_table_iter_init (iter, self->priv->modems);
+       g_hash_table_iter_next (iter, (gpointer)&key, (gpointer)&modem);)
+    {
+      if (modem_is_powered (modem))
+        return modem;
+    }
+
+  return NULL;
+}
+
+Modem *
+modem_service_find_by_imsi (ModemService *self, char const *imsi)
+{
+  char *key;
+  Modem *modem;
+  GHashTableIter iter[1];
+
+  g_return_val_if_fail (MODEM_IS_SERVICE (self), NULL);
+
+  for (g_hash_table_iter_init (iter, self->priv->modems);
+       g_hash_table_iter_next (iter, (gpointer)&key, (gpointer)&modem);)
+    {
+      if (modem_has_imsi(modem, imsi))
+        return modem;
+    }
+
+  return NULL;
+}
+
+Modem *
+modem_service_find_by_imei (ModemService *self, char const *imei)
+{
+  char *key;
+  Modem *modem = NULL;
+  GHashTableIter iter[1];
+
+  g_return_val_if_fail (MODEM_IS_SERVICE (self), NULL);
+
+  for (g_hash_table_iter_init (iter, self->priv->modems);
+       g_hash_table_iter_next (iter, (gpointer)&key, (gpointer)&modem);)
+    {
+      if (modem_has_imei (modem, imei))
+        return modem;
+    }
+
+  return NULL;
+}
+
+Modem **
+modem_service_get_modems (ModemService *self)
+{
+  ModemServicePrivate *priv;
+  GPtrArray *array;
+  char *key;
+  Modem *modem;
+  GHashTableIter iter[1];
+
+  g_return_val_if_fail (MODEM_IS_SERVICE (self), NULL);
+
+  priv = self->priv;
+  array = g_ptr_array_sized_new (g_hash_table_size (priv->modems) + 1);
+
+  for (g_hash_table_iter_init (iter, priv->modems);
+       g_hash_table_iter_next (iter, (gpointer)&key, (gpointer)&modem);)
+    {
+      g_ptr_array_add(array, modem);
+    }
+
+  g_ptr_array_add (array, NULL);
+
+  return (Modem **)g_ptr_array_free (array, FALSE);
+}
+
+static void
+on_modem_added (DBusGProxy *_dummy,
                 char const *object_path,
                 GHashTable *properties,
                 gpointer userdata)
@@ -388,12 +546,9 @@ on_modem_added (DBusGProxy *proxy,
   ModemService *self = userdata;
   ModemServicePrivate *priv = self->priv;
   Modem *modem;
-  GHashTableIter iter[1];
-  char *name;
-  GValue *value;
 
   if (DEBUGGING)
-    modem_ofono_debug_desc ("ModemAdded", object_path, properties);
+    modem_ofono_debug_managed ("ModemAdded", object_path, properties);
 
   modem = g_hash_table_lookup (priv->modems, object_path);
   if (modem)
@@ -402,22 +557,80 @@ on_modem_added (DBusGProxy *proxy,
       return;
     }
 
-  modem = g_object_new (MODEM_TYPE_MODEM, "object-path", object_path, NULL);
-  if (!modem)
-    return;
-
-  for (g_hash_table_iter_init (iter, properties);
-       g_hash_table_iter_next (iter, (gpointer)&name, (gpointer)&value);)
+  modem = MODEM_MODEM (modem_oface_new (OFONO_IFACE_MODEM, object_path));
+  if (modem == NULL)
     {
-      char const *property = modem_property_name_by_ofono_name (name);
-
-      if (property)
-        g_object_set_property (G_OBJECT (modem), property, value);
+      DEBUG ("Cannot create modem object %s", object_path);
+      return;
     }
 
   g_hash_table_insert (priv->modems, g_strdup (object_path), modem);
 
+  modem_oface_update_properties (MODEM_OFACE (modem), properties);
+
+  g_signal_connect (modem, "notify::imei",
+      G_CALLBACK (on_modem_notify_imei), self);
+
+  g_signal_connect (modem, "notify::powered",
+      G_CALLBACK (on_modem_notify_powered), self);
+
+  g_signal_connect (modem, "imsi-added",
+      G_CALLBACK (on_modem_imsi_added), self);
+
+  modem_oface_connect (MODEM_OFACE (modem));
+
+  g_assert (modem_oface_is_connected (MODEM_OFACE (modem)));
+
   g_signal_emit (self, signals[SIGNAL_MODEM_ADDED], 0, modem);
+
+  on_modem_notify_powered (modem, NULL, self);
+
+  on_modem_notify_imei (modem, NULL, self);
+}
+
+static void
+on_modem_notify_imei (Modem *modem,
+                      GParamSpec *dummy,
+                      ModemService *self)
+{
+  gchar *imei = NULL;
+
+  g_object_get(modem, "imei", &imei, NULL);
+
+  if (imei && strcmp (imei, ""))
+    {
+      DEBUG ("emitting \"%s\" with modem=%p (%s) imei=%s", "imei-added",
+          modem, modem_oface_object_path (MODEM_OFACE (modem)), imei);
+      g_signal_emit (self, signals[SIGNAL_IMEI_ADDED], 0, modem, imei);
+    }
+
+  g_free (imei);
+}
+
+static void
+on_modem_notify_powered (Modem *modem,
+                         GParamSpec *dummy,
+                         ModemService *self)
+{
+  gboolean powered;
+
+  g_object_get(modem, "powered", &powered, NULL);
+
+  if (powered) {
+    DEBUG ("emitting \"%s\" with modem=%p (%s)", "modem-powered",
+        modem, modem_oface_object_path (MODEM_OFACE (modem)));
+    g_signal_emit (self, signals[SIGNAL_MODEM_POWERED], 0, modem);
+  }
+}
+
+static void
+on_modem_imsi_added (Modem *modem,
+                     char const *imsi,
+                     ModemService *self)
+{
+  DEBUG ("emitting \"%s\" with modem=%p (%s) imsi=%s", "imsi-added",
+      modem, modem_oface_object_path (MODEM_OFACE (modem)), imsi);
+  g_signal_emit (self, signals[SIGNAL_IMSI_ADDED], 0, modem, imsi);
 }
 
 static void
@@ -435,7 +648,18 @@ on_modem_removed (DBusGProxy *proxy,
   if (!modem)
     return;
 
+  modem_oface_disconnect (MODEM_OFACE (modem));
+
   g_signal_emit (self, signals[SIGNAL_MODEM_REMOVED], 0, modem);
+
+  g_signal_handlers_disconnect_by_func (modem,
+      G_CALLBACK (on_modem_imsi_added), self);
+
+  g_signal_handlers_disconnect_by_func (modem,
+      G_CALLBACK (on_modem_notify_imei), self);
+
+  g_signal_handlers_disconnect_by_func (modem,
+      G_CALLBACK (on_modem_notify_powered), self);
 
   g_hash_table_remove (priv->modems, object_path);
 }
