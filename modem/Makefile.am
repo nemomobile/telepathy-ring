@@ -23,10 +23,7 @@ LIBADD = @TP_LIBS@ @DBUS_LIBS@ @GLIB_LIBS@ @UUID_LIBS@
 # Build targets
 
 lib_LTLIBRARIES = \
-	libmodem-glib.la \
-	libmodem-call-glib.la \
-	libmodem-sms-glib.la \
-	libmodem-sim-glib.la
+	libmodem-glib.la
 
 noinst_LTLIBRARIES =
 
@@ -45,21 +42,15 @@ libmodem_glib_la_LIBADD = ${LIBADD}
 
 modem_HEADERS += call.h tones.h
 
-libmodem_call_glib_la_SOURCES = call-service.c call.c tones.c
-
-libmodem_call_glib_la_LIBADD = libmodem-glib.la ${LIBADD}
+libmodem_glib_la_SOURCES += call-service.c call.c tones.c
 
 modem_HEADERS += sms.h
 
-libmodem_sms_glib_la_SOURCES = sms-service.c
-
-libmodem_sms_glib_la_LIBADD = libmodem-glib.la ../sms-glib/libsms-glib.la ${LIBADD}
+libmodem_glib_la_SOURCES += sms-service.c
 
 modem_HEADERS += sim.h
 
-libmodem_sim_glib_la_SOURCES = sim-service.c
-
-libmodem_sim_glib_la_LIBADD = libmodem-glib.la ${LIBADD}
+libmodem_glib_la_SOURCES += sim-service.c
 
 # ----------------------------------------------------------------------
 
@@ -89,7 +80,6 @@ CLEANFILES = ${BUILT_SOURCES}
 noinst_LTLIBRARIES += libtest-modem-sms.la
 
 libtest_modem_sms_la_SOURCES = \
-	$(libmodem_sms_la_SOURCES) \
 	$(nodist_libmodem_sms_glib_la_SOURCES)
 
 libtest_modem_sms_la_LIBADD = libmodem-glib.la

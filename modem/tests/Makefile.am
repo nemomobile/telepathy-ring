@@ -17,10 +17,9 @@ test_modem_SOURCES = \
 		base.h base.c derived.h derived.c
 #		test-modem-sms.c
 
-test_modem_LDADD = ../libmodem-call-glib.la \
-	../libmodem-sim-glib.la \
-	../libtest-modem-sms.la \
+test_modem_LDADD = \
 	../libmodem-glib.la \
+	../../sms-glib/libsms-glib.la \
 	../../tests/libtestcommon.la \
 	@TP_LIBS@ @DBUS_LIBS@ @GLIB_LIBS@ \
 	@CHECK_LIBS@
