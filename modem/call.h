@@ -26,6 +26,7 @@
 #include <glib-object.h>
 
 #include <modem/request.h>
+#include <modem/oface.h>
 
 G_BEGIN_DECLS
 
@@ -35,12 +36,12 @@ typedef struct _ModemCallServicePrivate ModemCallServicePrivate;
 
 struct _ModemCallServiceClass
 {
-  GObjectClass parent_class;
+  ModemOfaceClass parent_class;
 };
 
 struct _ModemCallService
 {
-  GObject parent;
+  ModemOface parent;
   ModemCallServicePrivate *priv;
 };
 
@@ -62,7 +63,7 @@ GType modem_call_service_get_type (void);
   (G_TYPE_CHECK_CLASS_TYPE ((klass), MODEM_TYPE_CALL_SERVICE))
 #define MODEM_CALL_SERVICE_GET_CLASS(obj) \
   (G_TYPE_INSTANCE_GET_CLASS ((obj), \
-      MODEM_TYPE_CALL_SERVICE, \ModemCallServiceClass))
+      MODEM_TYPE_CALL_SERVICE, ModemCallServiceClass))
 
 typedef struct _ModemCall ModemCall;
 typedef struct _ModemCallClass ModemCallClass;
@@ -73,11 +74,11 @@ typedef enum _ModemCallCauseType ModemCallCauseType;
 typedef enum _ModemClirOverride ModemClirOverride;
 
 struct _ModemCallClass {
-  GObjectClass parent_class;
+  ModemOfaceClass parent_class;
 };
 
 struct _ModemCall {
-  GObject parent;
+  ModemOface parent;
   ModemCallPrivate *priv;
 };
 
@@ -169,15 +170,11 @@ enum
   MODEM_MAX_CALLS = 7
 };
 
+char const *modem_call_service_property_name_by_ofono_name (char const *);
+
 char const *modem_call_get_state_name (int state);
 GError *modem_call_new_error (guint causetype, guint cause,
     char const *prefixed);
-
-/* Call service */
-gboolean modem_call_service_connect (ModemCallService *, char const *);
-void modem_call_service_disconnect (ModemCallService *);
-gboolean modem_call_service_is_connected (ModemCallService const *);
-gboolean modem_call_service_is_connecting (ModemCallService const *);
 
 void modem_call_service_resume (ModemCallService *);
 
@@ -222,10 +219,6 @@ ModemRequest *modem_call_request_dial (ModemCallService *self,
 ModemRequest *modem_call_request_conference (ModemCallService *,
   ModemCallServiceReply *callback,
   gpointer user_data);
-
-/* ModemCall service */
-void modem_call_connect (ModemCall *);
-void modem_call_disconnect (ModemCall *);
 
 char const *modem_call_get_name (ModemCall const *);
 char const *modem_call_get_path (ModemCall const *);

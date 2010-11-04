@@ -40,24 +40,25 @@
 #include <stdio.h>
 #include <errno.h>
 
-G_DEFINE_TYPE (ModemCall, modem_call, G_TYPE_OBJECT);
+G_DEFINE_TYPE (ModemCall, modem_call, MODEM_TYPE_OFACE);
 
 struct _ModemCallPrivate
 {
-  char *object_path;
   ModemCallService *service;
-
-  DBusGProxy *proxy;
   gpointer handler;
 
-  char *remote, *emergency;
+  gchar *state_str;
+  gchar *remote;
+  gchar *emergency;
 
   unsigned char state;
   unsigned char causetype, cause;
 
-  unsigned originating:1, terminating:1, onhold:1, member:1;
-
-  unsigned dispose_has_run:1, :0;
+  unsigned originating:1;
+  unsigned terminating:1;
+  unsigned onhold:1;
+  unsigned member:1;
+  unsigned :0;
 };
 
 /* Properties */
@@ -65,7 +66,7 @@ enum
 {
   PROP_NONE,
   PROP_SERVICE,
-  PROP_OBJECT_PATH,
+  PROP_OFONO_STATE,
   PROP_STATE,
   PROP_CAUSETYPE,
   PROP_CAUSE,
@@ -97,12 +98,9 @@ static guint call_signals[N_SIGNALS];
 
 /* ---------------------------------------------------------------------- */
 
-extern DBusGProxy *_modem_call_service_proxy (ModemCallService *self);
 
-static void
-reply_to_instance_request (DBusGProxy *proxy,
-                           DBusGProxyCall *call,
-                           void *_request);
+static void on_notify_ofono_state (ModemCall *, GParamSpec *, gpointer);
+static void reply_to_instance_request (DBusGProxy *, DBusGProxyCall *, void *);
 
 #if nomore /* Ofono does not provide this information */
 static void on_on_hold (DBusGProxy *, gboolean onhold, ModemCall*);
@@ -117,14 +115,19 @@ static void on_sending_dtmf (DBusGProxy *proxy,
 static void on_stopped_dtmf (DBusGProxy *proxy, ModemCall *);
 #endif
 
-static void reply_to_stop_dtmf (DBusGProxy *proxy,
-    DBusGProxyCall *call,
-    void *_request);
+static void reply_to_stop_dtmf (DBusGProxy *, DBusGProxyCall *, void *);
 
-static void on_call_property_changed (DBusGProxy *proxy,
-    char const *property,
-    GValue const *value,
-    gpointer user_data);
+/* ---------------------------------------------------------------------- */
+
+#define RETURN_IF_NOT_VALID(self)                       \
+  g_return_if_fail (self != NULL &&                     \
+      modem_oface_is_connected (MODEM_OFACE (self)))
+
+#define RETURN_VAL_IF_NOT_VALID(self, val)                      \
+  g_return_val_if_fail (self != NULL &&                         \
+      modem_oface_is_connected (MODEM_OFACE (self)), (val))
+
+#define RETURN_NULL_IF_NOT_VALID(self) RETURN_VAL_IF_NOT_VALID (self, NULL)
 
 /* ---------------------------------------------------------------------- */
 
@@ -138,35 +141,17 @@ modem_call_init (ModemCall *self)
 static void
 modem_call_constructed (GObject *object)
 {
-  ModemCall *self = MODEM_CALL (object);
-  ModemCallPrivate *priv = self->priv;
-
   if (G_OBJECT_CLASS (modem_call_parent_class)->constructed)
     G_OBJECT_CLASS (modem_call_parent_class)->constructed (object);
 
-  priv->proxy = modem_ofono_proxy (priv->object_path, OFONO_IFACE_CALL);
-
-  modem_ofono_proxy_connect_to_property_changed (priv->proxy,
-      on_call_property_changed, self);
-
   DEBUG ("ModemCall for %s on %s",
-      self->priv->object_path, OFONO_IFACE_CALL);
+      modem_oface_object_path (MODEM_OFACE (object)), OFONO_IFACE_CALL);
 }
 
 static void
 modem_call_dispose (GObject *object)
 {
-  ModemCall *self = MODEM_CALL (object);
-  ModemCallPrivate *priv = self->priv;
-
-  if (priv->dispose_has_run)
-    return;
-  priv->dispose_has_run = TRUE;
-
-  modem_ofono_proxy_disconnect_from_property_changed (priv->proxy,
-      on_call_property_changed, self);
-
-  g_object_run_dispose (G_OBJECT (priv->proxy));
+  DEBUG ("enter");
 
   if (G_OBJECT_CLASS (modem_call_parent_class)->dispose)
     G_OBJECT_CLASS (modem_call_parent_class)->dispose (object);
@@ -178,10 +163,7 @@ modem_call_finalize (GObject *object)
   ModemCall *self = MODEM_CALL (object);
   ModemCallPrivate *priv = self->priv;
 
-  g_free (priv->object_path), priv->object_path = NULL;
   priv->service = NULL;
-  if (priv->proxy)
-    g_object_unref (priv->proxy), priv->proxy = NULL;
   g_free (priv->remote), priv->remote = NULL;
   g_free (priv->emergency), priv->emergency = NULL;
 
@@ -199,12 +181,12 @@ modem_call_get_property (GObject *object,
 
   switch (property_id)
     {
-    case PROP_OBJECT_PATH:
-      g_value_set_string (value, priv->object_path);
-      break;
-
     case PROP_SERVICE:
       g_value_set_object (value, priv->service);
+      break;
+
+    case PROP_OFONO_STATE:
+      g_value_set_string (value, priv->state_str);
       break;
 
     case PROP_STATE:
@@ -261,12 +243,14 @@ modem_call_set_property (GObject *obj,
 
   switch (property_id)
     {
-    case PROP_OBJECT_PATH:
-      priv->object_path = g_value_dup_string (value);
-      break;
-
     case PROP_SERVICE:
       priv->service = g_value_get_object (value);
+      break;
+
+      /* XXX/KV: ugly hack until usage of state is harmonized */
+    case PROP_OFONO_STATE:
+      g_free (priv->state_str);
+      priv->state_str = g_value_dup_string (value);
       break;
 
     case PROP_STATE:
@@ -319,10 +303,63 @@ modem_call_set_property (GObject *obj,
     }
 }
 
+/* ------------------------------------------------------------------------- */
+
+/** Maps properties of org.ofono.VoiceCall to matching ModemCall properties */
+char const *
+modem_call_property_mapper (char const *name)
+{
+  if (!strcmp (name, "LineIdentification"))
+    return "remote";
+  if (!strcmp (name, "Multiparty"))
+    return "member";
+  if (!strcmp (name, "State"))
+    return "ofono-state";
+  if (!strcmp (name, "StartTime"))
+    return "start-time";
+  if (!strcmp (name, "Information"))
+    return NULL;
+  if (!strcmp (name, "Icon"))
+    return NULL;
+  return NULL;
+}
+
+static void
+modem_call_connect (ModemOface *_self)
+{
+  DEBUG ("(%p): enter", _self);
+
+  /* CallAdded gives us initial properties */
+  modem_oface_connect_properties (_self, FALSE);
+
+  g_signal_connect (_self, "notify::ofono-state",
+      G_CALLBACK(on_notify_ofono_state), _self);
+}
+
+static void
+modem_call_connected (ModemOface *_self)
+{
+  DEBUG ("(%p): enter", _self);
+
+  on_notify_ofono_state (MODEM_CALL (_self), NULL, _self);
+}
+
+static void
+modem_call_disconnect (ModemOface *_self)
+{
+  DEBUG ("(%p): enter", _self);
+
+  g_signal_handlers_disconnect_by_func (_self,
+      G_CALLBACK(on_notify_ofono_state), _self);
+
+  modem_oface_disconnect_properties (_self);
+}
+
 static void
 modem_call_class_init (ModemCallClass *klass)
 {
   GObjectClass *object_class = G_OBJECT_CLASS (klass);
+  ModemOfaceClass *oface_class = MODEM_OFACE_CLASS (klass);
 
   g_type_class_add_private (klass, sizeof (ModemCallPrivate));
 
@@ -332,15 +369,12 @@ modem_call_class_init (ModemCallClass *klass)
   object_class->get_property = modem_call_get_property;
   object_class->set_property = modem_call_set_property;
 
-  /* Properties */
-  g_object_class_install_property (object_class, PROP_OBJECT_PATH,
-      g_param_spec_string ("object-path",
-          "Object Path",
-          "Unique identifier for this object",
-          "", /* default value */
-          G_PARAM_READWRITE | G_PARAM_CONSTRUCT_ONLY |
-          G_PARAM_STATIC_STRINGS));
+  oface_class->property_mapper = modem_call_property_mapper;
+  oface_class->connect = modem_call_connect;
+  oface_class->connected = modem_call_connected;
+  oface_class->disconnect = modem_call_disconnect;
 
+  /* Properties */
   g_object_class_install_property (object_class, PROP_SERVICE,
       g_param_spec_object ("call-service",
           "Call service",
@@ -348,6 +382,14 @@ modem_call_class_init (ModemCallClass *klass)
           "the modem call object",
           MODEM_TYPE_CALL_SERVICE,
           G_PARAM_READWRITE | G_PARAM_CONSTRUCT_ONLY |
+          G_PARAM_STATIC_STRINGS));
+
+  g_object_class_install_property (object_class, PROP_OFONO_STATE,
+      g_param_spec_string ("ofono-state",
+          "Call State String",
+          "State name of the call instance",
+          NULL,
+          G_PARAM_READWRITE |
           G_PARAM_STATIC_STRINGS));
 
   g_object_class_install_property (object_class, PROP_STATE,
@@ -511,7 +553,9 @@ modem_call_get_name (ModemCall const *self)
   if (self == NULL)
     return "<nil>";
 
-  char *last = strrchr (self->priv->object_path, '/');
+  char const *path = modem_oface_object_path (MODEM_OFACE (self));
+  char const *last = strrchr (path, '/');
+
   if (last)
     return last + 1;
 
@@ -521,7 +565,7 @@ modem_call_get_name (ModemCall const *self)
 char const *
 modem_call_get_path (ModemCall const *self)
 {
-  return self->priv->object_path;
+  return modem_oface_object_path (MODEM_OFACE (self));
 }
 
 char const *
@@ -551,7 +595,9 @@ gboolean
 modem_call_has_path (ModemCall const *self,
                      char const *object_path)
 {
-  return object_path && strcmp (self->priv->object_path, object_path) == 0;
+  gchar const *my_path = modem_oface_object_path (MODEM_OFACE (self));
+
+  return object_path && my_path && strcmp (my_path, object_path) == 0;
 }
 
 gboolean
@@ -644,38 +690,21 @@ modem_call_state_from_ofono_state (const char *state)
 }
 
 static void
-on_call_property_changed (DBusGProxy *proxy,
-                          char const *property,
-                          GValue const *value,
-                          gpointer user_data)
+on_notify_ofono_state (ModemCall *self,
+                       GParamSpec *pspec,
+                       gpointer user_data)
 {
-  char *s;
-  ModemCall *self = MODEM_CALL (user_data);
+  ModemCallPrivate *priv = self->priv;
+  ModemCallState state;
 
-  DEBUG ("enter");
+  DEBUG ("enter with \"%s\"", priv->state_str);
 
-  s = g_strdup_value_contents (value);
-  DEBUG ("%s = %s", property, s);
-  g_free (s);
+  state = modem_call_state_from_ofono_state (priv->state_str);
+  if (state == priv->state)
+    return;
 
-  if (!strcmp (property, "State"))
-    {
-      ModemCallState state;
-
-      state = modem_call_state_from_ofono_state (
-          g_value_get_string (value));
-
-      if (state != self->priv->state)
-        {
-          g_object_set (self, "state", state, NULL);
-          g_signal_emit (self, call_signals[SIGNAL_STATE], 0, state);
-
-          /* Ofono does not have a separate 'terminated' state, so
-           * we fake it here for now */
-          if (state == MODEM_CALL_STATE_DISCONNECTED)
-            g_signal_emit (self, call_signals[SIGNAL_TERMINATED], 0);
-        }
-    }
+  g_object_set (self, "state", state, NULL);
+  g_signal_emit (self, call_signals[SIGNAL_STATE], 0, state);
 }
 
 #if nomore
@@ -769,23 +798,24 @@ modem_call_request_answer (ModemCall *self,
                            gpointer user_data)
 {
   DEBUG ("enter");
-  g_return_val_if_fail (self != NULL, NULL);
-  g_return_val_if_fail (!MODEM_CALL (self)->priv->dispose_has_run, NULL);
+
+  RETURN_NULL_IF_NOT_VALID (self);
 
   if (self->priv->state != MODEM_CALL_STATE_WAITING)
     {
       DEBUG ("%s.%s (%s)", OFONO_IFACE_CALL, "Answer",
-          self ? self->priv->object_path : "NULL");
-      return modem_request (MODEM_CALL (self), self->priv->proxy,
+          modem_call_get_path (self));
+      return modem_request (MODEM_CALL (self),
+          modem_oface_dbus_proxy (MODEM_OFACE (self)),
           "Answer", reply_to_instance_request,
           G_CALLBACK (callback), user_data,
           G_TYPE_INVALID);
     }
   else {
     DEBUG ("%s.%s (%s)", OFONO_IFACE_CALL_MANAGER, "HoldAndAnswer",
-        self ? self->priv->object_path : "NULL");
+        modem_call_get_path (self));
     return modem_request (MODEM_CALL (self),
-        _modem_call_service_proxy (self->priv->service),
+        modem_oface_dbus_proxy (MODEM_OFACE (self->priv->service)),
         "HoldAndAnswer", reply_to_instance_request,
         G_CALLBACK (callback), user_data,
         G_TYPE_INVALID);
@@ -797,11 +827,11 @@ modem_call_request_release (ModemCall *self,
                             ModemCallReply callback,
                             gpointer user_data)
 {
-  DEBUG ("%s.%s (%s)", OFONO_IFACE_CALL, "Hangup",
-      self ? self->priv->object_path : "NULL");
-  g_return_val_if_fail (self != NULL, NULL);
-  g_return_val_if_fail (!MODEM_CALL (self)->priv->dispose_has_run, NULL);
-  return modem_request (MODEM_CALL (self), self->priv->proxy,
+  DEBUG ("%s.%s (%s)", OFONO_IFACE_CALL, "Hangup", modem_call_get_path (self));
+  RETURN_NULL_IF_NOT_VALID (self);
+
+  return modem_request (MODEM_CALL (self),
+      modem_oface_dbus_proxy (MODEM_OFACE (self)),
       "Hangup", reply_to_instance_request,
       G_CALLBACK (callback), user_data,
       G_TYPE_INVALID);
@@ -814,14 +844,14 @@ modem_call_request_split (ModemCall *self,
                           gpointer user_data)
 {
   DEBUG ("%s.%s (%s)", OFONO_IFACE_CALL_MANAGER, "PrivateChat",
-      self ? self->priv->object_path : "NULL");
-  g_return_val_if_fail (self != NULL, NULL);
-  g_return_val_if_fail (!MODEM_CALL (self)->priv->dispose_has_run, NULL);
+      modem_call_get_path (self));
+  RETURN_NULL_IF_NOT_VALID (self);
+
   return modem_request (MODEM_CALL (self),
-      _modem_call_service_proxy (self->priv->service),
+      modem_oface_dbus_proxy (MODEM_OFACE (self->priv->service)),
       "PrivateChat", reply_to_instance_request,
       G_CALLBACK (callback), user_data,
-      DBUS_TYPE_G_OBJECT_PATH, self->priv->object_path,
+      DBUS_TYPE_G_OBJECT_PATH, modem_call_get_path (self),
       G_TYPE_INVALID);
 }
 
@@ -835,10 +865,10 @@ modem_call_request_hold (ModemCall *self,
   (void)hold;
 
   DEBUG ("%s.%s", OFONO_IFACE_CALL_MANAGER, "SwapCalls");
-  g_return_val_if_fail (self != NULL, NULL);
-  g_return_val_if_fail (!MODEM_CALL (self)->priv->dispose_has_run, NULL);
+  RETURN_NULL_IF_NOT_VALID (self);
+
   return modem_request (MODEM_CALL (self),
-      _modem_call_service_proxy (self->priv->service),
+      modem_oface_dbus_proxy (MODEM_OFACE (self->priv->service)),
       "SwapCalls", reply_to_instance_request,
       G_CALLBACK (callback), user_data,
       G_TYPE_INVALID);
@@ -858,20 +888,23 @@ reply_to_instance_request (DBusGProxy *proxy,
   GError *error = NULL;
 
   if (dbus_g_proxy_end_call (proxy, call, &error, G_TYPE_INVALID))
-    {
-    }
-  else {
+    ;
+  else
     modem_error_fix (&error);
-  }
-  if (callback) callback (self, request, error, user_data);
+
+  if (callback)
+    callback (self, request, error, user_data);
+
   g_clear_error (&error);
 }
 
 gboolean
 modem_call_can_join (ModemCall const *self)
 {
+#if 0
   if (!self || MODEM_IS_CALL_CONFERENCE (self))
     return FALSE;
+#endif
 
   return (self->priv->state == MODEM_CALL_STATE_ACTIVE ||
       self->priv->state == MODEM_CALL_STATE_HELD);
@@ -884,11 +917,9 @@ modem_call_send_dtmf (ModemCall *self, char const *dialstring,
 {
   int i;
   char modemstring[256];
-  ModemCallPrivate *priv = self->priv;
 
+  RETURN_NULL_IF_NOT_VALID (self);
   g_return_val_if_fail (dialstring != NULL, NULL);
-  g_return_val_if_fail (!priv->dispose_has_run, NULL);
-  g_return_val_if_fail (priv->service != NULL, NULL);
 
   for (i = 0; dialstring[i]; i++)
     {
@@ -927,7 +958,7 @@ modem_call_send_dtmf (ModemCall *self, char const *dialstring,
   modemstring[i] = '\0';
 
   return modem_request (self,
-      _modem_call_service_proxy (self->priv->service),
+      modem_oface_dbus_proxy (MODEM_OFACE (self->priv->service)),
       "SendTones", reply_to_instance_request,
       G_CALLBACK (callback), user_data,
       G_TYPE_STRING, modemstring,
@@ -940,14 +971,12 @@ modem_call_start_dtmf (ModemCall *self, char const tone,
                        ModemCallReply *callback,
                        gpointer user_data)
 {
-  char tones[2];
-  g_return_val_if_fail (self != NULL, NULL);
-  g_return_val_if_fail (!MODEM_CALL (self)->priv->dispose_has_run, NULL);
+  char tones[2] = { tone };
 
-  tones[0] = tone, tones[1] = '\0';
+  RETURN_NULL_IF_NOT_VALID (self);
 
   return modem_request (MODEM_CALL (self),
-      _modem_call_service_proxy (self->priv->service),
+      modem_oface_dbus_proxy (MODEM_OFACE (self->priv->service)),
       "SendTones", reply_to_instance_request,
       G_CALLBACK (callback), user_data,
       G_TYPE_STRING, tones,
@@ -959,11 +988,10 @@ modem_call_stop_dtmf (ModemCall *self,
                       ModemCallReply *callback,
                       gpointer user_data)
 {
-  g_return_val_if_fail (self != NULL, NULL);
-  g_return_val_if_fail (!MODEM_CALL (self)->priv->dispose_has_run, NULL);
+  RETURN_NULL_IF_NOT_VALID (self);
 
   return modem_request (MODEM_CALL (self),
-      _modem_call_service_proxy (self->priv->service),
+      modem_oface_dbus_proxy (MODEM_OFACE (self->priv->service)),
       "StopTones", reply_to_stop_dtmf,
       G_CALLBACK (callback), user_data,
       G_TYPE_INVALID);
@@ -989,16 +1017,19 @@ reply_to_stop_dtmf (DBusGProxy *proxy,
     {
       g_free (stopped);
     }
-  else {
-    modem_error_fix (&error);
-    DEBUG ("got " GERROR_MSG_FMT, GERROR_MSG_CODE (error));
-  }
+  else
+    {
+      modem_error_fix (&error);
+      DEBUG ("got " GERROR_MSG_FMT, GERROR_MSG_CODE (error));
+    }
 
   if (callback)
     callback (self, request, error, user_data);
+
   g_clear_error (&error);
 }
 
+#if 0
 /* ---------------------------------------------------------------------- */
 /*
  * ModemCallConference - Interface towards Ofono Multiparty calls
@@ -1087,6 +1118,8 @@ modem_call_conference_class_init (ModemCallConferenceClass *klass)
         G_TYPE_NONE, 1,
         MODEM_TYPE_CALL);
 }
+
+#endif
 
 GError *
 modem_call_new_error (guint causetype, guint cause, char const *prefixed)

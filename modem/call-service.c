@@ -41,7 +41,7 @@
 
 /* ---------------------------------------------------------------------- */
 
-G_DEFINE_TYPE (ModemCallService, modem_call_service, G_TYPE_OBJECT);
+G_DEFINE_TYPE (ModemCallService, modem_call_service, MODEM_TYPE_OFACE);
 
 /* Properties */
 enum
@@ -54,11 +54,10 @@ enum
 /* Signals */
 enum
 {
-  SIGNAL_CONNECTED,
   SIGNAL_INCOMING,
   SIGNAL_CREATED,
   SIGNAL_USER_CONNECTION,
-  SIGNAL_EMERGENCY_NUMBERS_CHANGED,
+  SIGNAL_REMOVED,
   N_SIGNALS
 };
 
@@ -66,8 +65,6 @@ static guint signals[N_SIGNALS];
 
 struct _ModemCallServicePrivate
 {
-  DBusGProxy *proxy;            /* D-Bus proxy to call server */
-
   /* < object_path, call instance > */
   GHashTable *instances;
 
@@ -85,21 +82,13 @@ struct _ModemCallServicePrivate
 
   ModemCall *active, *hold;
 
-  struct {
-    GQueue queue[1];
-    GError *error;
-  } connecting;
-
   unsigned user_connection:1;   /* Do we have in-band connection? */
 
-  unsigned connected:1, disconnected:1, signals :1, dispose_has_run:1;
+  unsigned signals :1;
   unsigned :0;
 };
 
 /* ---------------------------------------------------------------------- */
-
-static ModemOfonoPropsReply reply_to_call_manager_get_properties;
-static ModemOfonoPropChangedCb on_manager_property_changed;
 
 static void modem_call_service_connect_to_instance (ModemCallService *self,
     ModemCall *ci);
@@ -107,22 +96,36 @@ static void modem_call_service_connect_to_instance (ModemCallService *self,
 static void modem_call_service_disconnect_instance (ModemCallService *self,
     ModemCall *ci);
 
+static ModemCall *modem_call_service_ensure_instance (ModemCallService *self,
+    char const *object_path,
+    GHashTable *properties);
+
 static ModemRequestCallNotify modem_call_request_dial_reply;
 
 static ModemRequestCallNotify modem_call_conference_request_reply;
-
-static void modem_call_service_check_connected (ModemCallService *self,
-    ModemRequest *request,
-    GError const *error);
 
 #if nomore
 static void on_user_connection (DBusGProxy *proxy,
     gboolean attached,
     ModemCallService *self);
 #endif
+
 static void on_modem_call_state (ModemCall *, ModemCallState,
     ModemCallService *);
-static void on_modem_call_terminated (ModemCall *, ModemCallService *);
+
+/* ---------------------------------------------------------------------- */
+
+#define RETURN_IF_NOT_VALID(self)                       \
+  g_return_if_fail (self != NULL &&                     \
+      modem_oface_is_connected (MODEM_OFACE (self)))
+
+#define RETURN_VAL_IF_NOT_VALID(self, val)                      \
+  g_return_val_if_fail (self != NULL &&                         \
+      modem_oface_is_connected (MODEM_OFACE (self)), (val))
+
+#define RETURN_NULL_IF_NOT_VALID(self) RETURN_VAL_IF_NOT_VALID (self, NULL)
+
+#define DBUS_PROXY(x) modem_oface_dbus_proxy (MODEM_OFACE (x))
 
 /* ---------------------------------------------------------------------- */
 
@@ -136,13 +139,13 @@ modem_call_service_constructed (GObject *object)
 static void
 modem_call_service_init (ModemCallService *self)
 {
+  DEBUG ("enter");
+
   self->priv = G_TYPE_INSTANCE_GET_PRIVATE(self,
       MODEM_TYPE_CALL_SERVICE, ModemCallServicePrivate);
 
   g_queue_init (self->priv->dialing.queue);
   g_queue_init (self->priv->dialing.created);
-
-  g_queue_init (self->priv->connecting.queue);
 
   self->priv->instances = g_hash_table_new_full (
       g_str_hash, g_str_equal, g_free, g_object_unref);
@@ -198,34 +201,8 @@ modem_call_service_dispose (GObject *object)
 {
   DEBUG ("enter");
 
-  ModemCall *ci;
-  GHashTableIter iter[1];
-  ModemCallService *self = MODEM_CALL_SERVICE (object);
-  ModemCallServicePrivate *priv = self->priv;
-
-  if (priv->dispose_has_run)
-    return;
-
-  modem_call_service_disconnect (self);
-
-  priv->dispose_has_run = TRUE;
-
-  g_hash_table_iter_init (iter, priv->instances);
-  while (g_hash_table_iter_next (iter, NULL, (gpointer)&ci))
-    {
-      modem_call_service_disconnect_instance (self, ci);
-    }
-
-  ci = priv->conference.instance;
-  modem_call_service_disconnect_instance (self, ci);
-
-  if (priv->proxy)
-    g_object_run_dispose (G_OBJECT (priv->proxy));
-
   if (G_OBJECT_CLASS (modem_call_service_parent_class)->dispose)
     G_OBJECT_CLASS (modem_call_service_parent_class)->dispose (object);
-
-  DEBUG ("leave");
 }
 
 
@@ -237,9 +214,7 @@ modem_call_service_finalize (GObject *object)
   ModemCallService *self = MODEM_CALL_SERVICE (object);
   ModemCallServicePrivate *priv = self->priv;
 
-  if (priv->proxy) g_object_unref (priv->proxy), priv->proxy = NULL;
   g_strfreev (priv->emergency_numbers), priv->emergency_numbers = NULL;
-  g_clear_error (&priv->connecting.error);
 
   g_hash_table_destroy (priv->instances);
 
@@ -248,11 +223,139 @@ modem_call_service_finalize (GObject *object)
   DEBUG ("leave");
 }
 
+/* ---------------------------------------------------------------------- */
+
+static ModemOfaceManagedReply reply_to_call_manager_get_calls;
+
+static void on_manager_call_added (DBusGProxy *proxy,
+    char const *path, GHashTable *properties,
+    gpointer user_data);
+
+static void on_manager_call_removed (DBusGProxy *proxy,
+    char const *path,
+    gpointer user_data);
+
+static char const *
+modem_call_service_property_mapper (char const *name)
+{
+  if (!strcmp (name, "EmergencyNumbers"))
+      return "emergency-numbers";
+  return NULL;
+}
+
+static void
+reply_to_call_manager_get_calls (ModemOface *_self,
+                                 ModemRequest *request,
+                                 GPtrArray *array,
+                                 GError const *error,
+                                 gpointer user_data)
+{
+  ModemCallService *self = MODEM_CALL_SERVICE (_self);
+
+  DEBUG ("enter");
+
+  if (!error)
+    {
+      guint i;
+
+      for (i = 0; i < array->len; i++)
+        {
+          GValueArray *va = g_ptr_array_index (array, i);
+          char const *path = g_value_get_boxed (va->values + 0);
+          GHashTable *properties = g_value_get_boxed (va->values + 1);
+
+          modem_call_service_ensure_instance (self, path, properties);
+        }
+    }
+
+  modem_oface_check_connected (_self, request, error);
+}
+
+/** Connect to call service */
+static void
+modem_call_service_connect (ModemOface *_self)
+{
+  DEBUG ("(%p): enter", _self);
+
+  ModemCallService *self = MODEM_CALL_SERVICE (_self);
+  ModemCallServicePrivate *priv = self->priv;
+
+  if (!priv->signals)
+    {
+      DBusGProxy *proxy = DBUS_PROXY (_self);
+
+      priv->signals = TRUE;
+
+#define CONNECT(p, handler, name, signature...) \
+      dbus_g_proxy_add_signal (p, (name), ##signature);                 \
+      dbus_g_proxy_connect_signal (p, (name), G_CALLBACK (handler), self, NULL)
+
+      CONNECT (proxy, on_manager_call_added, "CallAdded",
+          DBUS_TYPE_G_OBJECT_PATH, MODEM_TYPE_DBUS_DICT, G_TYPE_INVALID);
+
+      CONNECT (proxy, on_manager_call_removed, "CallRemoved",
+          DBUS_TYPE_G_OBJECT_PATH, G_TYPE_INVALID);
+
+#undef CONNECT
+    }
+
+  modem_oface_connect_properties (_self, TRUE);
+
+  modem_oface_add_connect_request (_self,
+      modem_oface_request_managed (_self, "GetCalls",
+          reply_to_call_manager_get_calls, NULL));
+}
+
+
+/** Disconnect from call service */
+static void
+modem_call_service_disconnect (ModemOface *_self)
+{
+  DEBUG ("(%p): enter", _self);
+
+  ModemCallService *self = MODEM_CALL_SERVICE (_self);
+  ModemCallServicePrivate *priv = self->priv;
+  GHashTableIter iter[1];
+  ModemCall *ci;
+
+  while (!g_queue_is_empty (priv->dialing.queue))
+    {
+      ModemRequest *request = g_queue_pop_head (priv->dialing.queue);
+      modem_request_cancel (request);
+    }
+
+  if (priv->signals)
+    {
+      priv->signals = FALSE;
+
+      dbus_g_proxy_disconnect_signal (DBUS_PROXY (self), "CallAdded",
+          G_CALLBACK (on_manager_call_added), self);
+      dbus_g_proxy_disconnect_signal (DBUS_PROXY (self), "CallRemoved",
+          G_CALLBACK (on_manager_call_removed), self);
+    }
+
+  for (g_hash_table_iter_init (iter, priv->instances);
+       g_hash_table_iter_next (iter, NULL, (gpointer)&ci);
+       g_hash_table_iter_init (iter, priv->instances))
+    {
+      modem_call_service_disconnect_instance (self, ci);
+    }
+
+  ci = priv->conference.instance;
+  modem_call_service_disconnect_instance (self, ci);
+
+  modem_oface_disconnect_properties (_self);
+}
+
+/* ---------------------------------------------------------------------- */
 
 static void
 modem_call_service_class_init (ModemCallServiceClass *klass)
 {
   GObjectClass *object_class = G_OBJECT_CLASS (klass);
+  ModemOfaceClass *oface_class = MODEM_OFACE_CLASS (klass);
+
+  DEBUG ("enter");
 
   g_type_class_add_private (klass, sizeof (ModemCallServicePrivate));
 
@@ -261,6 +364,10 @@ modem_call_service_class_init (ModemCallServiceClass *klass)
   object_class->set_property = modem_call_service_set_property;
   object_class->dispose = modem_call_service_dispose;
   object_class->finalize = modem_call_service_finalize;
+
+  oface_class->property_mapper = modem_call_service_property_mapper;
+  oface_class->connect = modem_call_service_connect;
+  oface_class->disconnect = modem_call_service_disconnect;
 
   /* Properties */
   g_object_class_install_property (object_class, PROP_EMERGENCY_NUMBERS,
@@ -272,14 +379,6 @@ modem_call_service_class_init (ModemCallServiceClass *klass)
           G_PARAM_STATIC_STRINGS));
 
   /* Signals to emit */
-  signals[SIGNAL_CONNECTED] =
-    g_signal_new ("connected", G_OBJECT_CLASS_TYPE (klass),
-        G_SIGNAL_RUN_LAST | G_SIGNAL_DETAILED,
-        0,
-        NULL, NULL,
-        g_cclosure_marshal_VOID__VOID,
-        G_TYPE_NONE, 0);
-
   signals[SIGNAL_INCOMING] =
     g_signal_new ("incoming", G_OBJECT_CLASS_TYPE (klass),
         G_SIGNAL_RUN_LAST | G_SIGNAL_DETAILED,
@@ -298,6 +397,15 @@ modem_call_service_class_init (ModemCallServiceClass *klass)
         G_TYPE_NONE, 2,
         MODEM_TYPE_CALL, G_TYPE_STRING);
 
+  signals[SIGNAL_REMOVED] =
+    g_signal_new ("removed", G_OBJECT_CLASS_TYPE (klass),
+        G_SIGNAL_RUN_LAST | G_SIGNAL_DETAILED,
+        0,
+        NULL, NULL,
+        _modem__marshal_VOID__OBJECT,
+        G_TYPE_NONE, 1,
+        MODEM_TYPE_CALL);
+
   signals[SIGNAL_USER_CONNECTION] =
     g_signal_new ("user-connection", G_OBJECT_CLASS_TYPE (klass),
         G_SIGNAL_RUN_LAST | G_SIGNAL_DETAILED,
@@ -307,33 +415,8 @@ modem_call_service_class_init (ModemCallServiceClass *klass)
         G_TYPE_NONE, 1,
         G_TYPE_BOOLEAN);
 
-  signals[SIGNAL_EMERGENCY_NUMBERS_CHANGED] =
-    g_signal_new ("emergency-numbers-changed", G_OBJECT_CLASS_TYPE (klass),
-        G_SIGNAL_RUN_LAST | G_SIGNAL_DETAILED,
-        0,
-        NULL, NULL,
-        g_cclosure_marshal_VOID__BOXED,
-        G_TYPE_NONE, 1,
-        G_TYPE_STRV);
-
-
-  modem_error_domain_prefix (0); /* Init errors */
+  DEBUG ("leave");
 }
-
-/* ---------------------------------------------------------------------- */
-
-#define RETURN_NULL_IF_NOT_VALID(self)                                 \
-  g_return_val_if_fail (self != NULL && self->priv->proxy != NULL &&    \
-      !self->priv->dispose_has_run, NULL)
-
-/* ---------------------------------------------------------------------- */
-
-static ModemOfonoGetDescsReply reply_to_call_manager_get_calls;
-
-static void on_manager_call_added (DBusGProxy *proxy,
-    char const *path,
-    GHashTable *properties,
-    gpointer user_data);
 
 /* ---------------------------------------------------------------------- */
 
@@ -341,26 +424,37 @@ static void
 modem_call_service_connect_to_instance (ModemCallService *self,
                                         ModemCall *instance)
 {
-  if (instance)
-    {
-      g_signal_connect (instance, "state",
-          G_CALLBACK (on_modem_call_state), self);
-      g_signal_connect_after (instance, "terminated",
-          G_CALLBACK (on_modem_call_terminated), self);
-    }
+  ModemCallServicePrivate *priv = self->priv;
+  gchar const *object_path;
+
+  if (!instance)
+    return;
+
+  g_signal_connect (instance, "state", G_CALLBACK (on_modem_call_state), self);
+
+  modem_oface_connect (MODEM_OFACE (instance));
+
+  object_path = modem_call_get_path (instance);
+
+  g_hash_table_insert (priv->instances, g_strdup (object_path), instance);
 }
 
 static void
 modem_call_service_disconnect_instance (ModemCallService *self,
                                         ModemCall *instance)
 {
-  if (instance)
-    {
-      g_signal_handlers_disconnect_by_func (instance,
-          on_modem_call_state, self);
-      g_signal_handlers_disconnect_by_func (instance,
-          on_modem_call_terminated, self);
-    }
+  ModemCallServicePrivate *priv = self->priv;
+
+  if (!instance)
+    return;
+
+  g_hash_table_remove (priv->instances, modem_call_get_path (instance));
+
+  g_signal_handlers_disconnect_by_func (instance, on_modem_call_state, self);
+
+  g_signal_emit (self, signals[SIGNAL_REMOVED], 0, instance);
+
+  modem_oface_disconnect (MODEM_OFACE (instance));
 }
 
 static ModemCall *
@@ -372,9 +466,10 @@ modem_call_service_ensure_instance (ModemCallService *self,
   char *key;
   GValue *value;
   GHashTableIter iter[1];
-  char const *remote;
+  gchar const *remote;
   ModemCallState state;
   gboolean incoming = FALSE, originating = FALSE;
+  DBusGProxy *proxy;
   ModemCall *ci;
 
   DEBUG ("path %s", object_path);
@@ -425,27 +520,28 @@ modem_call_service_ensure_instance (ModemCallService *self,
       return NULL;
     }
 
+  proxy = modem_ofono_proxy (object_path, OFONO_IFACE_CALL);
+
   ci = g_object_new (MODEM_TYPE_CALL,
+      "dbus-proxy", proxy,
       "call-service", self,
-      "object-path", object_path,
-      "remote", remote,
       "state", state,
       "terminating", !originating,
       "originating",  originating,
       NULL);
 
+  modem_oface_update_properties (MODEM_OFACE (ci), properties);
   modem_call_service_connect_to_instance (self, ci);
-  g_hash_table_insert (priv->instances, g_strdup (object_path), ci);
 
   if (incoming)
     {
-      DEBUG ("emit \"incoming\"(%s (%p), %s)",
+      DEBUG ("emit \"incoming\" (\"%s\" (%p), \"%s\")",
           modem_call_get_name (ci), ci, remote);
       g_signal_emit (self, signals[SIGNAL_INCOMING], 0, ci, remote);
     }
   else if (g_queue_is_empty (priv->dialing.queue))
     {
-      DEBUG ("emit \"created\"(%s (%p), %s)",
+      DEBUG ("emit \"created\" (\"%s\" (%p), \"%s\")",
           modem_call_get_name (ci), ci, remote);
       g_signal_emit (self, signals[SIGNAL_CREATED], 0, ci, remote);
     }
@@ -463,6 +559,7 @@ modem_call_service_get_dialed (ModemCallService *self,
 {
   ModemCallServicePrivate *priv = self->priv;
   ModemCall *ci;
+  DBusGProxy *proxy;
 
   ci = g_hash_table_lookup (priv->instances, object_path);
   if (ci)
@@ -475,88 +572,25 @@ modem_call_service_get_dialed (ModemCallService *self,
       return ci;
     }
 
+  proxy = modem_ofono_proxy (object_path, OFONO_IFACE_CALL);
+
   ci = g_object_new (MODEM_TYPE_CALL,
+      "dbus-proxy", proxy,
       "call-service", self,
-      "object-path", object_path,
       "remote", remote,
       "state", MODEM_CALL_STATE_DIALING,
+      "ofono-state", "dialing",
       "terminating", FALSE,
       "originating", TRUE,
       NULL);
 
   modem_call_service_connect_to_instance (self, ci);
-  g_hash_table_insert (priv->instances, g_strdup (object_path), ci);
 
   return ci;
 }
 
 /* ---------------------------------------------------------------------- */
-
-DBusGProxy *
-_modem_call_service_proxy (ModemCallService *self)
-{
-  RETURN_NULL_IF_NOT_VALID (self);
-
-  return self->priv->proxy;
-}
-
-/* ---------------------------------------------------------------------- */
 /* ModemCallService interface */
-
-gboolean
-modem_call_service_connect (ModemCallService *self,
-                            char const *object_path)
-{
-  ModemCallServicePrivate *priv = self->priv;
-
-  if (priv->dispose_has_run)
-    return FALSE;
-
-  if (priv->disconnected)
-    return FALSE;
-
-  if (priv->connected)
-    return TRUE;
-
-  if (!g_queue_is_empty (priv->connecting.queue))
-    return TRUE;
-
-  g_clear_error (&priv->connecting.error);
-
-  if (!priv->proxy)
-    priv->proxy = modem_ofono_proxy (object_path,
-        OFONO_IFACE_CALL_MANAGER);
-
-  if (!priv->proxy)
-    {
-      g_error ("Failed to proxy the call service");
-      return FALSE;
-    }
-
-  if (!priv->signals)
-    {
-      priv->signals = TRUE;
-
-      modem_ofono_proxy_connect_to_property_changed (
-          priv->proxy, on_manager_property_changed, self);
-
-      dbus_g_proxy_add_signal (priv->proxy, "CallAdded",
-          DBUS_TYPE_G_OBJECT_PATH, MODEM_TYPE_DBUS_DICT, G_TYPE_INVALID);
-
-      dbus_g_proxy_connect_signal (priv->proxy, "CallAdded",
-          G_CALLBACK (on_manager_call_added), self, NULL);
-    }
-
-  g_queue_push_tail (priv->connecting.queue,
-      modem_ofono_proxy_request_properties (priv->proxy,
-          reply_to_call_manager_get_properties, self, NULL));
-
-  g_queue_push_tail (priv->connecting.queue,
-      modem_ofono_request_descs (self, priv->proxy,
-          "GetCalls", reply_to_call_manager_get_calls, NULL));
-
-  return TRUE;
-}
 
 #if 0
 static void
@@ -598,76 +632,6 @@ refresh_conference_memberships (ModemCallService *self,
 #endif
 
 static void
-on_manager_property_changed (DBusGProxy *proxy,
-                             char const *property,
-                             GValue const *value,
-                             gpointer user_data)
-{
-  ModemCallService *self = MODEM_CALL_SERVICE (user_data);
-
-  if (DEBUGGING)
-    {
-      char *s;
-      DEBUG ("enter");
-      s = g_strdup_value_contents (value);
-      DEBUG ("%s = %s", property, s);
-      g_free (s);
-    }
-
-  if (!strcmp (property, "EmergencyNumbers"))
-    {
-      g_object_set_property (G_OBJECT (self), "emergency-numbers", value);
-      g_signal_emit (self, signals[SIGNAL_EMERGENCY_NUMBERS_CHANGED], 0,
-          modem_call_get_emergency_numbers (self));
-    }
-#if 0
-  else if (!strcmp (property, "MultipartyCalls"))
-    {
-      refresh_conference_memberships (self, g_value_get_boxed (value));
-    }
-#endif
-}
-
-static void
-reply_to_call_manager_get_properties (gpointer _self,
-                                      ModemRequest *request,
-                                      GHashTable *properties,
-                                      GError const *error,
-                                      gpointer user_data)
-{
-  ModemCallService *self = MODEM_CALL_SERVICE (_self);
-
-  DEBUG ("enter");
-
-  if (!error)
-    {
-      GValue *value;
-
-      value = g_hash_table_lookup (properties, "EmergencyNumbers");
-      if (value)
-        {
-          g_object_set_property (G_OBJECT (self), "emergency-numbers", value);
-        }
-
-      if (DEBUGGING)
-        {
-          char *key;
-          GHashTableIter iter[1];
-
-          for (g_hash_table_iter_init (iter, properties);
-               g_hash_table_iter_next (iter, (gpointer)&key, (gpointer)&value);)
-            {
-              char *s = g_strdup_value_contents (value);
-              DEBUG ("%s = %s", key, s);
-              g_free (s);
-            }
-        }
-    }
-
-  modem_call_service_check_connected (self, request, error);
-}
-
-static void
 on_manager_call_added (DBusGProxy *proxy,
                        char const *path,
                        GHashTable *properties,
@@ -681,133 +645,25 @@ on_manager_call_added (DBusGProxy *proxy,
 }
 
 static void
-reply_to_call_manager_get_calls (gpointer _self,
-                                 ModemRequest *request,
-                                 GPtrArray *array,
-                                 GError const *error,
-                                 gpointer user_data)
+on_manager_call_removed (DBusGProxy *proxy,
+                         char const *path,
+                         gpointer user_data)
 {
-  ModemCallService *self = _self;
+  DEBUG ("%s", path);
 
-  DEBUG ("enter");
-
-  if (!error)
-    {
-      guint i;
-
-      for (i = 0; i < array->len; i++)
-        {
-          GValueArray *va = g_ptr_array_index (array, i);
-          char const *path = g_value_get_boxed (va->values + 0);
-          GHashTable *properties = g_value_get_boxed (va->values + 1);
-
-          modem_call_service_ensure_instance (self, path, properties);
-        }
-    }
-
-  modem_call_service_check_connected (self, request, error);
-}
-
-static void
-modem_call_service_check_connected (ModemCallService *self,
-                                    ModemRequest *request,
-                                    GError const *error)
-{
+  ModemCallService *self = MODEM_CALL_SERVICE (user_data);
   ModemCallServicePrivate *priv = self->priv;
+  ModemCall *ci = g_hash_table_lookup (priv->instances, path);
 
-  if (g_queue_find (priv->connecting.queue, request))
+  if (ci)
     {
-      g_queue_remove (priv->connecting.queue, request);
-
-      if (error)
-        {
-          if (!priv->connecting.error ||
-              priv->connecting.error->domain == DBUS_GERROR)
-            {
-              g_clear_error (&priv->connecting.error);
-              g_set_error (&priv->connecting.error,
-                  error->domain, error->code,
-                  "%s", error->message);
-            }
-
-          modem_critical (MODEM_SERVICE_CALL, GERROR_MSG_FMT,
-              GERROR_MSG_CODE (priv->connecting.error));
-        }
-
-      if (g_queue_is_empty (priv->connecting.queue))
-        {
-          priv->connected = priv->connecting.error == NULL;
-          DEBUG ("emit \"connected\"(%s)", priv->connected ? "TRUE" : "FALSE");
-          g_signal_emit (self, signals[SIGNAL_CONNECTED], 0);
-        }
+      modem_call_service_disconnect_instance (self, ci);
     }
 }
-
-/** Disconnect from call service */
-void
-modem_call_service_disconnect (ModemCallService *self)
-{
-  DEBUG ("(%p): enter", self);
-
-  ModemCallServicePrivate *priv = self->priv;
-  unsigned was_connected = priv->connected;
-
-  g_return_if_fail (!priv->dispose_has_run);
-
-  if (priv->disconnected)
-    return;
-
-  priv->connected = FALSE;
-  priv->disconnected = TRUE;
-
-  while (!g_queue_is_empty (priv->connecting.queue))
-    {
-      ModemRequest *request = g_queue_pop_head (priv->connecting.queue);
-      modem_request_cancel (request);
-    }
-
-  while (!g_queue_is_empty (priv->dialing.queue))
-    {
-      ModemRequest *request = g_queue_pop_head (priv->connecting.queue);
-      modem_request_cancel (request);
-    }
-
-  if (priv->signals)
-    {
-      priv->signals = FALSE;
-
-      modem_ofono_proxy_disconnect_from_property_changed (
-          priv->proxy, on_manager_property_changed, self);
-
-      dbus_g_proxy_disconnect_signal (priv->proxy, "CallAdded",
-          G_CALLBACK (on_manager_call_added), self);
-    }
-
-  g_clear_error (&priv->connecting.error);
-
-  if (was_connected)
-    g_signal_emit (self, signals[SIGNAL_CONNECTED], 0);
-}
-
-gboolean
-modem_call_service_is_connected (ModemCallService const *self)
-{
-  return MODEM_IS_CALL_SERVICE (self) && self->priv->connected;
-}
-
-gboolean
-modem_call_service_is_connecting (ModemCallService const *self)
-{
-  return MODEM_IS_CALL_SERVICE (self)
-    && !g_queue_is_empty (self->priv->connecting.queue);
-}
-
 
 void
 modem_call_service_resume (ModemCallService *self)
 {
-  DEBUG ("enter");
-
   GHashTableIter iter[1];
   ModemCall *membercall = NULL;
   ModemCall *ci;
@@ -815,11 +671,14 @@ modem_call_service_resume (ModemCallService *self)
   ModemCallConference *mcc;
 #endif
 
-  if (!self->priv->connected)
-    return;
+  DEBUG ("enter");
+  RETURN_IF_NOT_VALID (self);
 
+  /* XXX/KV: no such signal */
+#if 0
   g_signal_emit (self, signals[SIGNAL_EMERGENCY_NUMBERS_CHANGED], 0,
       modem_call_get_emergency_numbers (self));
+#endif
 
   g_hash_table_iter_init (iter, self->priv->instances);
   while (g_hash_table_iter_next (iter, NULL, (gpointer)&ci))
@@ -1038,11 +897,9 @@ modem_call_request_dial (ModemCallService *self,
   ModemRequest *request;
   ModemCallServicePrivate *priv = self->priv;
 
-  RETURN_NULL_IF_NOT_VALID (self);
-
   DEBUG ("called");
 
-  g_return_val_if_fail (priv->connected, NULL);
+  RETURN_NULL_IF_NOT_VALID (self);
   g_return_val_if_fail (destination != NULL, NULL);
   g_return_val_if_fail (callback != NULL, NULL);
 
@@ -1057,7 +914,7 @@ modem_call_request_dial (ModemCallService *self,
   else
     clir_str = "";
 
-  request = modem_request_begin (self, priv->proxy,
+  request = modem_request_begin (self, DBUS_PROXY (self),
       "Dial", modem_call_request_dial_reply,
       G_CALLBACK (callback), user_data,
       G_TYPE_STRING, destination,
@@ -1108,10 +965,11 @@ modem_call_request_dial_reply (DBusGProxy *proxy,
     {
       ci = modem_call_service_get_dialed (self, object_path, destination);
     }
-  else {
-    object_path = NULL;
-    modem_error_fix (&error);
-  }
+  else
+    {
+      object_path = NULL;
+      modem_error_fix (&error);
+    }
 
   if (ci)
     {
@@ -1122,29 +980,31 @@ modem_call_request_dial_reply (DBusGProxy *proxy,
           "call create request to \"%s\" successful",
           destination);
     }
-  else {
-    char ebuffer[32];
+  else
+    {
+      char ebuffer[32];
 
-    modem_message (MODEM_SERVICE_CALL,
-        "call create request to \"%s\" failed: %s.%s: %s",
-        destination,
-        modem_error_domain_prefix (error->domain),
-        modem_error_name (error, ebuffer, sizeof ebuffer),
-        error->message);
+      modem_message (MODEM_SERVICE_CALL,
+          "call create request to \"%s\" failed: %s.%s: %s",
+          destination,
+          modem_error_domain_prefix (error->domain),
+          modem_error_name (error, ebuffer, sizeof ebuffer),
+          error->message);
 
-    DEBUG ("%s: " GERROR_MSG_FMT, OFONO_IFACE_CALL_MANAGER ".Dial",
-        GERROR_MSG_CODE (error));
-  }
+      DEBUG ("%s: " GERROR_MSG_FMT, OFONO_IFACE_CALL_MANAGER ".Dial",
+          GERROR_MSG_CODE (error));
+    }
 
   if (modem_request_get_data (request, "call-canceled"))
     {
       if (ci)
         modem_call_request_release (ci, NULL, NULL);
     }
-  else {
-    g_assert (ci || error);
-    callback (self, request, ci, error, user_data);
-  }
+  else
+    {
+      g_assert (ci || error);
+      callback (self, request, ci, error, user_data);
+    }
 
   if (g_queue_find (priv->dialing.queue, request))
     g_queue_remove (priv->dialing.queue, request);
@@ -1172,11 +1032,12 @@ on_modem_call_state (ModemCall *ci,
                      ModemCallState state,
                      ModemCallService *self)
 {
-  ModemCallServicePrivate *priv = MODEM_CALL_SERVICE (self)->priv;
+  ModemCallServicePrivate *priv;
   gboolean releasing = FALSE;
 
-  if (priv->disconnected)
-    return;
+  RETURN_IF_NOT_VALID (self);
+
+  priv = self->priv;
 
   switch (state)
     {
@@ -1254,18 +1115,6 @@ on_modem_call_state (ModemCall *ci,
 #endif
 }
 
-static void
-on_modem_call_terminated (ModemCall *ci,
-                          ModemCallService *self)
-{
-  char const *path;
-  ModemCallServicePrivate *priv = self->priv;
-
-  path = modem_call_get_path (ci);
-  if (path)
-    g_hash_table_remove (priv->instances, path);
-}
-
 ModemRequest *
 modem_call_request_conference (ModemCallService *self,
                                ModemCallServiceReply *callback,
@@ -1273,7 +1122,7 @@ modem_call_request_conference (ModemCallService *self,
 {
   RETURN_NULL_IF_NOT_VALID (self);
 
-  return modem_request (MODEM_CALL_SERVICE (self), self->priv->proxy,
+  return modem_request (MODEM_CALL_SERVICE (self), DBUS_PROXY (self),
       "CreateMultiparty",
       modem_call_conference_request_reply,
       G_CALLBACK (callback), user_data,
