@@ -85,6 +85,14 @@ TpChannelGroupChangeReason ring_channel_group_release_reason(
   guint causetype, guint cause);
 TpChannelGroupChangeReason ring_channel_group_error_reason(GError *);
 
+static inline void
+ring_signal_disconnect (gpointer object, gulong id[1])
+{
+  if (*id && object && g_signal_handler_is_connected (object, *id))
+    g_signal_handler_disconnect (object, *id);
+  *id = 0;
+}
+
 G_END_DECLS
 
 #endif /* #ifndef __RING_UTIL_H__*/
