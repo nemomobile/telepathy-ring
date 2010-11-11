@@ -31,7 +31,7 @@ nodist_libtpextensions_a_SOURCES = \
     _gen/signals-marshal.h \
     _gen/signals-marshal.list \
     _gen/enums.h \
-    _gen/gtypes.h \
+    _gen/gtypes.h _gen/gtypes-body.h \
     _gen/interfaces.h \
     _gen/interfaces-body.h \
     _gen/svc.h _gen/svc.c
@@ -42,6 +42,10 @@ BUILT_SOURCES = \
     $(nodist_libtpextensions_a_SOURCES)
 
 # extensions.html
+
+clean-local:
+	rm -f $(BUILT_SOURCES) _gen/*-gtk-doc.h
+	rmdir _gen
 
 CLEANFILES = $(BUILT_SOURCES)
 
