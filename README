@@ -42,7 +42,7 @@ The following environment variables are used:
 REQUIRED LIBRARIES
 ==================
 
-Telepathy-Ring is based on telepathy-glib (0.11.7)
+Telepathy-Ring is based on telepathy-glib (0.11.11 or newer)
 
 
 RUNNING WITH ELEVATED PRIORITY
@@ -52,30 +52,3 @@ Telepathy-Ring can be launched with RING_REALTIME and RING_MEMLOCK
 environment variables set. If they are not set, the priorities are read from
 /var/lib/telepathy-ring/realtime and /var/lib/telepathy-ring/memlock
 instead.
-
-Telepathy can be launched with, e.g., following shell script (run with root
-privileges after the user login session D-Bus has been launched):
-
---8<----8<----8<----8<----8<----8<----8<----8<----8<----8<----8<----8<--
-#! /bin/sh
-
-# obtain session bus address for Ring
-. /tmp/session_bus_address.user
-
-test -x /usr/bin/waitdbus &&
-/usr/bin/waitdbus session
-
-export RING_REALTIME=10
-export RING_MEMLOCK=1
-
-# Uncomment to obtain debug output
-# RING_DEBUG=all
-# CALL_DEBUG=all
-# SMS_DEBUG=all
-# MODEM_DEBUG=all
-
-# Make ring wait for
-export RING_PERSIST=1
-
-exec /usr/lib/telepathy/telepathy-ring
---8<----8<----8<----8<----8<----8<----8<----8<----8<----8<----8<----8<--
