@@ -244,6 +244,8 @@ ring_media_channel_constructed(GObject *object)
 {
   RingMediaChannel *self = RING_MEDIA_CHANNEL(object);
   RingMediaChannelPrivate *priv = self->priv;
+  TpBaseConnection *connection = TP_BASE_CONNECTION(self->connection);
+  TpDBusDaemon *bus_daemon = tp_base_connection_get_dbus_daemon(connection);
 
   if (G_OBJECT_CLASS(ring_media_channel_parent_class)->constructed)
     G_OBJECT_CLASS(ring_media_channel_parent_class)->constructed(object);
@@ -252,7 +254,7 @@ ring_media_channel_constructed(GObject *object)
 
   g_assert(self->call_service);
 
-  dbus_g_connection_register_g_object(tp_get_bus(), priv->object_path, object);
+  tp_dbus_daemon_register_object(bus_daemon, priv->object_path, object);
 }
 
 static void

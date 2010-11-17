@@ -275,6 +275,7 @@ ring_text_channel_constructed(GObject *object)
   RingTextChannel *self = RING_TEXT_CHANNEL(object);
   RingTextChannelPrivate *priv = self->priv;
   TpBaseConnection *connection = TP_BASE_CONNECTION(priv->connection);
+  TpDBusDaemon *bus_daemon = tp_base_connection_get_dbus_daemon(connection);
   TpHandleRepoIface *repo = tp_base_connection_get_handles(
     connection, TP_HANDLE_TYPE_CONTACT);
   void (*send)(GObject *, TpMessage *, TpMessageSendingFlags) =
@@ -291,7 +292,7 @@ ring_text_channel_constructed(GObject *object)
 
   priv->destination = ring_text_channel_destination(priv->target_id);
 
-  dbus_g_connection_register_g_object(tp_get_bus(), priv->object_path, object);
+  tp_dbus_daemon_register_object(bus_daemon, priv->object_path, object);
 
   tp_message_mixin_init(object, G_STRUCT_OFFSET(RingTextChannel, message),
     connection);
