@@ -969,6 +969,12 @@ ring_connection_modem_interface_removed (Modem *modem,
     }
 }
 
+ModemOface *
+ring_connection_get_modem_interface (RingConnection *self, char const *name)
+{
+  return modem_get_interface (self->priv->modem, name);
+}
+
 static void
 ring_connection_bind_modem (RingConnection *self,
                             Modem *modem)

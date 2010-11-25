@@ -87,6 +87,9 @@ gboolean ring_connection_validate_initial_members(RingConnection *self,
   RingInitialMembers *initial,
   GError **error);
 
+struct _ModemOface *ring_connection_get_modem_interface (RingConnection *,
+    char const *);
+
 G_END_DECLS
 
 #endif /* #ifndef RING_CONNECTION_H */
