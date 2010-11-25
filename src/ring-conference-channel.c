@@ -213,9 +213,12 @@ ring_mergeable_conference_merge(RingSvcChannelInterfaceMergeableConference *ifac
   }
   else {
     ModemRequest *request;
+    ModemCallService *service;
 
-    request = modem_call_request_conference(
-      self->base.call_service, modem_call_service_join_reply, self);
+    service = ring_media_channel_get_call_service (RING_MEDIA_CHANNEL (self)),
+
+    request = modem_call_request_conference (service,
+        modem_call_service_join_reply, self);
 
     ring_media_channel_queue_request(RING_MEDIA_CHANNEL(self), request);
 
@@ -1157,6 +1160,7 @@ ring_conference_channel_create_streams(RingMediaChannel *_self,
 {
   RingConferenceChannel *self = RING_CONFERENCE_CHANNEL(_self);
   RingConferenceChannelPrivate *priv = self->priv;
+  ModemCallService *service;
 
   (void)audio; (void)video;
 
@@ -1172,8 +1176,10 @@ ring_conference_channel_create_streams(RingMediaChannel *_self,
       error))
     return FALSE;
 
+  service = ring_media_channel_get_call_service (RING_MEDIA_CHANNEL (self)),
+
   ring_media_channel_queue_request(RING_MEDIA_CHANNEL(self),
-    modem_call_request_conference(self->base.call_service,
+    modem_call_request_conference (service,
       reply_to_modem_call_request_conference, self));
 
   return TRUE;
@@ -1185,13 +1191,16 @@ ring_conference_channel_initial_audio(RingConferenceChannel *self,
   gpointer channelrequest)
 {
   RingConferenceChannelPrivate *priv = self->priv;
+  ModemCallService *service;
   ModemRequest *request;
 
   DEBUG("%s(%p, %p, %p) called", __func__, self, manager, channelrequest);
 
   priv->streams_created = 1;
 
-  request = modem_call_request_conference(self->base.call_service,
+  service = ring_media_channel_get_call_service (RING_MEDIA_CHANNEL (self)),
+
+  request = modem_call_request_conference (service,
             reply_to_modem_call_request_conference,
             self);
 
@@ -1231,7 +1240,7 @@ reply_to_modem_call_request_conference(ModemCallService *_service,
   if (error == NULL && cc == NULL) {
     RingConferenceChannel *already;
 
-    cc = modem_call_service_get_conference(self->base.call_service);
+    cc = modem_call_service_get_conference (_service);
     already = modem_call_get_handler(MODEM_CALL(cc));
     if (already == NULL) {
       g_object_set(self, "call-instance", cc, NULL);

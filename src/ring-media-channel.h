@@ -58,7 +58,6 @@ struct _RingMediaChannel {
   TpBaseChannel parent;
 
   /* Read-only */
-  ModemCallService *call_service;
   ModemCall *call_instance;
   char *nick;
 
@@ -99,6 +98,8 @@ GType ring_media_channel_get_type(void);
 void ring_media_channel_emit_initial(RingMediaChannel *self);
 
 void ring_media_channel_close(RingMediaChannel *self);
+
+ModemCallService *ring_media_channel_get_call_service (RingMediaChannel *);
 
 ModemRequest *ring_media_channel_queue_request(RingMediaChannel *self,
   ModemRequest *request);

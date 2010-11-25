@@ -129,7 +129,6 @@ enum {
 
   /* ring-specific properties */
   PROP_PEER,
-  PROP_CALL_SERVICE,
   PROP_CALL_INSTANCE,
   PROP_TONES,
 
@@ -235,8 +234,6 @@ ring_media_channel_constructed(GObject *object)
 
   DEBUG("(%p) with %s", self, self->nick);
 
-  g_assert(self->call_service);
-
   tp_base_channel_register (base);
 }
 
@@ -267,9 +264,6 @@ ring_media_channel_get_property(GObject *obj,
       break;
     case PROP_IMMUTABLE_STREAMS:
       g_value_set_boolean(value, TRUE);
-      break;
-    case PROP_CALL_SERVICE:
-      g_value_set_pointer(value, self->call_service);
       break;
     case PROP_CALL_INSTANCE:
       g_value_set_pointer(value, self->call_instance);
@@ -302,13 +296,6 @@ ring_media_channel_set_property(GObject *obj,
       break;
     case PROP_INITIAL_AUDIO:
       priv->initial_audio = g_value_get_boolean(value);
-      break;
-    case PROP_CALL_SERVICE:
-      if (self->call_service)
-        g_object_unref (self->call_service);
-      self->call_service = g_value_get_pointer (value);
-      if (self->call_service)
-        g_object_ref (MODEM_CALL_SERVICE (self->call_service));
       break;
     case PROP_CALL_INSTANCE:
       ring_media_channel_set_call_instance (self, g_value_get_pointer (value));
@@ -450,16 +437,6 @@ ring_media_channel_class_init(RingMediaChannelClass *klass)
       G_PARAM_STATIC_STRINGS));
 
   g_object_class_install_property (object_class,
-      PROP_CALL_SERVICE,
-      g_param_spec_pointer ("call-service",
-          "ModemCallService Object",
-          "ModemCallService for this channel",
-          /* MODEM_TYPE_CALL_SERVICE, */
-          G_PARAM_READWRITE |
-          G_PARAM_CONSTRUCT_ONLY |
-          G_PARAM_STATIC_STRINGS));
-
-  g_object_class_install_property (object_class,
       PROP_CALL_INSTANCE,
       g_param_spec_pointer ("call-instance",
           "ModemCall Object",
@@ -507,6 +484,25 @@ ring_media_channel_fill_immutable_properties(TpBaseChannel *base,
 }
 
 /* ====================================================================== */
+
+ModemCallService *
+ring_media_channel_get_call_service (RingMediaChannel *self)
+{
+  TpBaseChannel *base = TP_BASE_CHANNEL (self);
+  TpBaseConnection *base_connection;
+  RingConnection *connection;
+  ModemOface *oface;
+
+  base_connection = tp_base_channel_get_connection (base);
+  connection = RING_CONNECTION (base_connection);
+  oface = ring_connection_get_modem_interface (connection,
+      MODEM_OFACE_CALL_MANAGER);
+
+  if (oface)
+    return MODEM_CALL_SERVICE (oface);
+  else
+    return NULL;
+}
 
 static gboolean ring_media_channel_emit_closed(RingMediaChannel *self);
 

@@ -872,6 +872,7 @@ ring_call_channel_create_streams(RingMediaChannel *_self,
 {
   RingCallChannel *self = RING_CALL_CHANNEL(_self);
   RingCallChannelPrivate *priv = self->priv;
+  ModemCallService *call_service = ring_media_channel_get_call_service (_self);
 
   (void)audio; (void)video;
 
@@ -883,12 +884,12 @@ ring_call_channel_create_streams(RingMediaChannel *_self,
     return FALSE;
   }
 
-  if (self->base.call_service == NULL ||
-      !modem_oface_is_connected (MODEM_OFACE (self->base.call_service))) {
-    g_set_error(error, TP_ERRORS, TP_ERROR_DISCONNECTED,
-        "not connected to call service");
-    return FALSE;
-  }
+  if (call_service == NULL)
+    {
+      g_set_error (error, TP_ERRORS, TP_ERROR_NOT_AVAILABLE,
+          "Modem does not support voice calls");
+      return FALSE;
+    }
 
   if (priv->call_instance_seen) {
     DEBUG("Already associated with a call");
@@ -935,6 +936,7 @@ ring_call_channel_create(RingCallChannel *self, GError **error)
   char const *destination;
   ModemClirOverride clir;
   char *number = NULL;
+  ModemCallService *service;
   ModemRequest *request;
 
   destination = ring_connection_inspect_contact (
@@ -960,7 +962,9 @@ ring_call_channel_create(RingCallChannel *self, GError **error)
   if (priv->dial2nd)
     DEBUG("2nd stage dialing: \"%s\"", priv->dial2nd);
 
-  request = modem_call_request_dial(self->base.call_service, number, clir,
+  service = ring_media_channel_get_call_service (RING_MEDIA_CHANNEL (self));
+
+  request = modem_call_request_dial (service, number, clir,
             reply_to_modem_call_request_dial, self);
 
   g_free(number);
