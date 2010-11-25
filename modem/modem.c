@@ -365,6 +365,7 @@ modem_class_init (ModemClass *klass)
   object_class->get_property = modem_get_property;
   object_class->set_property = modem_set_property;
 
+  oface_class->ofono_interface = MODEM_OFACE_MODEM;
   oface_class->property_mapper = modem_property_mapper;
   oface_class->connect = modem_connect;
   oface_class->disconnect = modem_disconnect;
@@ -713,19 +714,19 @@ modem_list_interfaces (Modem const *self)
 gboolean
 modem_supports_sim (Modem const *self)
 {
-  return modem_get_interface (self, OFONO_IFACE_SIM) != NULL;
+  return modem_get_interface (self, MODEM_OFACE_SIM) != NULL;
 }
 
 gboolean
 modem_supports_call (Modem const *self)
 {
-  return modem_get_interface (self, OFONO_IFACE_CALL_MANAGER) != NULL;
+  return modem_get_interface (self, MODEM_OFACE_CALL_MANAGER) != NULL;
 }
 
 gboolean
 modem_supports_sms (Modem const *self)
 {
-  return modem_get_interface (self, OFONO_IFACE_SMS) != NULL;
+  return modem_get_interface (self, MODEM_OFACE_SMS) != NULL;
 }
 
 gboolean
@@ -738,7 +739,7 @@ modem_has_imsi (Modem const *self, gchar const *imsi)
   g_return_val_if_fail (MODEM_IS_MODEM (self), FALSE);
   g_return_val_if_fail (imsi != NULL, FALSE);
 
-  sim = (ModemSIMService *)modem_get_interface (self, OFONO_IFACE_SIM);
+  sim = (ModemSIMService *)modem_get_interface (self, MODEM_OFACE_SIM);
   if (sim == NULL)
     return FALSE;
 
