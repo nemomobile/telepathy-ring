@@ -80,6 +80,22 @@ struct _ModemSIMServicePrivate
 };
 
 /* ------------------------------------------------------------------------ */
+
+GQuark
+modem_oface_quark_sim (void)
+{
+  static gsize quark = 0;
+
+  if (g_once_init_enter (&quark))
+    {
+      GQuark q = g_quark_from_static_string (MODEM_OFACE_SIM);
+      g_once_init_leave (&quark, q);
+    }
+
+  return quark;
+}
+
+/* ------------------------------------------------------------------------ */
 /* Local functions */
 
 /* ------------------------------------------------------------------------ */
@@ -259,6 +275,7 @@ modem_sim_service_class_init (ModemSIMServiceClass *klass)
   object_class->dispose = modem_sim_service_dispose;
   object_class->finalize = modem_sim_service_finalize;
 
+  oface_class->ofono_interface = MODEM_OFACE_SIM;
   oface_class->property_mapper = modem_sim_service_property_mapper;
   oface_class->connect = modem_sim_service_connect;
   oface_class->connected = modem_sim_service_connected;
