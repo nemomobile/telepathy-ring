@@ -52,7 +52,6 @@ G_DEFINE_TYPE (ModemOface, modem_oface, G_TYPE_OBJECT);
 enum
 {
   PROP_NONE,
-  PROP_DBUS_PROXY,
   PROP_INTERFACE,
   PROP_OBJECT_PATH,
   LAST_PROPERTY
@@ -84,6 +83,7 @@ struct _ModemOfacePrivate
 /* ------------------------------------------------------------------------ */
 /* Local functions */
 
+static void modem_oface_set_object_path (ModemOface *self, char const *path);
 static void on_property_changed (DBusGProxy *,
     char const *, GValue const *, gpointer);
 
@@ -111,10 +111,6 @@ modem_oface_get_property (GObject *object,
 
   switch (property_id)
     {
-    case PROP_DBUS_PROXY:
-      g_value_set_object (value, priv->proxy);
-      break;
-
     case PROP_INTERFACE:
       g_value_set_string (value, dbus_g_proxy_get_interface (priv->proxy));
       break;
@@ -139,9 +135,8 @@ modem_oface_set_property (GObject *object,
 
   switch (property_id)
     {
-    case PROP_DBUS_PROXY:
-      self->priv->proxy = g_value_get_object (value);
-      g_object_ref (self->priv->proxy);
+    case PROP_OBJECT_PATH:
+      modem_oface_set_object_path (self, g_value_get_string (value));
       break;
 
     default:
@@ -213,14 +208,6 @@ modem_oface_class_init (ModemOfaceClass *klass)
   g_type_class_add_private (klass, sizeof (ModemOfacePrivate));
 
   /* Properties */
-  g_object_class_install_property (object_class, PROP_DBUS_PROXY,
-      g_param_spec_object ("dbus-proxy",
-          "D-Bus proxy",
-          "The D-Bus Proxy for the interface",
-          DBUS_TYPE_G_PROXY,
-          G_PARAM_READWRITE | G_PARAM_CONSTRUCT_ONLY |
-          G_PARAM_STATIC_STRINGS));
-
   g_object_class_install_property (object_class, PROP_INTERFACE,
       g_param_spec_string ("interface",
           "Interface name",
@@ -234,7 +221,7 @@ modem_oface_class_init (ModemOfaceClass *klass)
           "Modem object path",
           "D-Bus object path used to identify the modem",
           "/", /* default value */
-          G_PARAM_READABLE |
+          G_PARAM_READWRITE | G_PARAM_CONSTRUCT_ONLY |
           G_PARAM_STATIC_STRINGS));
 
   /* Signals to emit */
@@ -245,6 +232,108 @@ modem_oface_class_init (ModemOfaceClass *klass)
         NULL, NULL,
         g_cclosure_marshal_VOID__BOOLEAN,
         G_TYPE_NONE, 1, G_TYPE_BOOLEAN);
+}
+
+/* ------------------------------------------------------------------------- */
+/* ModemOface factory */
+
+static DBusGConnection *
+modem_oface_get_bus (void)
+{
+  static DBusGConnection *bus = NULL;
+
+  if (G_UNLIKELY (bus == NULL))
+    bus = dbus_g_bus_get (DBUS_BUS_SYSTEM, NULL);
+
+  return bus;
+}
+
+static void
+modem_oface_set_object_path (ModemOface *self,
+                             char const *object_path)
+{
+  DBusGConnection *bus = modem_oface_get_bus ();
+  char const *interface = MODEM_OFACE_GET_CLASS (self)->ofono_interface;
+
+  self->priv->proxy =
+    dbus_g_proxy_new_for_name (bus, OFONO_BUS_NAME, object_path, interface);
+}
+
+static GHashTable *modem_oface_types;
+
+char const *
+modem_oface_get_interface_name_by_type (GType type)
+{
+  ModemOfaceClass *klass;
+  char const *interface = NULL;
+
+  g_return_val_if_fail (G_TYPE_IS_OBJECT (type), NULL);
+
+  klass = g_type_class_peek_static (type);
+  if (klass)
+    {
+      g_return_val_if_fail (MODEM_IS_OFACE_CLASS (klass), NULL);
+      interface = klass->ofono_interface;
+    }
+  else
+    {
+      klass = g_type_class_ref (type);
+
+      if (MODEM_IS_OFACE_CLASS (klass))
+        interface = klass->ofono_interface;
+      else
+        (void) MODEM_OFACE_CLASS (klass);
+
+      g_type_class_unref (klass);
+    }
+
+  return interface;
+}
+
+GType
+modem_oface_get_type_by_interface_name (char const *interface)
+{
+  gpointer type = g_hash_table_lookup (modem_oface_types, interface);
+
+  if (type != NULL)
+    return (GType) type;
+
+  return G_TYPE_INVALID;
+}
+
+void
+modem_oface_register_type (GType type)
+{
+  static gsize once = 0;
+  gpointer interface;
+
+  if (g_once_init_enter (&once))
+    {
+      modem_oface_types = g_hash_table_new_full (g_str_hash, g_str_equal,
+          NULL, NULL);
+      g_once_init_leave (&once, 1);
+    }
+
+  interface = (gpointer) modem_oface_get_interface_name_by_type (type);
+
+  if (interface)
+    g_hash_table_insert (modem_oface_types, interface, (gpointer)type);
+}
+
+
+ModemOface *
+modem_oface_new (char const *interface, char const *object_path)
+{
+  GType type = modem_oface_get_type_by_interface_name (interface);
+
+  if (type != G_TYPE_INVALID)
+    {
+      return g_object_new (type, "object-path", object_path, NULL);
+    }
+  else
+    {
+      return NULL;
+    }
 }
 
 /* ------------------------------------------------------------------------- */

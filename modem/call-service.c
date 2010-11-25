@@ -486,7 +486,6 @@ modem_call_service_ensure_instance (ModemCallService *self,
   gchar const *remote;
   ModemCallState state;
   gboolean incoming = FALSE, originating = FALSE;
-  DBusGProxy *proxy;
   ModemCall *ci;
 
   DEBUG ("path %s", object_path);
@@ -537,10 +536,8 @@ modem_call_service_ensure_instance (ModemCallService *self,
       return NULL;
     }
 
-  proxy = modem_ofono_proxy (object_path, OFONO_IFACE_CALL);
-
   ci = g_object_new (MODEM_TYPE_CALL,
-      "dbus-proxy", proxy,
+      "object-path", object_path,
       "call-service", self,
       "state", state,
       "terminating", !originating,
@@ -576,7 +573,6 @@ modem_call_service_get_dialed (ModemCallService *self,
 {
   ModemCallServicePrivate *priv = self->priv;
   ModemCall *ci;
-  DBusGProxy *proxy;
 
   ci = g_hash_table_lookup (priv->instances, object_path);
   if (ci)
@@ -589,10 +585,8 @@ modem_call_service_get_dialed (ModemCallService *self,
       return ci;
     }
 
-  proxy = modem_ofono_proxy (object_path, OFONO_IFACE_CALL);
-
   ci = g_object_new (MODEM_TYPE_CALL,
-      "dbus-proxy", proxy,
+      "object-path", object_path,
       "call-service", self,
       "remote", remote,
       "state", MODEM_CALL_STATE_DIALING,

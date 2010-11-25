@@ -354,79 +354,19 @@ modem_service_class_init(ModemServiceClass *klass)
 /* modem_service interface */
 
 /* -------------------------------------------------------------------------- */
-/* ModemOface factory */
-
-static GHashTable *modem_oface_types;
-
-void
-modem_service_register_oface (char const *interface,
-                              GType type)
-{
-  static gsize once = 0;
-
-  if (g_once_init_enter (&once))
-    {
-      modem_oface_types = g_hash_table_new_full (g_str_hash, g_str_equal,
-          g_free, NULL);
-      g_once_init_leave (&once, 1);
-    }
-
-  g_hash_table_insert (modem_oface_types, g_strdup (interface), (gpointer)type);
-}
-
-
-GType
-modem_oface_type (char const *interface)
-{
-  gpointer type = g_hash_table_lookup (modem_oface_types, interface);
-
-  if (type != NULL)
-    return (GType) type;
-
-  return G_TYPE_INVALID;
-}
-
-ModemOface *
-modem_oface_new (char const *interface, char const *object_path)
-{
-  GType type;
-  DBusGProxy *proxy;
-
-  type = modem_oface_type (interface);
-  if (type == G_TYPE_INVALID)
-    {
-      return NULL;
-    }
-
-  proxy = modem_ofono_proxy (object_path, interface);
-
-  DEBUG("proxy %p for interface %s, type %d", proxy, interface, type);
-
-  if (proxy == NULL)
-    {
-    return NULL;
-    }
-
-  return g_object_new (type, "dbus-proxy", proxy, NULL);
-}
 
 ModemService *modem_service (void)
 {
   static ModemService *service;
 
   if (!service) {
-    service = g_object_new (MODEM_TYPE_SERVICE,
-        "dbus-proxy", modem_ofono_proxy("/", OFONO_IFACE_MANAGER),
-        NULL);
+    modem_oface_register_type (MODEM_TYPE_SERVICE);
+    modem_oface_register_type (MODEM_TYPE_MODEM);
+    modem_oface_register_type (MODEM_TYPE_SIM_SERVICE);
+    modem_oface_register_type (MODEM_TYPE_SMS_SERVICE);
+    modem_oface_register_type (MODEM_TYPE_CALL_SERVICE);
 
-#define REG(iface, type) modem_service_register_oface (iface, type)
-
-    REG (OFONO_IFACE_MODEM, MODEM_TYPE_MODEM);
-    REG (OFONO_IFACE_SIM, MODEM_TYPE_SIM_SERVICE);
-    REG (OFONO_IFACE_SMS, MODEM_TYPE_SMS_SERVICE);
-    REG (OFONO_IFACE_CALL_MANAGER, MODEM_TYPE_CALL_SERVICE);
-
-#undef REG
+    service = MODEM_SERVICE (modem_oface_new (MODEM_OFACE_MANAGER, "/"));
   }
 
   return service;

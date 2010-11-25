@@ -26,6 +26,7 @@
 #include "modem/request.c"
 
 #include "modem/ofono.h"
+#include "modem/service.h"
 
 #include "test-modem.h"
 #include <stdio.h>
@@ -98,7 +99,12 @@ cancel_notify(gpointer _request)
 START_TEST(make_call_request)
 {
   GObject *object = g_object_new(G_TYPE_OBJECT, NULL);
-  DBusGProxy *proxy = modem_ofono_proxy("/", OFONO_IFACE_MANAGER);
+  DBusGProxy *proxy;
+
+  proxy = dbus_g_proxy_new_for_name (dbus_g_bus_get (DBUS_BUS_SYSTEM, NULL),
+      OFONO_BUS_NAME,
+      "/",
+      MODEM_OFACE_MANAGER);
 
   (void)callback_to_timeout;
 
@@ -221,7 +227,12 @@ static void notified(gpointer user_data)
 START_TEST(notify_in_call_request)
 {
   GObject *object = g_object_new(G_TYPE_OBJECT, NULL);
-  DBusGProxy *proxy = modem_ofono_proxy("/", OFONO_IFACE_MANAGER);
+  DBusGProxy *proxy;
+
+  proxy = dbus_g_proxy_new_for_name (dbus_g_bus_get (DBUS_BUS_SYSTEM, NULL),
+      OFONO_BUS_NAME,
+      "/",
+      MODEM_OFACE_MANAGER);
 
   g_object_weak_ref(object, weaknotify, &object);
   g_object_weak_ref(G_OBJECT(proxy), weaknotify, &proxy);

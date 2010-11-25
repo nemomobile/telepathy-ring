@@ -84,7 +84,11 @@ typedef void ModemOfaceVoidReply (ModemOface *, ModemRequest *request,
 
 /* ---------------------------------------------------------------------- */
 
-GType modem_oface_type (char const *interface);
+void modem_oface_register_type (GType type);
+
+char const *modem_oface_get_interface_name_by_type (GType type);
+
+GType modem_oface_get_type_by_interface_name (char const *interface);
 
 ModemOface *modem_oface_new (char const *interface, char const *object_path);
 
