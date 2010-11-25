@@ -347,7 +347,9 @@ modem_service_class_init(ModemServiceClass *klass)
 
   modem_error_domain_prefix (0); /* Init errors */
 
-  modem_ofono_init_quarks ();
+  modem_oface_quark_sim ();
+  modem_oface_quark_call_manager ();
+  modem_oface_quark_sms ();
 }
 
 /* ------------------------------------------------------------------------ */
@@ -498,7 +500,7 @@ on_modem_added (DBusGProxy *_dummy,
       return;
     }
 
-  modem = MODEM_MODEM (modem_oface_new (OFONO_IFACE_MODEM, object_path));
+  modem = MODEM_MODEM (modem_oface_new (MODEM_OFACE_MODEM, object_path));
   if (modem == NULL)
     {
       DEBUG ("Cannot create modem object %s", object_path);
