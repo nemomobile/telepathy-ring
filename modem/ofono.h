@@ -34,20 +34,7 @@ G_BEGIN_DECLS
 /* D-Bus name of the Ofono service */
 #define OFONO_BUS_NAME           "org.ofono"
 
-/* Interfaces */
-#define OFONO_IFACE_MANAGER      "org.ofono.Manager"
-#define OFONO_IFACE_MODEM        "org.ofono.Modem"
-
-/* Interfaces per modem */
-#define OFONO_IFACE_SIM          "org.ofono.SimManager"
-#define OFONO_IFACE_CALL_MANAGER "org.ofono.VoiceCallManager"
-#define OFONO_IFACE_CALL         "org.ofono.VoiceCall"
-#define OFONO_IFACE_SMS          "org.ofono.MessageManager"
-
 /* Quarks for mandatory modem interfaces */
-#define OFONO_IFACE_QUARK_SIM modem_ofono_iface_quark_sim ()
-#define OFONO_IFACE_QUARK_CALL_MANAGER modem_ofono_iface_quark_call_manager ()
-#define OFONO_IFACE_QUARK_SMS modem_ofono_iface_quark_sms ()
 
 /* D-Bus type a{sv} for Ofono properties */
 #define MODEM_TYPE_DBUS_DICT modem_type_dbus_dict ()
@@ -61,12 +48,6 @@ G_BEGIN_DECLS
 GType modem_type_dbus_dict (void);
 GType modem_type_dbus_ao (void);
 GType modem_type_dbus_managed_array (void);
-GQuark modem_ofono_iface_quark_sim (void);
-GQuark modem_ofono_iface_quark_call_manager (void);
-GQuark modem_ofono_iface_quark_sms (void);
-void modem_ofono_init_quarks (void);
-
-DBusGProxy *modem_ofono_proxy (char const *object_path, char const *interface);
 
 void modem_ofono_debug_managed (char const *name,
     char const *object_path,

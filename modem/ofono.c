@@ -80,67 +80,6 @@ modem_type_dbus_managed_array (void)
   return type;
 }
 
-GQuark
-modem_ofono_iface_quark_sim (void)
-{
-  static gsize quark = 0;
-
-  if (g_once_init_enter (&quark))
-    {
-      GQuark q = g_quark_from_static_string (OFONO_IFACE_SIM);
-      g_once_init_leave (&quark, q);
-    }
-
-  return quark;
-}
-
-GQuark
-modem_ofono_iface_quark_call_manager (void)
-{
-  static gsize quark = 0;
-
-  if (g_once_init_enter (&quark))
-    {
-      GQuark q = g_quark_from_static_string (OFONO_IFACE_CALL_MANAGER);
-      g_once_init_leave (&quark, q);
-    }
-
-  return quark;
-}
-
-GQuark
-modem_ofono_iface_quark_sms (void)
-{
-  static gsize quark = 0;
-
-  if (g_once_init_enter (&quark))
-    {
-      GQuark q = g_quark_from_static_string (OFONO_IFACE_SMS);
-      g_once_init_leave (&quark, q);
-    }
-
-  return quark;
-}
-
-void
-modem_ofono_init_quarks (void)
-{
-  modem_ofono_iface_quark_sim ();
-  modem_ofono_iface_quark_call_manager ();
-  modem_ofono_iface_quark_sms ();
-}
-
-static DBusGConnection *
-modem_ofono_get_bus (void)
-{
-  static DBusGConnection *bus = NULL;
-
-  if (G_UNLIKELY (bus == NULL))
-    bus = dbus_g_bus_get (DBUS_BUS_SYSTEM, NULL);
-
-  return bus;
-}
-
 void
 modem_ofono_debug_managed (char const *name,
 			char const *object_path,
@@ -159,15 +98,4 @@ modem_ofono_debug_managed (char const *name,
       DEBUG ("%s = %s", key, s);
       g_free (s);
     }
-}
-
-/* ---------------------------------------------------------------------- */
-
-DBusGProxy *
-modem_ofono_proxy (char const *object_path, char const *interface)
-{
-  return dbus_g_proxy_new_for_name (modem_ofono_get_bus (),
-      OFONO_BUS_NAME,
-      object_path,
-      interface);
 }
