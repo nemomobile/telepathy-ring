@@ -36,6 +36,7 @@ struct _ModemOfaceClass
 {
   GObjectClass parent_class;
 
+  char const *ofono_interface;
   /** Called when start connecting */
   void (*connect)(ModemOface *);
   /** Called when got connected */
