@@ -211,15 +211,25 @@ ring_properties_satisfy(GHashTable *requested_properties,
       DEBUG("*** expecting %u for %s, got %u",
         g_value_get_boolean(fixed), (char *)keyp, g_value_get_boolean(requested));
     }
-    else if (G_VALUE_HOLDS(requested, G_TYPE_STRING)) {
-      if (!tp_strdiff(g_value_get_string(fixed), g_value_get_string(requested)))
-        continue;
-      DEBUG("*** expecting \"%s\" for %s, got \"%s\"",
-        g_value_get_string(fixed), (char *)keyp, g_value_get_string(requested));
-    }
-    else {
-      g_warning("*** fixed-properties contains %s ***", G_VALUE_TYPE_NAME(fixed));
-    }
+    else if (G_VALUE_HOLDS (requested, G_TYPE_STRING))
+      {
+        char const *fixed_string = g_value_get_string (fixed);
+        char const *requested_string = g_value_get_string (requested);
+
+        if (!tp_strdiff (fixed_string, requested_string))
+          continue;
+
+        if (tp_strdiff (keyp, "org.freedesktop.Telepathy.Channel.ChannelType"))
+          {
+            DEBUG ("*** expecting \"%s\" for %s, got \"%s\"",
+                fixed_string, (char *)keyp, requested_string);
+          }
+      }
+    else
+      {
+        g_warning ("*** fixed-properties contains %s ***",
+            G_VALUE_TYPE_NAME (fixed));
+      }
 
     return 0;
   }
