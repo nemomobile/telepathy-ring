@@ -164,7 +164,7 @@ modem_call_service_init (ModemCallService *self)
   g_queue_init (self->priv->dialing.created);
 
   self->priv->instances = g_hash_table_new_full (
-      g_str_hash, g_str_equal, g_free, g_object_unref);
+      g_str_hash, g_str_equal, NULL, g_object_unref);
 }
 
 static void
@@ -453,7 +453,7 @@ modem_call_service_connect_to_instance (ModemCallService *self,
 
   object_path = modem_call_get_path (instance);
 
-  g_hash_table_insert (priv->instances, g_strdup (object_path), instance);
+  g_hash_table_insert (priv->instances, (gpointer) object_path, instance);
 }
 
 static void
@@ -465,13 +465,15 @@ modem_call_service_disconnect_instance (ModemCallService *self,
   if (!instance)
     return;
 
-  g_hash_table_remove (priv->instances, modem_call_get_path (instance));
+  g_hash_table_steal (priv->instances, modem_call_get_path (instance));
 
   g_signal_handlers_disconnect_by_func (instance, on_modem_call_state, self);
 
   g_signal_emit (self, signals[SIGNAL_REMOVED], 0, instance);
 
   modem_oface_disconnect (MODEM_OFACE (instance));
+
+  g_object_unref (instance);
 }
 
 static ModemCall *
