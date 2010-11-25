@@ -66,6 +66,8 @@ GType modem_service_get_type(void);
 
 /* ---------------------------------------------------------------------- */
 
+#define MODEM_OFACE_MANAGER "org.ofono.Manager"
+
 ModemService *modem_service(void);
 
 void modem_service_refresh (ModemService *self);

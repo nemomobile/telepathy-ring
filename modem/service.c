@@ -285,6 +285,7 @@ modem_service_class_init(ModemServiceClass *klass)
   object_class->dispose = modem_service_dispose;
   object_class->finalize = modem_service_finalize;
 
+  oface_class->ofono_interface = MODEM_OFACE_MANAGER;
   oface_class->connect = modem_service_connect;
   oface_class->disconnect = modem_service_disconnect;
 
