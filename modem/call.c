@@ -145,7 +145,7 @@ modem_call_constructed (GObject *object)
     G_OBJECT_CLASS (modem_call_parent_class)->constructed (object);
 
   DEBUG ("ModemCall for %s on %s",
-      modem_oface_object_path (MODEM_OFACE (object)), OFONO_IFACE_CALL);
+      modem_oface_object_path (MODEM_OFACE (object)), MODEM_OFACE_CALL);
 }
 
 static void
@@ -369,6 +369,7 @@ modem_call_class_init (ModemCallClass *klass)
   object_class->get_property = modem_call_get_property;
   object_class->set_property = modem_call_set_property;
 
+  oface_class->ofono_interface = MODEM_OFACE_CALL;
   oface_class->property_mapper = modem_call_property_mapper;
   oface_class->connect = modem_call_connect;
   oface_class->connected = modem_call_connected;
@@ -803,7 +804,7 @@ modem_call_request_answer (ModemCall *self,
 
   if (self->priv->state != MODEM_CALL_STATE_WAITING)
     {
-      DEBUG ("%s.%s (%s)", OFONO_IFACE_CALL, "Answer",
+      DEBUG ("%s.%s (%s)", MODEM_OFACE_CALL, "Answer",
           modem_call_get_path (self));
       return modem_request (MODEM_CALL (self),
           modem_oface_dbus_proxy (MODEM_OFACE (self)),
@@ -812,7 +813,7 @@ modem_call_request_answer (ModemCall *self,
           G_TYPE_INVALID);
     }
   else {
-    DEBUG ("%s.%s (%s)", OFONO_IFACE_CALL_MANAGER, "HoldAndAnswer",
+    DEBUG ("%s.%s (%s)", MODEM_OFACE_CALL_MANAGER, "HoldAndAnswer",
         modem_call_get_path (self));
     return modem_request (MODEM_CALL (self),
         modem_oface_dbus_proxy (MODEM_OFACE (self->priv->service)),
@@ -827,7 +828,7 @@ modem_call_request_release (ModemCall *self,
                             ModemCallReply callback,
                             gpointer user_data)
 {
-  DEBUG ("%s.%s (%s)", OFONO_IFACE_CALL, "Hangup", modem_call_get_path (self));
+  DEBUG ("%s.%s (%s)", MODEM_OFACE_CALL, "Hangup", modem_call_get_path (self));
   RETURN_NULL_IF_NOT_VALID (self);
 
   return modem_request (MODEM_CALL (self),
@@ -843,7 +844,7 @@ modem_call_request_split (ModemCall *self,
                           ModemCallReply callback,
                           gpointer user_data)
 {
-  DEBUG ("%s.%s (%s)", OFONO_IFACE_CALL_MANAGER, "PrivateChat",
+  DEBUG ("%s.%s (%s)", MODEM_OFACE_CALL_MANAGER, "PrivateChat",
       modem_call_get_path (self));
   RETURN_NULL_IF_NOT_VALID (self);
 
@@ -864,7 +865,7 @@ modem_call_request_hold (ModemCall *self,
   /* XXX: */
   (void)hold;
 
-  DEBUG ("%s.%s", OFONO_IFACE_CALL_MANAGER, "SwapCalls");
+  DEBUG ("%s.%s", MODEM_OFACE_CALL_MANAGER, "SwapCalls");
   RETURN_NULL_IF_NOT_VALID (self);
 
   return modem_request (MODEM_CALL (self),

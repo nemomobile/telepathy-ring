@@ -90,6 +90,22 @@ struct _ModemCallServicePrivate
 
 /* ---------------------------------------------------------------------- */
 
+GQuark
+modem_oface_quark_call_manager (void)
+{
+  static gsize quark = 0;
+
+  if (g_once_init_enter (&quark))
+    {
+      GQuark q = g_quark_from_static_string (MODEM_OFACE_CALL_MANAGER);
+      g_once_init_leave (&quark, q);
+    }
+
+  return quark;
+}
+
+/* ---------------------------------------------------------------------- */
+
 static void modem_call_service_connect_to_instance (ModemCallService *self,
     ModemCall *ci);
 
@@ -365,6 +381,7 @@ modem_call_service_class_init (ModemCallServiceClass *klass)
   object_class->dispose = modem_call_service_dispose;
   object_class->finalize = modem_call_service_finalize;
 
+  oface_class->ofono_interface = MODEM_OFACE_CALL_MANAGER;
   oface_class->property_mapper = modem_call_service_property_mapper;
   oface_class->connect = modem_call_service_connect;
   oface_class->disconnect = modem_call_service_disconnect;
@@ -973,7 +990,7 @@ modem_call_request_dial_reply (DBusGProxy *proxy,
 
   if (ci)
     {
-      DEBUG ("%s: instance %s (%p)", OFONO_IFACE_CALL_MANAGER ".Dial",
+      DEBUG ("%s: instance %s (%p)", MODEM_OFACE_CALL_MANAGER ".Dial",
           object_path, (void *)ci);
 
       modem_message (MODEM_SERVICE_CALL,
@@ -991,7 +1008,7 @@ modem_call_request_dial_reply (DBusGProxy *proxy,
           modem_error_name (error, ebuffer, sizeof ebuffer),
           error->message);
 
-      DEBUG ("%s: " GERROR_MSG_FMT, OFONO_IFACE_CALL_MANAGER ".Dial",
+      DEBUG ("%s: " GERROR_MSG_FMT, MODEM_OFACE_CALL_MANAGER ".Dial",
           GERROR_MSG_CODE (error));
     }
 
