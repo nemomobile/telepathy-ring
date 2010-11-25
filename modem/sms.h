@@ -24,14 +24,6 @@
 
 #include <glib-object.h>
 
-G_BEGIN_DECLS
-
-typedef struct _ModemSMSService ModemSMSService;
-typedef struct _ModemSMSServiceClass ModemSMSServiceClass;
-typedef struct _ModemSMSServicePrivate ModemSMSServicePrivate;
-
-G_END_DECLS
-
 #include <sms-glib/deliver.h>
 #include <sms-glib/status-report.h>
 #include <sms-glib/submit.h>
@@ -39,6 +31,10 @@ G_END_DECLS
 #include <modem/oface.h>
 
 G_BEGIN_DECLS
+
+typedef struct _ModemSMSService ModemSMSService;
+typedef struct _ModemSMSServiceClass ModemSMSServiceClass;
+typedef struct _ModemSMSServicePrivate ModemSMSServicePrivate;
 
 struct _ModemSMSServiceClass
 {
@@ -68,6 +64,10 @@ GType modem_sms_service_get_type (void);
   (G_TYPE_INSTANCE_GET_CLASS ((obj), MODEM_TYPE_SMS_SERVICE, ModemSMSServiceClass))
 
 /* ---------------------------------------------------------------------- */
+
+#define MODEM_OFACE_SMS "org.ofono.MessageManager"
+#define MODEM_OFACE_QUARK_SMS modem_oface_quark_sms ()
+GQuark modem_oface_quark_sms (void);
 
 typedef void ModemSMSConnectedHandler (ModemSMSService *, gpointer);
 typedef void ModemSMSDeliverHandler (ModemSMSService *,

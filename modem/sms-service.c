@@ -93,6 +93,22 @@ struct _ModemSMSServicePrivate
 
 /* ------------------------------------------------------------------------ */
 
+GQuark
+modem_oface_quark_sms (void)
+{
+  static gsize quark = 0;
+
+  if (g_once_init_enter (&quark))
+    {
+      GQuark q = g_quark_from_static_string (MODEM_OFACE_SMS);
+      g_once_init_leave (&quark, q);
+    }
+
+  return quark;
+}
+
+/* ------------------------------------------------------------------------ */
+
 static void modem_sms_incoming_deliver (ModemSMSService *self,
     SMSGDeliver *deliver);
 static void on_incoming_message (DBusGProxy *, char const *, GHashTable *, gpointer);
@@ -375,6 +391,7 @@ modem_sms_service_class_init (ModemSMSServiceClass *klass)
   object_class->dispose = modem_sms_service_dispose;
   object_class->finalize = modem_sms_service_finalize;
 
+  oface_class->ofono_interface = MODEM_OFACE_SMS;
   oface_class->property_mapper = modem_sms_service_property_mapper;
   oface_class->connect = modem_sms_service_connect;
   oface_class->connected = modem_sms_service_connected;
@@ -735,7 +752,7 @@ modem_sms_request_send (ModemSMSService *self,
 {
   ModemRequest *request;
 
-  DEBUG (OFONO_IFACE_SMS ".SendMessage (%s,%s)", to, message);
+  DEBUG (MODEM_OFACE_SMS ".SendMessage (%s,%s)", to, message);
 
   request = modem_request (self,
       modem_oface_dbus_proxy (MODEM_OFACE (self)),
