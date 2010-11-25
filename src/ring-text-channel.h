@@ -25,6 +25,7 @@
 #include <glib-object.h>
 #include <telepathy-glib/dbus-properties-mixin.h>
 #include <telepathy-glib/message-mixin.h>
+#include <telepathy-glib/base-channel.h>
 
 #include <sms-glib/deliver.h>
 #include <sms-glib/status-report.h>
@@ -36,12 +37,13 @@ typedef struct _RingTextChannelClass RingTextChannelClass;
 typedef struct _RingTextChannelPrivate RingTextChannelPrivate;
 
 struct _RingTextChannelClass {
-  GObjectClass parent_class;
+  TpBaseChannelClass parent_class;
   TpDBusPropertiesMixinClass dbus_properties_class;
 };
 
 struct _RingTextChannel {
-  GObject parent;
+  TpBaseChannel parent;
+
   TpMessageMixin message;
 
   RingTextChannelPrivate *priv;

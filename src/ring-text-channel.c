@@ -53,27 +53,20 @@
 
 #include <string.h>
 
-static void channel_iface_init(gpointer iface, gpointer data);
 static void ring_text_channel_destroyable_iface_init(gpointer, gpointer);
 
-G_DEFINE_TYPE_WITH_CODE(
-  RingTextChannel,
-  ring_text_channel,
-  G_TYPE_OBJECT,
-  G_IMPLEMENT_INTERFACE(TP_TYPE_SVC_DBUS_PROPERTIES,
-    tp_dbus_properties_mixin_iface_init);
-  G_IMPLEMENT_INTERFACE(TP_TYPE_SVC_CHANNEL, channel_iface_init);
-  G_IMPLEMENT_INTERFACE(TP_TYPE_SVC_CHANNEL_TYPE_TEXT,
-    tp_message_mixin_text_iface_init);
-  G_IMPLEMENT_INTERFACE(TP_TYPE_SVC_CHANNEL_INTERFACE_DESTROYABLE,
-    ring_text_channel_destroyable_iface_init);
-  G_IMPLEMENT_INTERFACE(TP_TYPE_SVC_CHANNEL_INTERFACE_MESSAGES,
-    tp_message_mixin_messages_iface_init);
+G_DEFINE_TYPE_WITH_CODE (RingTextChannel, ring_text_channel,
+    TP_TYPE_BASE_CHANNEL,
+    G_IMPLEMENT_INTERFACE (TP_TYPE_SVC_CHANNEL_TYPE_TEXT,
+        tp_message_mixin_text_iface_init);
+    G_IMPLEMENT_INTERFACE (TP_TYPE_SVC_CHANNEL_INTERFACE_DESTROYABLE,
+        ring_text_channel_destroyable_iface_init);
+    G_IMPLEMENT_INTERFACE (TP_TYPE_SVC_CHANNEL_INTERFACE_MESSAGES,
+        tp_message_mixin_messages_iface_init));
+
 #if nomore
   G_IMPLEMENT_INTERFACE(RTCOM_TYPE_TP_SVC_CHANNEL_INTERFACE_SMS, NULL);
 #endif
-  G_IMPLEMENT_INTERFACE(TP_TYPE_EXPORTABLE_CHANNEL, NULL);
-  G_IMPLEMENT_INTERFACE(TP_TYPE_CHANNEL_IFACE, NULL));
 
 static const char * const ring_text_channel_interfaces[] = {
   TP_IFACE_CHANNEL_INTERFACE_DESTROYABLE,
@@ -89,55 +82,34 @@ static const char * const ring_text_channel_interfaces[] = {
 enum
 {
   PROP_NONE,
-  PROP_OBJECT_PATH,
-  PROP_CHANNEL_PROPERTIES,
-  PROP_CHANNEL_DESTROYED,
-  PROP_CHANNEL_TYPE,
-  PROP_INTERFACES,
-  PROP_HANDLE_TYPE,
-  PROP_HANDLE,
-  PROP_TARGET_ID,
-
-  PROP_REQUESTED,
-  PROP_INITIATOR,
-  PROP_INITIATOR_ID,
 
   PROP_SMS_FLASH,
   PROP_TARGET_MATCH,
 
   PROP_SMS_SERVICE,
-  PROP_CONNECTION,
+
   N_PROPS
 };
 
 struct _RingTextChannelPrivate
 {
-  RingConnection *connection;   /* property */
-  ModemSMSService *sms_service; /* property */
+  char *destination;
 
-  char *object_path;           /* property */
-  TpHandle handle;              /* property */
-  char const *target_id;       /* property */
   GQueue sending[1];
 
-  TpHandle initiator;           /* property */
-
-  unsigned requested:1;         /* property */
-
-  unsigned destroyed:1;         /* property */
+  ModemSMSService *sms_service; /* property */
 
   unsigned sms_flash:1;         /* c.n.T.Channel.Interface.SMS.Flash */
-
   unsigned disposed:1;
-
   unsigned :0;
-  char *destination;
+
 };
 
 /* ---------------------------------------------------------------------- */
 
-static void ring_text_channel_close(RingTextChannel *self);
-static void ring_text_channel_destroy(RingTextChannel *self);
+static void ring_text_base_channel_class_init (RingTextChannelClass *klass);
+static void ring_text_channel_close (TpBaseChannel *base);
+static void ring_text_channel_destroy (RingTextChannel *self);
 
 static void ring_text_channel_set_target_match(GValue *, char const *, int);
 
@@ -158,84 +130,11 @@ static void ring_text_channel_send(GObject *_self,
   TpMessageSendingFlags flags);
 
 /* ---------------------------------------------------------------------- */
-/* Supported D-Bus properties  */
-
-/* Properties for org.freedesktop.Telepathy.Channel */
-static TpDBusPropertiesMixinPropImpl channel_properties[] = {
-  { "TargetHandle", "handle", NULL },
-  { "TargetID", "handle-id", NULL },
-  { "TargetHandleType", "handle-type", NULL },
-  { "ChannelType", "channel-type", NULL },
-  { "Interfaces", "interfaces", NULL },
-  { "InitiatorHandle", "initiator", NULL },
-  { "InitiatorID", "initiator-id", NULL },
-  { "Requested", "requested", NULL },
-  { NULL }
-};
-
-#if nomore
-/* Properties for c.n.T.Channel.Interface.SMS. */
-static TpDBusPropertiesMixinPropImpl sms_properties[] = {
-  { "Flash", "sms-flash", NULL },
-  { "TargetMatch", "target-match", NULL },
-  { NULL }
-};
-#endif
-
-/** Return a hash describing channel properties
- *
- * A channel's properties are constant for its lifetime on the bus, so
- * this property should only change when the closed signal is emitted (so
- * that respawned channels can reappear on the bus with different
- * properties).
- */
-GHashTable *
-ring_text_channel_properties(RingTextChannel *self)
-{
-  return
-    tp_dbus_properties_mixin_make_properties_hash (
-      G_OBJECT(self),
-      TP_IFACE_CHANNEL, "ChannelType",
-      TP_IFACE_CHANNEL, "Interfaces",
-      TP_IFACE_CHANNEL, "TargetHandle",
-      TP_IFACE_CHANNEL, "TargetHandleType",
-      TP_IFACE_CHANNEL, "TargetID",
-      TP_IFACE_CHANNEL, "InitiatorHandle",
-      TP_IFACE_CHANNEL, "InitiatorID",
-      TP_IFACE_CHANNEL, "Requested",
-#if nomore
-      RTCOM_TP_IFACE_CHANNEL_INTERFACE_SMS, "TargetMatch",
-      RTCOM_TP_IFACE_CHANNEL_INTERFACE_SMS, "Flash",
-#endif
-      NULL);
-}
-
-static TpDBusPropertiesMixinIfaceImpl
-ring_text_channel_dbus_property_interfaces[] = {
-  {
-    TP_IFACE_CHANNEL,
-    tp_dbus_properties_mixin_getter_gobject_properties,
-    NULL,
-    channel_properties,
-  },
-#if nomore
-  {
-    RTCOM_TP_IFACE_CHANNEL_INTERFACE_SMS,
-    tp_dbus_properties_mixin_getter_gobject_properties,
-    NULL,
-    sms_properties,
-  },
-#endif
-  { NULL }
-};
-
-/* ---------------------------------------------------------------------- */
 
 /* Message types to send on this channel */
 static TpChannelTextMessageType
 ring_text_channel_message_types[] = {
   TP_CHANNEL_TEXT_MESSAGE_TYPE_NORMAL,
-  /* TP_CHANNEL_TEXT_MESSAGE_TYPE_DELIVERY_REPORT */
 };
 
 static char const text_plain[] = "text/plain";
@@ -273,55 +172,53 @@ static void
 ring_text_channel_constructed(GObject *object)
 {
   RingTextChannel *self = RING_TEXT_CHANNEL(object);
+  TpBaseChannel *base = TP_BASE_CHANNEL (self);
   RingTextChannelPrivate *priv = self->priv;
-  TpBaseConnection *connection = TP_BASE_CONNECTION(priv->connection);
-  TpDBusDaemon *bus_daemon = tp_base_connection_get_dbus_daemon(connection);
-  TpHandleRepoIface *repo = tp_base_connection_get_handles(
-    connection, TP_HANDLE_TYPE_CONTACT);
-  void (*send)(GObject *, TpMessage *, TpMessageSendingFlags) =
-    ring_text_channel_send;
+  TpBaseConnection *connection = tp_base_channel_get_connection (base);
+  TpHandle target = tp_base_channel_get_target_handle (base);
+  TpHandleRepoIface *repo;
+  char const *target_id;
+  gboolean valid;
 
-  DEBUG("(%p) with %s", self, priv->object_path);
+  DEBUG ("(%p)", self);
+  if (G_OBJECT_TYPE (object) != RING_TYPE_TEXT_CHANNEL)
+    DEBUG ("Initializing derived text channel %s",
+        G_OBJECT_TYPE_NAME (object));
 
   if (G_OBJECT_CLASS(ring_text_channel_parent_class)->constructed)
     G_OBJECT_CLASS(ring_text_channel_parent_class)->constructed(object);
 
-  tp_handle_ref(repo, priv->handle);
-  priv->target_id = tp_handle_inspect(repo, priv->handle);
-  tp_handle_ref(repo, priv->initiator);
+  repo = tp_base_connection_get_handles (connection, TP_HANDLE_TYPE_CONTACT);
+  target_id = tp_handle_inspect (repo, target);
+  priv->destination = ring_text_channel_destination (target_id);
 
-  priv->destination = ring_text_channel_destination(priv->target_id);
+  valid = sms_g_is_valid_sms_address (priv->destination);
+  if (!valid)
+    /* Invalid destination - allow channel creation, but refuse sending */
+    DEBUG ("Destination '%s' invalid", priv->destination);
 
-  tp_dbus_daemon_register_object(bus_daemon, priv->object_path, object);
+  tp_message_mixin_init (object,
+      G_STRUCT_OFFSET (RingTextChannel, message),
+      connection);
 
-  tp_message_mixin_init(object, G_STRUCT_OFFSET(RingTextChannel, message),
-    connection);
+  if (valid && !priv->sms_flash)
+    {
+      tp_message_mixin_implement_sending (object,
+          ring_text_channel_send,
+          G_N_ELEMENTS (ring_text_channel_message_types),
+          ring_text_channel_message_types,
+          0, /* No attachments */
+          TP_DELIVERY_REPORTING_SUPPORT_FLAG_RECEIVE_FAILURES |
+          TP_DELIVERY_REPORTING_SUPPORT_FLAG_RECEIVE_SUCCESSES,
+          ring_text_get_content_types ());
+    }
+  else
+    {
+      tp_message_mixin_implement_sending (object, NULL,
+          0, NULL, 0, 0, ring_text_get_content_types ());
+    }
 
-  if (G_OBJECT_TYPE(object) != RING_TYPE_TEXT_CHANNEL) {
-    DEBUG("Initializing derived text channel %s", G_OBJECT_TYPE_NAME(object));
-  }
-
-  /* Invalid destination - allow channel creation, but refuse sending */
-  if (!sms_g_is_valid_sms_address(priv->destination)) {
-    DEBUG("Destination '%s' invalid", priv->destination);
-    send = NULL;
-  }
-
-  /* Flash channel for SMS Class 0 messages */
-  if (priv->sms_flash) {
-    send = NULL;
-  }
-
-  tp_message_mixin_implement_sending(object,
-    send,
-    send ? G_N_ELEMENTS(ring_text_channel_message_types) : 0,
-    ring_text_channel_message_types,
-    0, /* No attachments */
-    send
-    ? TP_DELIVERY_REPORTING_SUPPORT_FLAG_RECEIVE_FAILURES
-    | TP_DELIVERY_REPORTING_SUPPORT_FLAG_RECEIVE_SUCCESSES
-    : 0,
-    ring_text_get_content_types());
+  tp_base_channel_register (base);
 }
 
 
@@ -333,54 +230,17 @@ ring_text_channel_get_property(GObject *object,
 {
   RingTextChannel *self = RING_TEXT_CHANNEL (object);
   RingTextChannelPrivate *priv = self->priv;
-  char const *id;
 
   switch (property_id) {
-    case PROP_OBJECT_PATH:
-      g_value_set_string (value, priv->object_path);
-      break;
-    case PROP_CHANNEL_DESTROYED:
-      g_value_set_boolean(value, priv->destroyed);
-      break;
-    case PROP_CHANNEL_PROPERTIES:
-      g_value_take_boxed(value, ring_text_channel_properties(self));
-      break;
-    case PROP_CHANNEL_TYPE:
-      g_value_set_static_string (value, TP_IFACE_CHANNEL_TYPE_TEXT);
-      break;
-    case PROP_INTERFACES:
-      g_value_set_boxed (value, ring_text_channel_interfaces);
-      break;
-    case PROP_HANDLE_TYPE:
-      g_value_set_uint (value, TP_HANDLE_TYPE_CONTACT);
-      break;
-    case PROP_HANDLE:
-      g_value_set_uint (value, priv->handle);
-      break;
-    case PROP_TARGET_ID:
-      g_value_set_string (value, priv->target_id);
-      break;
-    case PROP_REQUESTED:
-      g_value_set_boolean(value, priv->requested);
-      break;
-    case PROP_INITIATOR:
-      g_value_set_uint (value, priv->initiator);
-      break;
-    case PROP_INITIATOR_ID:
-      id = ring_connection_inspect_contact(priv->connection, priv->initiator);
-      g_value_set_string(value, id);
-      break;
     case PROP_SMS_FLASH:
       g_value_set_boolean(value, priv->sms_flash);
       break;
     case PROP_TARGET_MATCH:
-      ring_text_channel_set_target_match(value, priv->destination, priv->sms_flash);
+      ring_text_channel_set_target_match (value,
+          priv->destination, priv->sms_flash);
       break;
     case PROP_SMS_SERVICE:
       g_value_set_pointer (value, priv->sms_service);
-      break;
-    case PROP_CONNECTION:
-      g_value_set_object (value, priv->connection);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
@@ -399,29 +259,6 @@ ring_text_channel_set_property(GObject *object,
 
   switch (property_id)
   {
-    case PROP_OBJECT_PATH:
-      priv->object_path = g_value_dup_string (value);
-      break;
-    case PROP_REQUESTED:
-      priv->requested = g_value_get_boolean(value);
-      break;
-    case PROP_HANDLE:
-      /* we don't ref handles here because we don't necessarily have access to the
-       * contact repo yet - instead we ref it in the constructed.
-       */
-      priv->handle = g_value_get_uint(value);
-      break;
-    case PROP_INITIATOR:
-      priv->initiator = g_value_get_uint(value);
-      break;
-
-    case PROP_HANDLE_TYPE:
-    case PROP_CHANNEL_TYPE:
-    case PROP_INTERFACES:
-      /* these properties are writable in the interface, but not actually
-       * meaningfully changable on this channel, so we do nothing */
-      break;
-
     case PROP_SMS_FLASH:
       priv->sms_flash = g_value_get_boolean(value);
       break;
@@ -432,11 +269,6 @@ ring_text_channel_set_property(GObject *object,
       priv->sms_service = g_value_get_pointer (value);
       if (priv->sms_service)
         g_object_ref (priv->sms_service);
-      break;
-
-    case PROP_CONNECTION:
-      /* Connection owns channel object, no reference needed */
-      priv->connection = g_value_get_object (value);
       break;
 
     default:
@@ -465,15 +297,7 @@ ring_text_channel_finalize(GObject *object)
 {
   RingTextChannel *self = RING_TEXT_CHANNEL (object);
   RingTextChannelPrivate *priv = self->priv;
-  TpBaseConnection *connection = TP_BASE_CONNECTION(priv->connection);
-  TpHandleRepoIface *contact_repo = tp_base_connection_get_handles(
-    connection, TP_HANDLE_TYPE_CONTACT);
 
-  priv->target_id = NULL;
-  tp_handle_unref(contact_repo, priv->handle), priv->handle = 0;
-  tp_handle_unref(contact_repo, priv->initiator), priv->initiator = 0;
-
-  g_free(priv->object_path), priv->object_path = NULL;
   g_free(priv->destination), priv->destination = NULL;
 
   while (!g_queue_is_empty(priv->sending))
@@ -481,8 +305,8 @@ ring_text_channel_finalize(GObject *object)
 
   tp_message_mixin_finalize(object);
 
-  priv->sms_service = NULL;
-  priv->connection = NULL;
+  if (priv->sms_service)
+    g_object_unref (priv->sms_service), priv->sms_service = NULL;
 
   ((GObjectClass *)ring_text_channel_parent_class)->finalize (object);
 }
@@ -499,35 +323,6 @@ ring_text_channel_class_init(RingTextChannelClass *klass)
   object_class->get_property = ring_text_channel_get_property;
   object_class->dispose = ring_text_channel_dispose;
   object_class->finalize = ring_text_channel_finalize;
-
-  g_object_class_override_property(
-    object_class, PROP_OBJECT_PATH, "object-path");
-  g_object_class_override_property(
-    object_class, PROP_CHANNEL_PROPERTIES, "channel-properties");
-  g_object_class_override_property(
-    object_class, PROP_CHANNEL_DESTROYED, "channel-destroyed");
-
-  g_object_class_override_property(
-    object_class, PROP_CHANNEL_TYPE, "channel-type");
-  g_object_class_override_property(
-    object_class, PROP_HANDLE_TYPE, "handle-type");
-  g_object_class_override_property(
-    object_class, PROP_HANDLE, "handle");
-  g_object_class_install_property(
-    object_class, PROP_TARGET_ID, ring_param_spec_handle_id(0));
-
-  g_object_class_install_property(
-    object_class, PROP_INTERFACES, ring_param_spec_interfaces());
-
-  g_object_class_install_property(
-    object_class, PROP_REQUESTED,
-    ring_param_spec_requested(G_PARAM_CONSTRUCT));
-  g_object_class_install_property(
-    object_class, PROP_INITIATOR,
-    ring_param_spec_initiator(0));
-  g_object_class_install_property(
-    object_class, PROP_INITIATOR_ID,
-    ring_param_spec_initiator_id(0));
 
   g_object_class_install_property(
     object_class, PROP_SMS_FLASH,
@@ -549,15 +344,10 @@ ring_text_channel_class_init(RingTextChannelClass *klass)
       G_PARAM_READABLE |
       G_PARAM_STATIC_STRINGS));
 
-  g_object_class_install_property(
-    object_class, PROP_CONNECTION, ring_param_spec_connection());
   g_object_class_install_property (object_class,
       PROP_SMS_SERVICE, ring_param_spec_sms_service (0));
 
-  klass->dbus_properties_class.interfaces =
-    ring_text_channel_dbus_property_interfaces;
-  tp_dbus_properties_mixin_class_init (object_class,
-    G_STRUCT_OFFSET (RingTextChannelClass, dbus_properties_class));
+  ring_text_base_channel_class_init (klass);
 
   tp_message_mixin_init_dbus_properties(object_class);
 }
@@ -565,95 +355,68 @@ ring_text_channel_class_init(RingTextChannelClass *klass)
 /* ---------------------------------------------------------------------- */
 
 static void
-ring_text_channel_close(RingTextChannel *self)
+ring_text_channel_close (TpBaseChannel *base)
 {
-  if (!self->priv->destroyed) {
-    gboolean pending;
-
-    pending = tp_message_mixin_has_pending_messages((gpointer)self, NULL);
-
-    if (pending) {
-      tp_message_mixin_set_rescued((gpointer)self);
+  if (tp_message_mixin_has_pending_messages ((gpointer)base, NULL))
+    {
+      DEBUG ("Resurrecting because of pending messages");
+      tp_message_mixin_set_rescued ((gpointer)base);
+      tp_base_channel_reopened (base, tp_base_channel_get_target_handle (base));
     }
-    else {
-      self->priv->destroyed = TRUE;
+  else
+    {
+      tp_base_channel_destroyed (base);
     }
-
-    tp_svc_channel_emit_closed(self);
-  }
 }
 
 static void
-ring_text_channel_destroy(RingTextChannel *self)
+ring_text_channel_fill_immutable_properties (TpBaseChannel *base,
+                                             GHashTable *properties)
 {
-  RingTextChannelPrivate *priv = self->priv;
+  TpBaseChannelClass *base_class =
+    TP_BASE_CHANNEL_CLASS (ring_text_channel_parent_class);
 
-  if (!priv->destroyed) {
-    priv->destroyed = TRUE;
+  base_class->fill_immutable_properties (base, properties);
 
-    tp_message_mixin_clear((gpointer)self);
-
-    while (!g_queue_is_empty(priv->sending))
-      modem_request_cancel(g_queue_pop_head(priv->sending));
-
-    tp_svc_channel_emit_closed(self);
-  }
-}
-
-
-/* ---------------------------------------------------------------------- */
-/* org.freedesktop.Telepathy.Channel interface */
-static void
-ring_text_channel_method_close(TpSvcChannel *iface,
-  DBusGMethodInvocation *context)
-{
-  ring_text_channel_close(RING_TEXT_CHANNEL(iface));
-  tp_svc_channel_return_from_close(context);
+  tp_dbus_properties_mixin_fill_properties_hash (G_OBJECT (base),
+      properties,
+      TP_IFACE_CHANNEL_INTERFACE_MESSAGES, "MessagePartSupportFlags",
+      TP_IFACE_CHANNEL_INTERFACE_MESSAGES, "DeliveryReportingSupport",
+      TP_IFACE_CHANNEL_INTERFACE_MESSAGES, "SupportedContentTypes",
+#if notyet
+      RTCOM_TP_IFACE_CHANNEL_INTERFACE_SMS, "TargetMatch",
+      RTCOM_TP_IFACE_CHANNEL_INTERFACE_SMS, "Flash",
+#endif
+      NULL);
 }
 
 static void
-ring_text_channel_method_get_channel_type(TpSvcChannel *iface,
-  DBusGMethodInvocation *context)
+ring_text_base_channel_class_init (RingTextChannelClass *klass)
 {
-  tp_svc_channel_return_from_get_channel_type(context,
-    TP_IFACE_CHANNEL_TYPE_TEXT);
-}
+  TpBaseChannelClass *base_class = TP_BASE_CHANNEL_CLASS (klass);
 
-static void
-ring_text_channel_method_get_handle(TpSvcChannel *iface,
-  DBusGMethodInvocation *context)
-{
-  RingTextChannel *self = RING_TEXT_CHANNEL(iface);
-
-  tp_svc_channel_return_from_get_handle(context, TP_HANDLE_TYPE_CONTACT,
-    self->priv->handle);
-}
-
-static void
-ring_text_channel_method_get_interfaces(TpSvcChannel *iface,
-  DBusGMethodInvocation *context)
-{
-  char const ** interfaces = (gchar const **)ring_text_channel_interfaces;
-
-  tp_svc_channel_return_from_get_interfaces(context, interfaces);
-}
-
-static void
-channel_iface_init(gpointer iface,
-  gpointer data)
-{
-  TpSvcChannelClass *klass = iface;
-
-#define IMPLEMENT(x) tp_svc_channel_implement_##x(klass, ring_text_channel_method_##x)
-  IMPLEMENT(close);
-  IMPLEMENT(get_channel_type);
-  IMPLEMENT(get_handle);
-  IMPLEMENT(get_interfaces);
-#undef IMPLEMENT
+  base_class->channel_type = TP_IFACE_CHANNEL_TYPE_TEXT;
+  base_class->target_handle_type = TP_HANDLE_TYPE_CONTACT;
+  base_class->close = ring_text_channel_close;
+  base_class->fill_immutable_properties =
+    ring_text_channel_fill_immutable_properties;
 }
 
 /* ====================================================================== */
 /* Channel.Interface.Destroyable */
+
+static void
+ring_text_channel_destroy (RingTextChannel *self)
+{
+  RingTextChannelPrivate *priv = self->priv;
+
+  tp_message_mixin_clear ((gpointer)self);
+
+  while (!g_queue_is_empty (priv->sending))
+    modem_request_cancel (g_queue_pop_head (priv->sending));
+
+  ring_text_channel_close (TP_BASE_CHANNEL (self));
+}
 
 static void
 ring_text_channel_method_destroy(TpSvcChannelInterfaceDestroyable *iface,
@@ -664,8 +427,8 @@ ring_text_channel_method_destroy(TpSvcChannelInterfaceDestroyable *iface,
 }
 
 static void
-ring_text_channel_destroyable_iface_init(gpointer iface,
-  gpointer data)
+ring_text_channel_destroyable_iface_init (gpointer iface,
+                                          gpointer data)
 {
   TpSvcChannelInterfaceDestroyableClass *klass = iface;
 
@@ -833,7 +596,7 @@ ring_text_channel_send(GObject *_self,
 
   if (g_strcasecmp(type, text_plain) == 0) {
     DEBUG("Send(destination = %s," /*class = %u,*/ "text = \"%s\")",
-      priv->target_id, /*sms_class,*/ text);
+      priv->destination, /*sms_class,*/ text);
   }
 #if nomore
   else if (g_strcasecmp(type, "text/x-vcard") == 0 ||
@@ -857,7 +620,7 @@ ring_text_channel_send(GObject *_self,
   }
 
   request = modem_sms_request_send(priv->sms_service,
-            priv->target_id, text,
+            priv->destination, text,
             modem_sms_request_send_reply, self);
 
   if (request == NULL) {
@@ -921,19 +684,20 @@ void
 ring_text_channel_receive_deliver(RingTextChannel *self,
   gpointer sms)
 {
-  TpMessage *msg;
+  TpBaseChannel *base = TP_BASE_CHANNEL (self);
+  TpBaseConnection *connection = tp_base_channel_get_connection (base);
   char const *message_token = sms_g_deliver_get_message_token(sms);
+  TpMessage *msg;
   guint id;
 
   DEBUG("enter");
 
   g_assert (ring_text_channel_can_handle(sms));
 
-  msg = tp_message_new((TpBaseConnection *)self->priv->connection, 2, 2);
+  msg = tp_message_new (connection, 2, 2);
 
-  tp_message_set_handle(msg, 0, "message-sender",
-    TP_HANDLE_TYPE_CONTACT,
-    self->priv->handle);
+  tp_message_set_handle (msg, 0, "message-sender",
+      TP_HANDLE_TYPE_CONTACT, tp_base_channel_get_target_handle (base));
   tp_message_set_string(msg, 0, "message-token", message_token);
 
   ring_text_channel_set_receive_timestamps(self, msg, sms);
@@ -1050,13 +814,17 @@ ring_text_channel_delivery_report(RingTextChannel *self,
   gpointer sr,
   GError const *error)
 {
+  TpBaseChannel *base = TP_BASE_CHANNEL (self);
+  TpBaseConnection *connection = tp_base_channel_get_connection (base);
   TpMessage *msg;
   guint id;
 
-  msg = tp_message_new((TpBaseConnection *)self->priv->connection, 1, 1);
+  msg = tp_message_new (connection, 1, 1);
 
-  tp_message_set_handle(msg, 0, "message-sender", TP_HANDLE_TYPE_CONTACT, self->priv->handle);
-  tp_message_set_uint32(msg, 0, "message-type", TP_CHANNEL_TEXT_MESSAGE_TYPE_DELIVERY_REPORT);
+  tp_message_set_handle (msg, 0, "message-sender",
+      TP_HANDLE_TYPE_CONTACT, tp_base_channel_get_target_handle (base));
+  tp_message_set_uint32 (msg, 0, "message-type",
+      TP_CHANNEL_TEXT_MESSAGE_TYPE_DELIVERY_REPORT);
 
   tp_message_set_string(msg, 0, "delivery-token", token);
 
