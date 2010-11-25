@@ -173,11 +173,7 @@ ring_text_manager_dispose(GObject *object)
   RingTextManager *self = RING_TEXT_MANAGER(object);
   RingTextManagerPrivate *priv = self->priv;
 
-  ring_text_manager_disconnect(self);
-
-  if (priv->sms_service)
-    g_object_unref((GObject *)priv->sms_service);
-  priv->sms_service = NULL;
+  ring_text_manager_disconnect (self);
 
   g_hash_table_remove_all (priv->channels);
 
@@ -340,8 +336,6 @@ ring_text_manager_connected (RingTextManager *self)
 {
   RingTextManagerPrivate *priv = self->priv;
   ModemSMSService *sms = priv->sms_service;
-  GHashTableIter iter[1];
-  RingTextChannel *channel;
 
   priv->signals.receiving_sms_deliver =
     modem_sms_connect_to_deliver (sms, on_sms_service_deliver, self);
@@ -359,12 +353,6 @@ ring_text_manager_connected (RingTextManager *self)
     modem_sms_connect_to_status_report (sms,
         on_sms_service_status_report, self);
 #endif
-
-  for (g_hash_table_iter_init (iter, priv->channels);
-       g_hash_table_iter_next (iter, NULL, (gpointer)&channel);)
-    {
-      g_object_set (channel, "sms-service", sms, NULL);
-    }
 }
 
 static void
@@ -372,21 +360,14 @@ ring_text_manager_disconnect (RingTextManager *self)
 {
   RingTextManagerPrivate *priv = self->priv;
   ModemSMSService *sms = priv->sms_service;
-  GHashTableIter iter[1];
-  RingTextChannel *channel;
 
   ring_signal_disconnect (sms, &priv->signals.receiving_sms_deliver);
   ring_signal_disconnect (sms, &priv->signals.outgoing_sms_complete);
   ring_signal_disconnect (sms, &priv->signals.outgoing_sms_error);
   ring_signal_disconnect (sms, &priv->signals.receiving_sms_status_report);
 
-  for (g_hash_table_iter_init (iter, priv->channels);
-       g_hash_table_iter_next (iter, NULL, (gpointer)&channel);)
-    {
-      g_object_set (channel, "sms-service", NULL, NULL);
-    }
-
-  g_object_unref (priv->sms_service);
+  if (priv->sms_service)
+    g_object_unref (priv->sms_service);
   priv->sms_service = NULL;
 }
 
@@ -585,7 +566,6 @@ ring_text_manager_request(RingTextManager *self,
   RingTextManagerPrivate *priv = self->priv;
   RingTextChannel *channel;
   char *object_path;
-  ModemSMSService *sms_service = priv->sms_service;
 
   object_path = g_strdup_printf("%s/%s%u",
                 priv->connection->parent.object_path,
@@ -627,7 +607,6 @@ ring_text_manager_request(RingTextManager *self,
       "initiator-handle", initiator,
       "requested", request != NULL,
       "sms-flash", class0,
-      "sms-service", sms_service,
       NULL);
   g_free(object_path);
 

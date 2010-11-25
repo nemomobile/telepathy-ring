@@ -86,8 +86,6 @@ enum
   PROP_SMS_FLASH,
   PROP_TARGET_MATCH,
 
-  PROP_SMS_SERVICE,
-
   N_PROPS
 };
 
@@ -96,8 +94,6 @@ struct _RingTextChannelPrivate
   char *destination;
 
   GQueue sending[1];
-
-  ModemSMSService *sms_service; /* property */
 
   unsigned sms_flash:1;         /* c.n.T.Channel.Interface.SMS.Flash */
   unsigned disposed:1;
@@ -239,9 +235,6 @@ ring_text_channel_get_property(GObject *object,
       ring_text_channel_set_target_match (value,
           priv->destination, priv->sms_flash);
       break;
-    case PROP_SMS_SERVICE:
-      g_value_set_pointer (value, priv->sms_service);
-      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
       break;
@@ -261,14 +254,6 @@ ring_text_channel_set_property(GObject *object,
   {
     case PROP_SMS_FLASH:
       priv->sms_flash = g_value_get_boolean(value);
-      break;
-
-    case PROP_SMS_SERVICE:
-      if (priv->sms_service)
-        g_object_unref (priv->sms_service);
-      priv->sms_service = g_value_get_pointer (value);
-      if (priv->sms_service)
-        g_object_ref (priv->sms_service);
       break;
 
     default:
@@ -305,9 +290,6 @@ ring_text_channel_finalize(GObject *object)
 
   tp_message_mixin_finalize(object);
 
-  if (priv->sms_service)
-    g_object_unref (priv->sms_service), priv->sms_service = NULL;
-
   ((GObjectClass *)ring_text_channel_parent_class)->finalize (object);
 }
 
@@ -343,9 +325,6 @@ ring_text_channel_class_init(RingTextChannelClass *klass)
       "",
       G_PARAM_READABLE |
       G_PARAM_STATIC_STRINGS));
-
-  g_object_class_install_property (object_class,
-      PROP_SMS_SERVICE, ring_param_spec_sms_service (0));
 
   ring_text_base_channel_class_init (klass);
 
@@ -537,6 +516,24 @@ ring_text_channel_set_target_match(GValue *value, char const *id, int flash)
     g_value_set_string(value, id);
 }
 
+static ModemSMSService *
+ring_text_channel_get_sms_service (RingTextChannel *self)
+{
+  TpBaseChannel *base = TP_BASE_CHANNEL (self);
+  TpBaseConnection *base_connection;
+  RingConnection *connection;
+  ModemOface *oface;
+
+  base_connection = tp_base_channel_get_connection (base);
+  connection = RING_CONNECTION (base_connection);
+  oface = ring_connection_get_modem_interface (connection, MODEM_OFACE_SMS);
+
+  if (oface)
+    return MODEM_SMS_SERVICE (oface);
+  else
+    return NULL;
+}
+
 static void
 ring_text_channel_send(GObject *_self,
   TpMessage *msg,
@@ -544,6 +541,7 @@ ring_text_channel_send(GObject *_self,
 {
   RingTextChannel *self = RING_TEXT_CHANNEL(_self);
   RingTextChannelPrivate *priv = self->priv;
+  ModemSMSService *sms_service = ring_text_channel_get_sms_service (self);
 #if nomore
   gboolean srr;
   guint32 sms_class;
@@ -567,12 +565,14 @@ ring_text_channel_send(GObject *_self,
     return;
   }
 
-  if (priv->sms_service == NULL) {
-    GError failed = { TP_ERRORS, TP_ERROR_NETWORK_ERROR,
-                      "Modem connection failed" };
-    tp_message_mixin_sent(_self, msg, flags, NULL, &failed);
-    return;
-  }
+  if (sms_service == NULL)
+    {
+      GError failed = {
+        TP_ERRORS, TP_ERROR_NOT_AVAILABLE, "SMS service is not available"
+      };
+      tp_message_mixin_sent (_self, msg, flags, NULL, &failed);
+      return;
+    }
 
 /* The nomore'd stuff is currently not supported by Ofono */
 #if nomore
@@ -619,9 +619,9 @@ ring_text_channel_send(GObject *_self,
     g_set_error(&error, TP_ERRORS, TP_ERROR_INVALID_ARGUMENT, "Unknown content type");
   }
 
-  request = modem_sms_request_send(priv->sms_service,
-            priv->destination, text,
-            modem_sms_request_send_reply, self);
+  request = modem_sms_request_send (sms_service,
+      priv->destination, text,
+      modem_sms_request_send_reply, self);
 
   if (request == NULL) {
     GError failed = { TP_ERRORS, TP_ERROR_NETWORK_ERROR,
@@ -890,6 +890,7 @@ ring_text_channel_set_receive_timestamps(RingTextChannel *self,
 {
   g_return_if_fail(SMS_G_IS_MESSAGE(sms));
 
+  ModemSMSService *sms_service = ring_text_channel_get_sms_service (self);
   gint64 sent = 0, received = 0, delivered = 0;
   gint64 now = (gint64)time(NULL);
 
@@ -906,7 +907,7 @@ ring_text_channel_set_receive_timestamps(RingTextChannel *self,
   }
   else {
     tp_message_set_uint64(msg, 0, "stored-message-received", delivered);
-    if (delivered > modem_sms_service_time_connected(self->priv->sms_service))
+    if (delivered > modem_sms_service_time_connected (sms_service))
       tp_message_set_boolean(msg, 0, "rescued", TRUE);
   }
 
