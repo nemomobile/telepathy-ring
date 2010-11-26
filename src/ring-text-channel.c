@@ -360,7 +360,9 @@ ring_text_channel_fill_immutable_properties (TpBaseChannel *base,
   tp_dbus_properties_mixin_fill_properties_hash (G_OBJECT (base),
       properties,
       TP_IFACE_CHANNEL_INTERFACE_MESSAGES, "MessagePartSupportFlags",
+#if HAVE_TP_MESSAGE_MIXIN_WITH_DELI
       TP_IFACE_CHANNEL_INTERFACE_MESSAGES, "DeliveryReportingSupport",
+#endif
       TP_IFACE_CHANNEL_INTERFACE_MESSAGES, "SupportedContentTypes",
 #if notyet
       RTCOM_TP_IFACE_CHANNEL_INTERFACE_SMS, "TargetMatch",
