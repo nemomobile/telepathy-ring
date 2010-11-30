@@ -1039,9 +1039,10 @@ static void
 on_media_channel_closed(GObject *chan, RingMediaManager *self)
 {
   if (self->priv->channels != NULL) {
-    char const *object_path;
+    gchar *object_path;
     g_object_get(chan, "object-path", &object_path, NULL);
     g_hash_table_remove(self->priv->channels, object_path);
+    g_free (object_path);
   }
 }
 
