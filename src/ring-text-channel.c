@@ -378,6 +378,7 @@ ring_text_base_channel_class_init (RingTextChannelClass *klass)
 
   base_class->channel_type = TP_IFACE_CHANNEL_TYPE_TEXT;
   base_class->target_handle_type = TP_HANDLE_TYPE_CONTACT;
+  base_class->interfaces = ring_text_channel_interfaces;
   base_class->close = ring_text_channel_close;
   base_class->fill_immutable_properties =
     ring_text_channel_fill_immutable_properties;
