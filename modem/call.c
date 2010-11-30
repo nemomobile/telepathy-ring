@@ -50,6 +50,7 @@ struct _ModemCallPrivate
   gchar *state_str;
   gchar *remote;
   gchar *emergency;
+  gchar *start_time;
 
   unsigned char state;
   unsigned char causetype, cause;
@@ -76,6 +77,7 @@ enum
   PROP_ONHOLD,
   PROP_MEMBER,
   PROP_REMOTE,
+  PROP_START_TIME,
   LAST_PROPERTY
 };
 
@@ -166,6 +168,7 @@ modem_call_finalize (GObject *object)
   priv->service = NULL;
   g_free (priv->remote), priv->remote = NULL;
   g_free (priv->emergency), priv->emergency = NULL;
+  g_free (priv->start_time), priv->start_time = NULL;
 
   G_OBJECT_CLASS (modem_call_parent_class)->finalize (object);
 }
@@ -223,6 +226,10 @@ modem_call_get_property (GObject *object,
 
     case PROP_REMOTE:
       g_value_set_string (value, priv->remote);
+      break;
+
+    case PROP_START_TIME:
+      g_value_set_string (value, priv->start_time);
       break;
 
     default:
@@ -295,6 +302,11 @@ modem_call_set_property (GObject *obj,
       tbf = priv->remote;
       priv->remote = g_value_dup_string (value);
       g_free (tbf);
+      break;
+
+    case PROP_START_TIME:
+      g_free (priv->start_time);
+      priv->start_time = g_value_dup_string (value);
       break;
 
     default:
@@ -463,6 +475,14 @@ modem_call_class_init (ModemCallClass *klass)
       g_param_spec_string ("remote",
           "Remote Party Address",
           "Address of remote party associated with this call",
+          NULL,
+          G_PARAM_READWRITE |
+          G_PARAM_STATIC_STRINGS));
+
+  g_object_class_install_property (object_class, PROP_START_TIME,
+      g_param_spec_string ("start-time",
+          "Start Time",
+          "The time the call started",
           NULL,
           G_PARAM_READWRITE |
           G_PARAM_STATIC_STRINGS));
