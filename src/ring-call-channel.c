@@ -1890,39 +1890,32 @@ ring_member_channel_method_split(
   DBusGMethodInvocation *context)
 {
   RingCallChannel *self = RING_CALL_CHANNEL(iface);
-  GError *error = NULL;
+  GError *error;
 
   DEBUG("enter");
 
   if (ring_member_channel_is_in_conference(RING_MEMBER_CHANNEL(self))) {
-#if 0
     RingConferenceChannel *conference = self->priv->member.conference;
 
     if (ring_conference_channel_has_members(conference) <= 1) {
-      g_set_error(&error, TP_ERRORS, TP_ERROR_NOT_AVAILABLE,
-        "Last member cannot leave");
 
-      /* ConferenceChannel gets now closed if there is only one member
-       * channel */
-      ring_svc_channel_interface_splittable_return_from_split
-        (context);
-      ring_conference_channel_emit_channel_removed(
-        conference, (RingMemberChannel *)self,
-        tp_base_connection_get_self_handle(
-          TP_BASE_CONNECTION(self->base.connection)),
-        TP_CHANNEL_GROUP_CHANGE_REASON_NONE);
+      /*
+       * This is handles a race condition between two last members
+       * of a conference. If one is currently leaving, and client
+       * tries to Split() out the other, this branch is hit. We try
+       * to follow Split() semantics even in this case.
+       */
+      ring_warning("Only one member left in conference unable to split");
 
-      /* If conference was on hold, unhold it */
-      ModemCallConference *cc;
+      /*
+       * Make sure the remaining call is unheld to follow
+       * Split() semantics the callerexpects.
+       **/
+      modem_call_request_hold(self->base.call_instance,
+          0, NULL, context);
 
-      cc = modem_call_service_get_conference(self->base.call_service);
-
-      if (modem_call_is_hold(MODEM_CALL(cc))) {
-        modem_call_request_hold(MODEM_CALL(cc), 0);
-      }
       return;
     }
-#endif
 
     ModemRequest *request;
     request = modem_call_request_split(self->base.call_instance,
