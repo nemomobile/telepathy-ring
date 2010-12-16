@@ -58,7 +58,7 @@ struct _ModemCallPrivate
   unsigned originating:1;
   unsigned terminating:1;
   unsigned onhold:1;
-  unsigned member:1;
+  unsigned multiparty:1;
   unsigned :0;
 };
 
@@ -75,7 +75,7 @@ enum
   PROP_TERMINATING,
   PROP_EMERGENCY,
   PROP_ONHOLD,
-  PROP_MEMBER,
+  PROP_MULTIPARTY,
   PROP_REMOTE,
   PROP_START_TIME,
   LAST_PROPERTY
@@ -86,7 +86,6 @@ enum
 {
   SIGNAL_STATE,
   SIGNAL_WAITING,
-  SIGNAL_MULTIPARTY,
   SIGNAL_EMERGENCY,
   SIGNAL_TERMINATED,
   SIGNAL_ON_HOLD,
@@ -108,7 +107,6 @@ static void reply_to_instance_request (DBusGProxy *, DBusGProxyCall *, void *);
 static void on_on_hold (DBusGProxy *, gboolean onhold, ModemCall*);
 static void on_forwarded (DBusGProxy *, ModemCall *);
 static void on_waiting (DBusGProxy *proxy, ModemCall *);
-static void on_multiparty (DBusGProxy *, ModemCall *);
 static void on_emergency (DBusGProxy *proxy,
     char const *service, ModemCall *);
 
@@ -220,8 +218,8 @@ modem_call_get_property (GObject *object,
       g_value_set_boolean (value, priv->onhold);
       break;
 
-    case PROP_MEMBER:
-      g_value_set_boolean (value, priv->member);
+    case PROP_MULTIPARTY:
+      g_value_set_boolean (value, priv->multiparty);
       break;
 
     case PROP_REMOTE:
@@ -294,8 +292,8 @@ modem_call_set_property (GObject *obj,
       priv->onhold = g_value_get_boolean (value);
       break;
 
-    case PROP_MEMBER:
-      priv->member = g_value_get_boolean (value);
+    case PROP_MULTIPARTY:
+      priv->multiparty = g_value_get_boolean (value);
       break;
 
     case PROP_REMOTE:
@@ -324,7 +322,7 @@ modem_call_property_mapper (char const *name)
   if (!strcmp (name, "LineIdentification"))
     return "remote";
   if (!strcmp (name, "Multiparty"))
-    return "member";
+    return "multiparty";
   if (!strcmp (name, "State"))
     return "ofono-state";
   if (!strcmp (name, "StartTime"))
@@ -463,9 +461,9 @@ modem_call_class_init (ModemCallClass *klass)
           G_PARAM_READWRITE |
           G_PARAM_STATIC_STRINGS));
 
-  g_object_class_install_property (object_class, PROP_MEMBER,
-      g_param_spec_boolean ("member",
-          "Conference Member",
+  g_object_class_install_property (object_class, PROP_MULTIPARTY,
+      g_param_spec_boolean ("multiparty",
+          "Multiparty Membership",
           "This instance is a member of a conference call",
           FALSE,
           G_PARAM_READWRITE |
@@ -496,6 +494,7 @@ modem_call_class_init (ModemCallClass *klass)
         G_TYPE_NONE, 1,
         G_TYPE_UINT);
 
+  /* XXX: not implemented */
   call_signals[SIGNAL_WAITING] =
     g_signal_new ("waiting", G_OBJECT_CLASS_TYPE (klass),
         G_SIGNAL_RUN_LAST | G_SIGNAL_DETAILED,
@@ -504,14 +503,7 @@ modem_call_class_init (ModemCallClass *klass)
         g_cclosure_marshal_VOID__VOID,
         G_TYPE_NONE, 0);
 
-  call_signals[SIGNAL_MULTIPARTY] =
-    g_signal_new ("multiparty", G_OBJECT_CLASS_TYPE (klass),
-        G_SIGNAL_RUN_LAST | G_SIGNAL_DETAILED,
-        0,
-        NULL, NULL,
-        g_cclosure_marshal_VOID__VOID,
-        G_TYPE_NONE, 0);
-
+  /* XXX: not implemented */
   call_signals[SIGNAL_EMERGENCY] =
     g_signal_new ("emergency", G_OBJECT_CLASS_TYPE (klass),
         G_SIGNAL_RUN_LAST | G_SIGNAL_DETAILED,
@@ -521,6 +513,7 @@ modem_call_class_init (ModemCallClass *klass)
         G_TYPE_NONE, 1,
         G_TYPE_STRING);
 
+  /* XXX: not implemented */
   call_signals[SIGNAL_TERMINATED] =
     g_signal_new ("terminated", G_OBJECT_CLASS_TYPE (klass),
         G_SIGNAL_RUN_LAST | G_SIGNAL_DETAILED,
@@ -529,6 +522,7 @@ modem_call_class_init (ModemCallClass *klass)
         g_cclosure_marshal_VOID__VOID,
         G_TYPE_NONE, 0);
 
+  /* XXX: not implemented */
   call_signals[SIGNAL_ON_HOLD] =
     g_signal_new ("on-hold", G_OBJECT_CLASS_TYPE (klass),
         G_SIGNAL_RUN_LAST | G_SIGNAL_DETAILED,
@@ -538,6 +532,7 @@ modem_call_class_init (ModemCallClass *klass)
         G_TYPE_NONE, 1,
         G_TYPE_BOOLEAN);
 
+  /* XXX: not implemented */
   call_signals[SIGNAL_FORWARDED] =
     g_signal_new ("forwarded", G_OBJECT_CLASS_TYPE (klass),
         G_SIGNAL_RUN_LAST | G_SIGNAL_DETAILED,
@@ -546,6 +541,7 @@ modem_call_class_init (ModemCallClass *klass)
         g_cclosure_marshal_VOID__VOID,
         G_TYPE_NONE, 0);
 
+  /* XXX: not implemented */
   call_signals[SIGNAL_DIALSTRING] =
     g_signal_new ("dialstring", G_OBJECT_CLASS_TYPE (klass),
         G_SIGNAL_RUN_LAST | G_SIGNAL_DETAILED,
@@ -555,6 +551,7 @@ modem_call_class_init (ModemCallClass *klass)
         G_TYPE_NONE, 1,
         G_TYPE_STRING);
 
+  /* XXX: not implemented */
   call_signals[SIGNAL_DTMF_TONE] =
     g_signal_new ("dtmf-tone", G_OBJECT_CLASS_TYPE (klass),
         G_SIGNAL_RUN_LAST | G_SIGNAL_DETAILED,
@@ -658,7 +655,7 @@ modem_call_get_handler (ModemCall *self)
 gboolean
 modem_call_is_member (ModemCall const *self)
 {
-  return MODEM_IS_CALL (self) && self->priv->member;
+  return MODEM_IS_CALL (self) && self->priv->multiparty;
 }
 
 gboolean
@@ -769,7 +766,7 @@ on_call_state (DBusGProxy *proxy,
           "originating", FALSE,
           "terminating", FALSE,
           "onhold", FALSE,
-          "member", FALSE,
+          "multiparty", FALSE,
           NULL);
       break;
     }
@@ -807,7 +804,7 @@ on_call_state (DBusGProxy *proxy,
           "originating", FALSE,
           "terminating", FALSE,
           "onhold", FALSE,
-          "member", FALSE,
+          "multiparty", FALSE,
           NULL);
     }
 }
@@ -858,6 +855,42 @@ modem_call_request_release (ModemCall *self,
       G_TYPE_INVALID);
 }
 
+static void
+reply_to_private_chat_request (DBusGProxy *proxy,
+    DBusGProxyCall *call,
+    void *_request)
+{
+  DEBUG ("enter");
+
+  GPtrArray *paths;
+  ModemRequest *request = _request;
+  ModemCall *self = modem_request_object (request);
+  ModemCallReply *callback = modem_request_callback (request);
+  gpointer user_data = modem_request_user_data (request);
+  GError *error = NULL;
+
+  if (dbus_g_proxy_end_call (proxy, call, &error,
+          MODEM_TYPE_ARRAY_OF_PATHS, &paths,
+          G_TYPE_INVALID))
+    {
+      guint i;
+      char const *path;
+
+      for (i = 0; i < paths->len; i++)
+        {
+          path = g_ptr_array_index (paths, i);
+          DEBUG("Calls in conf after split %u/%u: %s\n",
+              i + 1, paths->len, path);
+        }
+      /* XXX: should this list be passed to the client as well? */
+    }
+  else {
+    modem_error_fix (&error);
+  }
+
+  callback (self, request, error, user_data);
+  g_clear_error (&error);
+}
 
 ModemRequest *
 modem_call_request_split (ModemCall *self,
@@ -870,7 +903,7 @@ modem_call_request_split (ModemCall *self,
 
   return modem_request (MODEM_CALL (self),
       modem_oface_dbus_proxy (MODEM_OFACE (self->priv->service)),
-      "PrivateChat", reply_to_instance_request,
+      "PrivateChat", reply_to_private_chat_request,
       G_CALLBACK (callback), user_data,
       DBUS_TYPE_G_OBJECT_PATH, modem_call_get_path (self),
       G_TYPE_INVALID);
@@ -882,11 +915,21 @@ modem_call_request_hold (ModemCall *self,
                          ModemCallReply callback,
                          gpointer user_data)
 {
-  /* XXX: */
-  (void)hold;
+  ModemCallPrivate *priv = self->priv;
+
+  DEBUG ("");
+
+  RETURN_NULL_IF_NOT_VALID (self);
+
+  if (!((priv->state == MODEM_CALL_STATE_HELD && !hold) ||
+          (priv->state == MODEM_CALL_STATE_ACTIVE && hold)))
+    {
+      DEBUG ("invalid hold request %d in %s state\n",
+          hold, priv->state_str);
+      return NULL;
+    }
 
   DEBUG ("%s.%s", MODEM_OFACE_CALL_MANAGER, "SwapCalls");
-  RETURN_NULL_IF_NOT_VALID (self);
 
   return modem_request (MODEM_CALL (self),
       modem_oface_dbus_proxy (MODEM_OFACE (self->priv->service)),
@@ -922,10 +965,8 @@ reply_to_instance_request (DBusGProxy *proxy,
 gboolean
 modem_call_can_join (ModemCall const *self)
 {
-#if 0
-  if (!self || MODEM_IS_CALL_CONFERENCE (self))
+  if (!self)
     return FALSE;
-#endif
 
   return (self->priv->state == MODEM_CALL_STATE_ACTIVE ||
       self->priv->state == MODEM_CALL_STATE_HELD);
@@ -1049,98 +1090,6 @@ reply_to_stop_dtmf (DBusGProxy *proxy,
 
   g_clear_error (&error);
 }
-
-#if 0
-/* ---------------------------------------------------------------------- */
-/*
- * ModemCallConference - Interface towards Ofono Multiparty calls
- */
-
-/* Signals */
-enum
-{
-  SIGNAL_JOINED,
-  SIGNAL_LEFT,
-  N_CONFERENCE_SIGNALS
-};
-
-static guint conference_signals[N_CONFERENCE_SIGNALS];
-
-G_DEFINE_TYPE (ModemCallConference, modem_call_conference, MODEM_TYPE_CALL);
-
-struct _ModemCallConferencePrivate
-{
-  GHashTable *members;
-  unsigned dispose_has_run:1, :0;
-};
-
-static void
-modem_call_conference_constructed (GObject *object)
-{
-  if (G_OBJECT_CLASS (modem_call_conference_parent_class)->constructed)
-    G_OBJECT_CLASS (modem_call_conference_parent_class)->constructed (object);
-}
-
-static void
-modem_call_conference_init (ModemCallConference *self)
-{
-  self->priv = G_TYPE_INSTANCE_GET_PRIVATE (
-      self, MODEM_TYPE_CALL_CONFERENCE, ModemCallConferencePrivate);
-}
-
-static void
-modem_call_conference_dispose (GObject *object)
-{
-  ModemCallConference *self = MODEM_CALL_CONFERENCE (object);
-  ModemCallConferencePrivate *priv = self->priv;
-
-  if (priv->dispose_has_run)
-    return;
-  priv->dispose_has_run = TRUE;
-
-  if (G_OBJECT_CLASS (modem_call_conference_parent_class)->dispose)
-    G_OBJECT_CLASS (modem_call_conference_parent_class)->dispose (object);
-}
-
-static void
-modem_call_conference_finalize (GObject *object)
-{
-  if (G_OBJECT_CLASS (modem_call_conference_parent_class)->finalize)
-    G_OBJECT_CLASS (modem_call_conference_parent_class)->finalize (object);
-}
-
-static void
-modem_call_conference_class_init (ModemCallConferenceClass *klass)
-{
-  GObjectClass *object_class = G_OBJECT_CLASS (klass);
-
-  g_type_class_add_private (klass, sizeof (ModemCallConferencePrivate));
-
-  object_class->constructed = modem_call_conference_constructed;
-  object_class->dispose = modem_call_conference_dispose;
-  object_class->finalize = modem_call_conference_finalize;
-
-  /* Properties */
-  conference_signals[SIGNAL_JOINED] =
-    g_signal_new ("joined", G_OBJECT_CLASS_TYPE (klass),
-        G_SIGNAL_RUN_LAST | G_SIGNAL_DETAILED,
-        0,
-        NULL, NULL,
-        g_cclosure_marshal_VOID__OBJECT,
-        G_TYPE_NONE, 1,
-        MODEM_TYPE_CALL);
-
-  conference_signals[SIGNAL_LEFT] =
-    g_signal_new ("left", G_OBJECT_CLASS_TYPE (klass),
-        G_SIGNAL_RUN_LAST | G_SIGNAL_DETAILED,
-        0,
-        NULL, NULL,
-        g_cclosure_marshal_VOID__OBJECT,
-        G_TYPE_NONE, 1,
-        MODEM_TYPE_CALL);
-}
-
-#endif
 
 GError *
 modem_call_new_error (guint causetype, guint cause, char const *prefixed)
