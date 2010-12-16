@@ -117,8 +117,9 @@ struct _RingCallChannelPrivate
   unsigned call_state; /* Channel.Interface.CallState bits */
 
   struct {
-    gulong emergency, multiparty;
+    gulong emergency;
     gulong waiting, on_hold, forwarded;
+    gulong notify_multiparty;
   } signals;
 };
 
@@ -235,8 +236,8 @@ static void ring_call_channel_released(RingCallChannel *self,
 static void on_modem_call_emergency(ModemCall *, char const *, RingCallChannel *);
 static void on_modem_call_on_hold(ModemCall *, int onhold, RingCallChannel *);
 static void on_modem_call_forwarded(ModemCall *, RingCallChannel *);
+static void on_modem_call_notify_multiparty(ModemCall *ci, GParamSpec *pspec, gpointer user_data);
 static void on_modem_call_waiting(ModemCall *, RingCallChannel *);
-static void on_modem_call_multiparty(ModemCall *, RingCallChannel *);
 
 /* ====================================================================== */
 /* GObject interface */
@@ -779,10 +780,10 @@ ring_call_channel_set_call_instance(RingMediaChannel *_self,
     g_signal_connect(ci, n, G_CALLBACK(on_modem_call_ ## f), self)
 
     priv->signals.waiting = CONNECT("waiting", waiting);
-    priv->signals.multiparty = CONNECT("multiparty", multiparty);
     priv->signals.emergency = CONNECT("emergency", emergency);
     priv->signals.on_hold = CONNECT("on-hold", on_hold);
     priv->signals.forwarded = CONNECT("forwarded", forwarded);
+    priv->signals.notify_multiparty = CONNECT("notify::multiparty", notify_multiparty);
 #undef CONNECT
   }
   else {
@@ -795,10 +796,10 @@ ring_call_channel_set_call_instance(RingMediaChannel *_self,
     } (priv->signals.n = 0)
 
     DISCONNECT(waiting);
-    DISCONNECT(multiparty);
     DISCONNECT(emergency);
     DISCONNECT(on_hold);
     DISCONNECT(forwarded);
+    DISCONNECT(notify_multiparty);
 #undef DISCONNECT
   }
 }
@@ -1134,25 +1135,41 @@ on_modem_call_forwarded(ModemCall *ci,
   ring_update_call_state(self, TP_CHANNEL_CALL_STATE_FORWARDED, 0);
 }
 
+static void
+on_modem_call_notify_multiparty(ModemCall *ci, GParamSpec *pspec, gpointer user_data)
+{
+  RingCallChannel *self = RING_CALL_CHANNEL (user_data);
+  RingCallChannelPrivate *priv = self->priv;
+  gboolean multiparty_member;
+
+  DEBUG ("");
+
+  g_object_get(ci, "multiparty", &multiparty_member, NULL);
+
+  /*
+   * This does _not_ cover membership in peer hosted conferences
+   * (i.e. when there is no local conference channel).
+   **/
+
+  if (priv->member.conference && multiparty_member == FALSE) {
+    TpHandle actor = 0; /* unknown actor */
+    TpChannelGroupChangeReason reason = TP_CHANNEL_GROUP_CHANGE_REASON_SEPARATED;
+
+    ring_conference_channel_emit_channel_removed(
+      priv->member.conference, RING_MEMBER_CHANNEL(self),
+      "Conference call split", actor, reason);
+
+    g_assert(priv->member.conference == NULL);
+    priv->member.conference = NULL;
+  }
+}
+
 /* MO call is waiting */
 static void
 on_modem_call_waiting(ModemCall *ci,
   RingCallChannel *self)
 {
   ring_update_call_state(self, TP_CHANNEL_CALL_STATE_QUEUED, 0);
-}
-
-static void
-on_modem_call_multiparty(ModemCall *ci,
-  RingCallChannel *self)
-{
-  RingCallChannelPrivate *priv = self->priv;
-
-  /* If the conference host state is set, we need to first zap it */
-  if (priv->call_state & TP_CHANNEL_CALL_STATE_CONFERENCE_HOST)
-    ring_update_call_state(self, 0, TP_CHANNEL_CALL_STATE_CONFERENCE_HOST);
-
-  ring_update_call_state(self, TP_CHANNEL_CALL_STATE_CONFERENCE_HOST, 0);
 }
 
 /* Invoked when MO call targets an emergency service */
@@ -1842,7 +1859,7 @@ ring_member_channel_joined(RingMemberChannel *iface,
 
   DEBUG("%s joined conference %s",
     RING_MEDIA_CHANNEL(self)->nick,
-    RING_MEDIA_CHANNEL(conference)->nick);
+    RING_CONFERENCE_CHANNEL(conference)->nick);
 }
 
 void
