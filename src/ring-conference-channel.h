@@ -23,6 +23,7 @@
 #define RING_CONFERENCE_CHANNEL_H
 
 #include <glib-object.h>
+#include <telepathy-glib/base-channel.h>
 #include <telepathy-glib/group-mixin.h>
 
 G_BEGIN_DECLS
@@ -33,22 +34,22 @@ typedef struct _RingConferenceChannelPrivate RingConferenceChannelPrivate;
 
 G_END_DECLS
 
-#include "ring-media-channel.h"
 #include "ring-media-manager.h"
 #include "ring-member-channel.h"
 
 G_BEGIN_DECLS
 
 struct _RingConferenceChannelClass {
-  RingMediaChannelClass base_class;
+  TpBaseChannelClass parent_class;
   TpGroupMixinClass group_class;
   TpDBusPropertiesMixinClass dbus_properties_class;
 };
 
 struct _RingConferenceChannel {
-  RingMediaChannel base;
+  TpBaseChannel parent;
   TpGroupMixin group;
   RingConferenceChannelPrivate *priv;
+  gchar *nick;
 };
 
 GType ring_conference_channel_get_type(void);
@@ -84,6 +85,8 @@ void ring_conference_channel_emit_channel_removed(
   char const *message,
   guint actor,
   TpChannelGroupChangeReason reason);
+
+void ring_conference_channel_emit_initial(RingConferenceChannel *channel);
 
 /* ---------------------------------------------------------------------- */
 /* "initial-members" */

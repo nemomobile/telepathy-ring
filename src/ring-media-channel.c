@@ -324,6 +324,10 @@ ring_media_channel_dispose(GObject *object)
   if (priv->playing)
     modem_tones_stop(priv->tones, priv->playing);
 
+  /* if still holding on to a call instance, disconnect */
+  if (self->call_instance)
+    g_object_set(self, "call-instance", NULL, NULL);
+
   ((GObjectClass *)ring_media_channel_parent_class)->dispose(object);
 }
 

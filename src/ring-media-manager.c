@@ -368,7 +368,6 @@ static void
 ring_media_manager_disconnect(RingMediaManager *self)
 {
   RingMediaManagerPrivate *priv = self->priv;
-  ModemCallConference *mcc;
   GHashTableIter iter[1];
   GObject *channel;
 
@@ -376,9 +375,6 @@ ring_media_manager_disconnect(RingMediaManager *self)
   ring_signal_disconnect (priv->call_service, &priv->signals.created);
   ring_signal_disconnect (priv->call_service, &priv->signals.user_connection);
   ring_signal_disconnect (priv->call_service, &priv->signals.emergency_numbers);
-
-  mcc = modem_call_service_get_conference (priv->call_service);
-  ring_signal_disconnect (mcc, &priv->signals.joined);
 
   for (g_hash_table_iter_init (iter, priv->channels);
        g_hash_table_iter_next (iter, NULL, (gpointer)&channel);)
@@ -603,7 +599,7 @@ ring_conference_channel_fixed_properties(void)
 
 static char const * const ring_conference_channel_allowed_properties[] =
 {
-  RING_IFACE_CHANNEL_INTERFACE_CONFERENCE ".InitialChannels",
+  TP_IFACE_CHANNEL ".InitialChannels",
   TP_IFACE_CHANNEL ".TargetHandleType",
   TP_IFACE_CHANNEL_TYPE_STREAMED_MEDIA ".InitialAudio",
   TP_IFACE_CHANNEL_TYPE_STREAMED_MEDIA ".InitialVideo",
@@ -787,7 +783,7 @@ ring_media_requestotron(RingMediaManager *self,
       ring_conference_channel_allowed_properties)) {
     RingInitialMembers *initial = tp_asv_get_boxed(
       properties,
-      RING_IFACE_CHANNEL_INTERFACE_CONFERENCE ".InitialChannels",
+      TP_IFACE_CHANNEL ".InitialChannels",
       TP_ARRAY_TYPE_OBJECT_PATH_LIST);
 
     if (initial == NULL)
@@ -900,7 +896,7 @@ ring_media_manager_conference(RingMediaManager *self,
   channel = (RingConferenceChannel *)
     g_object_new(RING_TYPE_CONFERENCE_CHANNEL,
       "connection", priv->connection,
-      "tones", priv->tones,
+      /* KVXXX: "tones", priv->tones, */
       "object-path", object_path,
       "initial-channels", initial,
       "initial-audio", initial_audio,
@@ -944,6 +940,17 @@ ring_media_manager_new_object_path(RingMediaManager const *self,
   }
 }
 
+static const gchar*
+get_nick(TpBaseChannel *channel)
+{
+  if (RING_IS_MEDIA_CHANNEL (channel))
+    return RING_MEDIA_CHANNEL (channel)->nick;
+  else if (RING_IS_CONFERENCE_CHANNEL (channel))
+    return RING_CONFERENCE_CHANNEL (channel)->nick;
+
+  return NULL;
+}
+
 void
 ring_media_manager_emit_new_channel(RingMediaManager *self,
   gpointer request,
@@ -953,7 +960,7 @@ ring_media_manager_emit_new_channel(RingMediaManager *self,
   DEBUG("%s(%p, %p, %p, %p) called", __func__, self, request, _channel, error);
 
   RingMediaManagerPrivate *priv = RING_MEDIA_MANAGER(self)->priv;
-  RingMediaChannel *channel = _channel ? RING_MEDIA_CHANNEL(_channel) : NULL;
+  TpBaseChannel *channel = _channel ? TP_BASE_CHANNEL (_channel) : NULL;
   GSList *requests = request ? g_slist_prepend(NULL, request) : NULL;
 
   if (error == NULL) {
@@ -965,7 +972,7 @@ ring_media_manager_emit_new_channel(RingMediaManager *self,
     g_object_get(channel, "object-path", &object_path, NULL);
 
     DEBUG("got new channel %p nick %s type %s",
-      channel, channel->nick, G_OBJECT_TYPE_NAME(channel));
+	  channel, get_nick (channel), G_OBJECT_TYPE_NAME (channel));
 
     g_hash_table_insert(priv->channels, object_path, channel);
 
@@ -973,11 +980,14 @@ ring_media_manager_emit_new_channel(RingMediaManager *self,
       TP_EXPORTABLE_CHANNEL(channel), requests);
 
     /* Emit Group and StreamedMedia signals */
-    ring_media_channel_emit_initial(channel);
+    if (RING_IS_MEDIA_CHANNEL (channel))
+      ring_media_channel_emit_initial(RING_MEDIA_CHANNEL (channel));
+    else if (RING_IS_CONFERENCE_CHANNEL (channel))
+      ring_conference_channel_emit_initial(RING_CONFERENCE_CHANNEL (channel));
   }
   else {
     DEBUG("new channel %p nick %s type %s failed with " GERROR_MSG_FMT,
-      channel, channel ? channel->nick : "<NULL>", G_OBJECT_TYPE_NAME(channel),
+	  channel, get_nick (channel), G_OBJECT_TYPE_NAME (channel),
       GERROR_MSG_CODE(error));
 
     if (request) {
@@ -1248,7 +1258,7 @@ on_modem_call_conference_joined(ModemCallConference *mcc,
       g_object_new(RING_TYPE_CONFERENCE_CHANNEL,
         "connection", priv->connection,
         "call-instance", mcc,
-        "tones", priv->tones,
+        /* KVXXX: "tones", priv->tones, */
         "object-path", object_path,
         "initial-channels", initial,
         "initial-audio", TRUE,
