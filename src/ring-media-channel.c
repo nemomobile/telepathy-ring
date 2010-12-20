@@ -81,6 +81,7 @@ struct _RingMediaChannelPrivate
 
   unsigned initial_audio:1;     /* property */
 
+  unsigned disposed:1;
   unsigned closing:1;
   unsigned :0;
 
@@ -315,6 +316,10 @@ ring_media_channel_dispose(GObject *object)
 {
   RingMediaChannel *self = RING_MEDIA_CHANNEL (object);
   RingMediaChannelPrivate *priv = self->priv;
+
+  if (self->priv->disposed)
+    return;
+  self->priv->disposed = TRUE;
 
   ring_media_channel_close(self);
 
