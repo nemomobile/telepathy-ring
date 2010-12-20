@@ -106,7 +106,7 @@ struct _RingCallChannelPrivate
 
   uint8_t state;
 
-  unsigned constructed:1, released:1, closing:1, disposed:1;
+  unsigned constructed:1, released:1, closing:1;
 
   unsigned call_instance_seen:1;
 
