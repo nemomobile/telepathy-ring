@@ -106,7 +106,7 @@ struct _RingCallChannelPrivate
 
   uint8_t state;
 
-  unsigned constructed:1, released:1, closing:1, disposed:1;
+  unsigned constructed:1, released:1, closing:1;
 
   unsigned call_instance_seen:1;
 
@@ -117,8 +117,9 @@ struct _RingCallChannelPrivate
   unsigned call_state; /* Channel.Interface.CallState bits */
 
   struct {
-    gulong emergency, multiparty;
+    gulong emergency;
     gulong waiting, on_hold, forwarded;
+    gulong notify_multiparty;
   } signals;
 };
 
@@ -235,8 +236,8 @@ static void ring_call_channel_released(RingCallChannel *self,
 static void on_modem_call_emergency(ModemCall *, char const *, RingCallChannel *);
 static void on_modem_call_on_hold(ModemCall *, int onhold, RingCallChannel *);
 static void on_modem_call_forwarded(ModemCall *, RingCallChannel *);
+static void on_modem_call_notify_multiparty(ModemCall *ci, GParamSpec *pspec, gpointer user_data);
 static void on_modem_call_waiting(ModemCall *, RingCallChannel *);
-static void on_modem_call_multiparty(ModemCall *, RingCallChannel *);
 
 /* ====================================================================== */
 /* GObject interface */
@@ -779,10 +780,10 @@ ring_call_channel_set_call_instance(RingMediaChannel *_self,
     g_signal_connect(ci, n, G_CALLBACK(on_modem_call_ ## f), self)
 
     priv->signals.waiting = CONNECT("waiting", waiting);
-    priv->signals.multiparty = CONNECT("multiparty", multiparty);
     priv->signals.emergency = CONNECT("emergency", emergency);
     priv->signals.on_hold = CONNECT("on-hold", on_hold);
     priv->signals.forwarded = CONNECT("forwarded", forwarded);
+    priv->signals.notify_multiparty = CONNECT("notify::multiparty", notify_multiparty);
 #undef CONNECT
   }
   else {
@@ -795,10 +796,10 @@ ring_call_channel_set_call_instance(RingMediaChannel *_self,
     } (priv->signals.n = 0)
 
     DISCONNECT(waiting);
-    DISCONNECT(multiparty);
     DISCONNECT(emergency);
     DISCONNECT(on_hold);
     DISCONNECT(forwarded);
+    DISCONNECT(notify_multiparty);
 #undef DISCONNECT
   }
 }
@@ -1134,25 +1135,41 @@ on_modem_call_forwarded(ModemCall *ci,
   ring_update_call_state(self, TP_CHANNEL_CALL_STATE_FORWARDED, 0);
 }
 
+static void
+on_modem_call_notify_multiparty(ModemCall *ci, GParamSpec *pspec, gpointer user_data)
+{
+  RingCallChannel *self = RING_CALL_CHANNEL (user_data);
+  RingCallChannelPrivate *priv = self->priv;
+  gboolean multiparty_member;
+
+  DEBUG ("");
+
+  g_object_get(ci, "multiparty", &multiparty_member, NULL);
+
+  /*
+   * This does _not_ cover membership in peer hosted conferences
+   * (i.e. when there is no local conference channel).
+   **/
+
+  if (priv->member.conference && multiparty_member == FALSE) {
+    TpHandle actor = 0; /* unknown actor */
+    TpChannelGroupChangeReason reason = TP_CHANNEL_GROUP_CHANGE_REASON_SEPARATED;
+
+    ring_conference_channel_emit_channel_removed(
+      priv->member.conference, RING_MEMBER_CHANNEL(self),
+      "Conference call split", actor, reason);
+
+    g_assert(priv->member.conference == NULL);
+    priv->member.conference = NULL;
+  }
+}
+
 /* MO call is waiting */
 static void
 on_modem_call_waiting(ModemCall *ci,
   RingCallChannel *self)
 {
   ring_update_call_state(self, TP_CHANNEL_CALL_STATE_QUEUED, 0);
-}
-
-static void
-on_modem_call_multiparty(ModemCall *ci,
-  RingCallChannel *self)
-{
-  RingCallChannelPrivate *priv = self->priv;
-
-  /* If the conference host state is set, we need to first zap it */
-  if (priv->call_state & TP_CHANNEL_CALL_STATE_CONFERENCE_HOST)
-    ring_update_call_state(self, 0, TP_CHANNEL_CALL_STATE_CONFERENCE_HOST);
-
-  ring_update_call_state(self, TP_CHANNEL_CALL_STATE_CONFERENCE_HOST, 0);
 }
 
 /* Invoked when MO call targets an emergency service */
@@ -1842,7 +1859,7 @@ ring_member_channel_joined(RingMemberChannel *iface,
 
   DEBUG("%s joined conference %s",
     RING_MEDIA_CHANNEL(self)->nick,
-    RING_MEDIA_CHANNEL(conference)->nick);
+    RING_CONFERENCE_CHANNEL(conference)->nick);
 }
 
 void
@@ -1873,39 +1890,32 @@ ring_member_channel_method_split(
   DBusGMethodInvocation *context)
 {
   RingCallChannel *self = RING_CALL_CHANNEL(iface);
-  GError *error = NULL;
+  GError *error;
 
   DEBUG("enter");
 
   if (ring_member_channel_is_in_conference(RING_MEMBER_CHANNEL(self))) {
-#if 0
     RingConferenceChannel *conference = self->priv->member.conference;
 
     if (ring_conference_channel_has_members(conference) <= 1) {
-      g_set_error(&error, TP_ERRORS, TP_ERROR_NOT_AVAILABLE,
-        "Last member cannot leave");
 
-      /* ConferenceChannel gets now closed if there is only one member
-       * channel */
-      ring_svc_channel_interface_splittable_return_from_split
-        (context);
-      ring_conference_channel_emit_channel_removed(
-        conference, (RingMemberChannel *)self,
-        tp_base_connection_get_self_handle(
-          TP_BASE_CONNECTION(self->base.connection)),
-        TP_CHANNEL_GROUP_CHANGE_REASON_NONE);
+      /*
+       * This is handles a race condition between two last members
+       * of a conference. If one is currently leaving, and client
+       * tries to Split() out the other, this branch is hit. We try
+       * to follow Split() semantics even in this case.
+       */
+      ring_warning("Only one member left in conference unable to split");
 
-      /* If conference was on hold, unhold it */
-      ModemCallConference *cc;
+      /*
+       * Make sure the remaining call is unheld to follow
+       * Split() semantics the callerexpects.
+       **/
+      modem_call_request_hold(self->base.call_instance,
+          0, NULL, context);
 
-      cc = modem_call_service_get_conference(self->base.call_service);
-
-      if (modem_call_is_hold(MODEM_CALL(cc))) {
-        modem_call_request_hold(MODEM_CALL(cc), 0);
-      }
       return;
     }
-#endif
 
     ModemRequest *request;
     request = modem_call_request_split(self->base.call_instance,

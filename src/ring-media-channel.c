@@ -81,6 +81,7 @@ struct _RingMediaChannelPrivate
 
   unsigned initial_audio:1;     /* property */
 
+  unsigned disposed:1;
   unsigned closing:1;
   unsigned :0;
 
@@ -316,6 +317,10 @@ ring_media_channel_dispose(GObject *object)
   RingMediaChannel *self = RING_MEDIA_CHANNEL (object);
   RingMediaChannelPrivate *priv = self->priv;
 
+  if (self->priv->disposed)
+    return;
+  self->priv->disposed = TRUE;
+
   ring_media_channel_close(self);
 
   if (priv->close_timer)
@@ -323,6 +328,10 @@ ring_media_channel_dispose(GObject *object)
 
   if (priv->playing)
     modem_tones_stop(priv->tones, priv->playing);
+
+  /* if still holding on to a call instance, disconnect */
+  if (self->call_instance)
+    g_object_set(self, "call-instance", NULL, NULL);
 
   ((GObjectClass *)ring_media_channel_parent_class)->dispose(object);
 }

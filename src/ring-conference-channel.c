@@ -3,6 +3,7 @@
  *
  * Copyright (C) 2007-2010 Nokia Corporation
  *   @author Pekka Pessi <first.surname@nokia.com>
+ *   @author Kai Vehmanen <first.surname@nokia.com>
  *
  * This work is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -73,7 +74,7 @@
 
 struct _RingConferenceChannelPrivate
 {
-  ModemCallConference *cc;
+  GQueue requests[1];           /* Requests towards the modem */
 
   RingInitialMembers *initial_members;
 
@@ -86,7 +87,21 @@ struct _RingConferenceChannelPrivate
     gulong left, joined;
   } signals;
 
-  unsigned streams_created:1, closing:1, disposed:1, :0;
+  struct stream_state {
+    guint id;                   /* nonzero when active, 0 otherwise */
+    TpHandle handle;
+    TpMediaStreamType type;
+    TpMediaStreamState state;
+    TpMediaStreamDirection direction;
+    TpMediaStreamPendingSend pending;
+  } audio[1];
+
+  struct {
+    gboolean state;
+    gboolean requested;
+  } hold;
+
+  unsigned streams_created:1, conf_created:1, hangup:1, closing:1, disposed:1, :0;
 };
 
 /* properties */
@@ -97,18 +112,24 @@ enum
   /* o.f.T.Channel.Interfaces */
   PROP_INITIAL_CHANNELS,
   PROP_CHANNELS,
-  PROP_SUPPORTS_NON_MERGES,
+
+  /* KVXXX: add PROP_TONES */
+
   LAST_PROPERTY
 };
-
-static void ring_conference_channel_implement_media_channel(
-  RingMediaChannelClass *media_class);
 
 static TpDBusPropertiesMixinIfaceImpl
 ring_conference_channel_dbus_property_interfaces[];
 
-static void ring_channel_mergeable_conference_iface_init(gpointer, gpointer);
+static void ring_conference_channel_dtmf_iface_init (gpointer g_iface, gpointer iface_data);
+static void ring_conference_channel_hold_iface_init (gpointer g_iface, gpointer iface_data);
+static void ring_conference_channel_streamed_media_iface_init (gpointer g_iface, gpointer iface_data);
+static void ring_conference_channel_mergeable_conference_iface_init (gpointer, gpointer);
 
+static gboolean ring_conference_channel_close (
+    RingConferenceChannel *_self, gboolean immediately);
+static gboolean ring_conference_channel_close_impl (
+    RingConferenceChannel *self, gboolean immediately, gboolean hangup);
 static gboolean ring_conference_channel_add_member(
   GObject *obj, TpHandle handle, const char *message, GError **error);
 static gboolean ring_conference_channel_remove_member_with_reason(
@@ -132,28 +153,80 @@ static void ring_conference_channel_release(RingConferenceChannel *self,
   unsigned cause,
   GError const *error);
 
+static gboolean ring_conference_channel_create_streams(RingConferenceChannel *_self,
+  guint handle,
+  gboolean audio,
+  gboolean video,
+  GError **error);
+
 /* ====================================================================== */
 /* GObject interface */
 
 G_DEFINE_TYPE_WITH_CODE(
-  RingConferenceChannel, ring_conference_channel, RING_TYPE_MEDIA_CHANNEL,
+  RingConferenceChannel, ring_conference_channel, TP_TYPE_BASE_CHANNEL,
+  G_IMPLEMENT_INTERFACE(TP_TYPE_SVC_DBUS_PROPERTIES,
+    tp_dbus_properties_mixin_iface_init);
+  G_IMPLEMENT_INTERFACE(TP_TYPE_SVC_CHANNEL_INTERFACE_DTMF,
+    ring_conference_channel_dtmf_iface_init);
+  G_IMPLEMENT_INTERFACE(TP_TYPE_SVC_CHANNEL_INTERFACE_HOLD,
+    ring_conference_channel_hold_iface_init);
+  G_IMPLEMENT_INTERFACE(TP_TYPE_SVC_CHANNEL_TYPE_STREAMED_MEDIA,
+    ring_conference_channel_streamed_media_iface_init);
   G_IMPLEMENT_INTERFACE(TP_TYPE_SVC_CHANNEL_INTERFACE_GROUP,
-    tp_group_mixin_iface_init)
-  G_IMPLEMENT_INTERFACE(RING_TYPE_SVC_CHANNEL_INTERFACE_CONFERENCE,
-    NULL)
+    tp_group_mixin_iface_init);
+  G_IMPLEMENT_INTERFACE(TP_TYPE_SVC_CHANNEL_INTERFACE_CONFERENCE,
+    NULL);
   G_IMPLEMENT_INTERFACE(RING_TYPE_SVC_CHANNEL_INTERFACE_MERGEABLE_CONFERENCE,
-    ring_channel_mergeable_conference_iface_init));
+    ring_conference_channel_mergeable_conference_iface_init));
 
 const char *ring_conference_channel_interfaces[] = {
-  RING_MEDIA_CHANNEL_INTERFACES,
+  TP_IFACE_CHANNEL_INTERFACE_DTMF,
+  TP_IFACE_CHANNEL_INTERFACE_HOLD,
   TP_IFACE_CHANNEL_INTERFACE_GROUP,
-  RING_IFACE_CHANNEL_INTERFACE_CONFERENCE,
+  TP_IFACE_CHANNEL_INTERFACE_CONFERENCE,
   RING_IFACE_CHANNEL_INTERFACE_MERGEABLE_CONFERENCE,
   NULL
 };
 
+static ModemRequest *
+ring_conference_channel_queue_request (RingConferenceChannel *self,
+  ModemRequest *request)
+{
+  if (request)
+    g_queue_push_tail (self->priv->requests, request);
+  return request;
+}
+
+static ModemRequest *
+ring_conference_channel_dequeue_request (RingConferenceChannel *self,
+  ModemRequest *request)
+{
+  if (request)
+    g_queue_remove (self->priv->requests, request);
+  return request;
+}
+
+static ModemCallService *
+ring_conference_channel_get_call_service (RingConferenceChannel *self)
+{
+  TpBaseChannel *base = TP_BASE_CHANNEL (self);
+  TpBaseConnection *base_connection;
+  RingConnection *connection;
+  ModemOface *oface;
+
+  base_connection = tp_base_channel_get_connection (base);
+  connection = RING_CONNECTION (base_connection);
+  oface = ring_connection_get_modem_interface (connection,
+      MODEM_OFACE_CALL_MANAGER);
+
+  if (oface)
+    return MODEM_CALL_SERVICE (oface);
+  else
+    return NULL;
+}
+
 static void
-modem_call_service_join_reply(ModemCallService *service,
+modem_call_service_join_reply (ModemCallService *service,
   ModemRequest *request,
   GError *error,
   gpointer _self)
@@ -164,7 +237,7 @@ modem_call_service_join_reply(ModemCallService *service,
   DBusGMethodInvocation *context;
   GError *clearerror = NULL;
 
-  ring_media_channel_dequeue_request(RING_MEDIA_CHANNEL(self), request);
+  ring_conference_channel_dequeue_request (self, request);
 
   context = modem_request_steal_data(request, "tp-request");
 
@@ -215,12 +288,12 @@ ring_mergeable_conference_merge(RingSvcChannelInterfaceMergeableConference *ifac
     ModemRequest *request;
     ModemCallService *service;
 
-    service = ring_media_channel_get_call_service (RING_MEDIA_CHANNEL (self)),
+    service = ring_conference_channel_get_call_service (self);
 
     request = modem_call_request_conference (service,
         modem_call_service_join_reply, self);
 
-    ring_media_channel_queue_request(RING_MEDIA_CHANNEL(self), request);
+    ring_conference_channel_queue_request (self, request);
 
     modem_request_add_data_full(request,
       "member-object-path",
@@ -237,9 +310,546 @@ ring_mergeable_conference_merge(RingSvcChannelInterfaceMergeableConference *ifac
   g_clear_error(&error);
 }
 
+/*
+ * Telepathy.Channel.Interface.DTMF DBus interface - version 0.19.6
+ */
+
+/** DBus method StartTone ( u: stream_id, y: event ) -> nothing
+ *
+ * Start sending a DTMF tone on this stream. Where possible, the tone will
+ * continue until StopTone is called. On certain protocols, it may only be
+ * possible to send events with a predetermined length. In this case, the
+ * implementation may emit a fixed-length tone, and the StopTone method call
+ * should return NotAvailable.
+ */
+static void
+ring_conference_channel_dtmf_start_tone(TpSvcChannelInterfaceDTMF *iface,
+  guint stream_id,
+  guchar event,
+  DBusGMethodInvocation *context)
+{
+  GError error[] = {{
+      TP_ERRORS, TP_ERROR_NOT_IMPLEMENTED,
+      "Not implemented"
+    }};
+  dbus_g_method_return_error(context, error);
+}
+
+/** DBus method StopTone ( u: stream_id ) -> nothing
+ *
+ * Stop sending any DTMF tone which has been started using the StartTone
+ * method. If there is no current tone, this method will do nothing.
+ */
+static void
+ring_conference_channel_dtmf_stop_tone(TpSvcChannelInterfaceDTMF *iface,
+  guint stream_id,
+  DBusGMethodInvocation *context)
+{
+  GError error[] = {{
+      TP_ERRORS, TP_ERROR_NOT_IMPLEMENTED,
+      "Not implemented"
+    }};
+  dbus_g_method_return_error(context, error);
+}
 
 static void
-ring_channel_mergeable_conference_iface_init(gpointer g_iface,
+ring_conference_channel_dtmf_iface_init (gpointer g_iface, gpointer iface_data)
+{
+  TpSvcChannelInterfaceDTMFClass *klass = (TpSvcChannelInterfaceDTMFClass *)g_iface;
+
+#define IMPLEMENT(x) tp_svc_channel_interface_dtmf_implement_##x(       \
+    klass, ring_conference_channel_dtmf_##x)
+  IMPLEMENT(start_tone);
+  IMPLEMENT(stop_tone);
+#undef IMPLEMENT
+}
+
+/* ---------------------------------------------------------------------- */
+/* Implement org.freedesktop.Telepathy.Channel.Interface.Hold */
+
+static
+void ring_conference_channel_get_hold_state (TpSvcChannelInterfaceHold *iface,
+  DBusGMethodInvocation *context)
+{
+  RingConferenceChannel *self = RING_CONFERENCE_CHANNEL (iface);
+  RingConferenceChannelPrivate *priv = self->priv;
+  guint i;
+  guint hold_state = NUM_TP_LOCAL_HOLD_STATES; /* known invalid value */
+  guint hold_reason = NUM_TP_LOCAL_HOLD_STATE_REASONS;
+  gboolean state_set = FALSE;
+
+  for (i = 0; i < MODEM_MAX_CALLS; i++)
+    {
+      RingMemberChannel *member = priv->members[i];
+      DEBUG("get_hold_state: %i/%p", i, member);
+      if (member && priv->is_current[i])
+        {
+          guint nextstate;
+          g_object_get (member, "hold-state", &nextstate, NULL);
+          if (state_set == FALSE)
+            {
+              hold_state = nextstate;
+              g_object_get (member, "hold-state-reason", &hold_reason, NULL);
+              state_set = TRUE;
+            }
+          else
+            {
+              /* note: the current modem/ofono APIs do not provide means
+               *       to get notifications about conf call state (only
+               *       about individual calls that might be members of
+               *       a conf-call, so we have to fall back to composing
+               *       the state by looking at member channel states
+               */
+              if (hold_state != nextstate)
+                {
+                  ring_warning (
+                      "member call hold state inconsistant (call %i %d, conf %d)\n",
+                      i + 1, nextstate, hold_state);
+                }
+            }
+        }
+    }
+
+  /*
+   * As the member channels won't know about this, we have
+   * to check separately whether it was the conf channel that
+   * requested the hold.
+   */
+  if (hold_state &&
+      priv->hold.requested)
+    {
+      hold_reason = TP_LOCAL_HOLD_STATE_REASON_REQUESTED;
+    }
+
+  tp_svc_channel_interface_hold_return_from_get_hold_state
+    (context, hold_state, hold_reason);
+}
+
+static void
+reply_to_request_swap_calls (ModemCallService *_service,
+    ModemRequest *request,
+    GError *error,
+    gpointer _self)
+{
+  RingConferenceChannel *self = RING_CONFERENCE_CHANNEL(_self);
+  RingConferenceChannelPrivate *priv = self->priv;
+  guint hold = (priv->hold.requested == TRUE) ?
+    TP_LOCAL_HOLD_STATE_HELD : TP_LOCAL_HOLD_STATE_UNHELD;
+
+  ring_conference_channel_dequeue_request (self, request);
+
+  DEBUG("");
+
+  priv->hold.state = priv->hold.requested;
+
+  /* XXX: this can potentially confuse the client as the individual
+   *      member channel states might not be yet updated...
+   *      should we perhaps stay in PENDING state until all
+   *      the participant calls have changed state (or failed
+   *      to do so)? */
+
+  tp_svc_channel_interface_hold_emit_hold_state_changed(
+    (TpSvcChannelInterfaceHold *)self,
+    hold, TP_LOCAL_HOLD_STATE_REASON_REQUESTED);
+
+}
+
+static
+void ring_conference_channel_request_hold (TpSvcChannelInterfaceHold *iface,
+  gboolean hold,
+  DBusGMethodInvocation *context)
+{
+  RingConferenceChannel *self = RING_CONFERENCE_CHANNEL (iface);
+  RingConferenceChannelPrivate *priv = self->priv;
+  GError *error = NULL;
+
+  DEBUG ("(%u) on %s", hold, self->nick);
+
+  if (priv->conf_created == FALSE)
+    {
+      g_set_error (&error, TP_ERRORS, TP_ERROR_DISCONNECTED,
+          "No conference call available");
+    }
+  else if (hold == priv->hold.state ||
+           hold == priv->hold.requested)
+    {
+      tp_svc_channel_interface_hold_return_from_request_hold(context);
+      return;
+    }
+  else
+    {
+      ModemCallService *service =
+        ring_conference_channel_get_call_service (self);
+      guint holdstate = (hold == TRUE) ?
+        TP_LOCAL_HOLD_STATE_PENDING_HOLD : TP_LOCAL_HOLD_STATE_PENDING_UNHOLD;
+
+      priv->hold.requested = hold;
+
+      tp_svc_channel_interface_hold_emit_hold_state_changed(
+          (TpSvcChannelInterfaceHold *)self,
+          holdstate, TP_LOCAL_HOLD_STATE_REASON_REQUESTED);
+
+      ring_conference_channel_queue_request (self,
+          modem_call_service_swap_calls(service,
+              reply_to_request_swap_calls, self));
+
+      tp_svc_channel_interface_hold_return_from_request_hold(context);
+      return;
+    }
+
+  DEBUG ("request_hold(%u) on %s: %s", hold, self->nick, error->message);
+  dbus_g_method_return_error (context, error);
+  g_clear_error (&error);
+}
+
+static void
+ring_conference_channel_hold_iface_init (gpointer g_iface, gpointer iface_data)
+{
+  TpSvcChannelInterfaceHoldClass *klass = g_iface;
+
+#define IMPLEMENT(x) tp_svc_channel_interface_hold_implement_##x(       \
+    klass, ring_conference_channel_##x)
+  IMPLEMENT(get_hold_state);
+  IMPLEMENT(request_hold);
+#undef IMPLEMENT
+}
+
+/* ====================================================================== */
+
+/**
+ * Telepathy.Channel.Type.StreamedMedia DBus interface
+ */
+
+/*
+ * KVXXX: move most of below to a common util file
+ * (can be shared with ring-media-channel)
+ */
+
+#define TP_CHANNEL_STREAM_TYPE                  \
+  (dbus_g_type_get_struct("GValueArray",        \
+    G_TYPE_UINT,                                \
+    G_TYPE_UINT,                                \
+    G_TYPE_UINT,                                \
+    G_TYPE_UINT,                                \
+    G_TYPE_UINT,                                \
+    G_TYPE_UINT,                                \
+    G_TYPE_INVALID))
+
+enum {
+  RING_MEDIA_STREAM_ID_AUDIO = 1,
+};
+
+/** Update media stream state.
+ *
+ * @retval 0 if nothing changed
+ * @retval 1 (or nonzero) if state changed
+ */
+static int
+update_media_stream(RingConferenceChannel *self,
+  TpHandle handle,
+  struct stream_state *ss,
+  guint id,
+  TpMediaStreamType type,
+  TpMediaStreamState state,
+  TpMediaStreamDirection direction,
+  TpMediaStreamPendingSend pending)
+{
+  int changed = 0;
+
+  if (type != TP_MEDIA_STREAM_TYPE_AUDIO)
+    return 0;
+
+  if (state == TP_MEDIA_STREAM_STATE_DISCONNECTED) {
+    if (ss->id == id) {
+      changed = 1;
+      /* emit StreamRemoved */
+      tp_svc_channel_type_streamed_media_emit_stream_removed(
+        (TpSvcChannelTypeStreamedMedia *)self, id);
+      memset(ss, 0, sizeof ss);
+    }
+    return changed;
+  }
+
+  /* emit StreamAdded */
+  if (ss->id != id) {
+    if (handle == 0)
+      g_object_get(self, "peer", &handle, NULL);
+    changed = 1;
+    ss->id = id;
+    ss->handle = handle;
+    ss->type = type;
+
+    if (DEBUGGING) {
+      DEBUG("emitting StreamAdded(%u, %d, %s)",
+        id, handle,
+        type == TP_MEDIA_STREAM_TYPE_AUDIO ?
+        "AUDIO" :
+        type == TP_MEDIA_STREAM_TYPE_VIDEO ?
+        "VIDEO" : "???");
+    }
+
+    tp_svc_channel_type_streamed_media_emit_stream_added(
+      (TpSvcChannelTypeStreamedMedia *)self,
+      ss->id, ss->handle, ss->type);
+  }
+
+  /* emit StreamStateChanged */
+  if (ss->state != state) {
+    changed = 1;
+    ss->state = state;
+
+    if (DEBUGGING) {
+      DEBUG("emitting StreamStateChanged(%u, %s)",
+        ss->id,
+        state == TP_MEDIA_STREAM_STATE_DISCONNECTED ?
+        "DISCONNECTED" :
+        state == TP_MEDIA_STREAM_STATE_CONNECTING ?
+        "CONNECTING" :
+        state == TP_MEDIA_STREAM_STATE_CONNECTED ?
+        "CONNECTED" : "???");
+    }
+
+    tp_svc_channel_type_streamed_media_emit_stream_state_changed (
+      (TpSvcChannelTypeStreamedMedia *)self,
+      ss->id, state);
+  }
+
+  /* emit StreamDirectionChanged */
+  if (ss->direction != direction || ss->pending != pending) {
+    changed = 1;
+    ss->direction = direction;
+    ss->pending = pending;
+
+    if (DEBUGGING) {
+      DEBUG("emitting StreamDirectionChanged(%u, %s,%s%s%s)",
+        ss->id,
+        direction == TP_MEDIA_STREAM_DIRECTION_BIDIRECTIONAL
+        ? "BIDIRECTIONAL" :
+        direction == TP_MEDIA_STREAM_DIRECTION_SEND
+        ? "SEND" :
+        direction == TP_MEDIA_STREAM_DIRECTION_RECEIVE
+        ? "RECV" :
+        "NONE",
+        pending & TP_MEDIA_STREAM_PENDING_REMOTE_SEND ?
+        " remote" : "",
+        pending & TP_MEDIA_STREAM_PENDING_LOCAL_SEND ?
+        " local" : "",
+        pending == 0 ? " 0" : "");
+    }
+
+    tp_svc_channel_type_streamed_media_emit_stream_direction_changed(
+      (TpSvcChannelTypeStreamedMedia *)self,
+      ss->id, ss->direction, ss->pending);
+  }
+
+  return changed;
+}
+
+static void
+free_media_stream_list(GPtrArray *list)
+{
+  if (list) {
+    const GType ElementType = TP_CHANNEL_STREAM_TYPE;
+    guint i;
+
+    for (i = list->len; i-- > 0;)
+      g_boxed_free(ElementType, g_ptr_array_index(list, i));
+
+    g_ptr_array_free(list, TRUE);
+  }
+}
+
+/* Return a pointer to GValue with boxed stream struct */
+static gpointer
+describe_stream(struct stream_state *ss)
+{
+  const GType ElementType = TP_CHANNEL_STREAM_TYPE;
+  GValue element[1] = {{ 0 }};
+
+  g_value_init(element, ElementType);
+  g_value_take_boxed(element, dbus_g_type_specialized_construct(ElementType));
+
+  dbus_g_type_struct_set(element,
+    0, ss->id,
+    1, ss->handle,
+    2, ss->type,
+    3, ss->state,
+    4, ss->direction,
+    5, ss->pending,
+    G_MAXUINT);
+
+  return g_value_get_boxed(element);
+}
+
+static GPtrArray *
+list_media_streams(RingConferenceChannel *self)
+{
+  RingConferenceChannelPrivate *priv = self->priv;
+  GPtrArray *list;
+  size_t size;
+
+  size = (priv->audio->id != 0);
+
+  list = g_ptr_array_sized_new(size);
+
+  if (priv->audio->id)
+    g_ptr_array_add(list, describe_stream(priv->audio));
+
+  return list;
+}
+
+static gpointer
+describe_null_media(TpMediaStreamType tptype)
+{
+  struct stream_state ss[1] = {{ 0 }};
+
+  ss->type = tptype;
+
+  return describe_stream(ss);
+}
+
+static gboolean
+ring_conference_channel_validate_media_handle(RingConferenceChannel *_self,
+  guint *handlep,
+  GError **error)
+{
+  if (*handlep != 0) {
+    g_set_error (error, TP_ERRORS, TP_ERROR_INVALID_ARGUMENT,
+      "Conference channel carries a multiparty stream only");
+    return FALSE;
+  }
+
+  return TRUE;
+}
+
+/** DBus method ListStreams ( ) -> a(uuuuuu)
+ *
+ * Returns an array of structs representing the streams currently active
+ * within this channel. Each stream is identified by an unsigned integer
+ * which is unique for each stream within the channel.
+ *
+ * Returns
+ *
+ * a(uuuuuu)
+ *     An array of structs containing:
+ *
+ *         * the stream identifier
+ *         * the contact handle who the stream is with
+ *           (or 0 if the stream represents more than a single member)
+ *         * the type of the stream
+ *         * the current stream state
+ *         * the current direction of the stream
+ *         * the current pending send flags
+ */
+static void
+ring_conference_channel_list_streams(TpSvcChannelTypeStreamedMedia *iface,
+  DBusGMethodInvocation *context)
+{
+  RingConferenceChannel *self = RING_CONFERENCE_CHANNEL(iface);
+  GPtrArray *list;
+
+  list = list_media_streams(self);
+
+  tp_svc_channel_type_streamed_media_return_from_list_streams(context, list);
+
+  free_media_stream_list(list);
+}
+
+/** DBus method RequestStreams ( u: contact_handle, au: types ) -> a(uuuuuu)
+ *
+ * Request that streams be established to exchange the given types of media
+ * with the given member. In general this will try and establish a
+ * bidirectional stream, but on some protocols it may not be possible to
+ * indicate to the peer that you would like to receive media, so a send-only
+ * stream will be created initially. In the cases where the stream requires
+ * remote agreement (eg you wish to receive media from them), the
+ * StreamDirectionChanged signal will be emitted with the
+ * MEDIA_STREAM_PENDING_REMOTE_SEND flag set, and the signal emitted again
+ * with the flag cleared when the remote end has replied.
+ *
+ */
+static void
+ring_conference_channel_request_streams(TpSvcChannelTypeStreamedMedia *iface,
+  guint handle,
+  const GArray *media_types,
+  DBusGMethodInvocation *context)
+{
+  RingConferenceChannel *self = RING_CONFERENCE_CHANNEL(iface);
+  RingConferenceChannelPrivate *priv = self->priv;
+  GError *error = NULL;
+  GPtrArray *list;
+  guint i, create_audio_stream = 0;
+  struct stream_state audio[1];
+
+  DEBUG("(...) on %s", self->nick);
+
+  if (!ring_conference_channel_validate_media_handle(self, &handle, &error)) {
+    dbus_g_method_return_error(context, error);
+    g_clear_error(&error);
+    return;
+  }
+
+  *audio = *priv->audio;
+
+  /* We can create media only when call has not been initiated */
+  for (i = 0; i < media_types->len; i++) {
+    guint media_type = g_array_index(media_types, guint, i);
+
+    if (media_type == TP_MEDIA_STREAM_TYPE_AUDIO && !create_audio_stream)
+      create_audio_stream = update_media_stream(self, handle,
+                            audio, RING_MEDIA_STREAM_ID_AUDIO, media_type,
+                            TP_MEDIA_STREAM_STATE_CONNECTING,
+                            TP_MEDIA_STREAM_DIRECTION_NONE,
+                            TP_MEDIA_STREAM_PENDING_LOCAL_SEND |
+                            TP_MEDIA_STREAM_PENDING_REMOTE_SEND);
+  }
+
+  if (create_audio_stream)
+    *priv->audio = *audio;
+
+  list = g_ptr_array_sized_new(media_types->len);
+
+  for (i = 0; i < media_types->len; i++) {
+    guint media_type = g_array_index(media_types, guint, i);
+    gpointer element;
+
+    if (media_type == TP_MEDIA_STREAM_TYPE_AUDIO && create_audio_stream)
+      element = describe_stream(priv->audio), create_audio_stream = 0;
+    else
+      element = describe_null_media(media_type);
+
+    g_ptr_array_add(list, element);
+  }
+
+  ring_conference_channel_create_streams(
+    self, handle, create_audio_stream, FALSE, &error);
+
+  tp_svc_channel_type_streamed_media_return_from_request_streams(
+    context, list);
+
+  free_media_stream_list(list);
+
+  DEBUG("exit");
+}
+
+static void
+ring_conference_channel_streamed_media_iface_init (gpointer g_iface,
+  gpointer iface_data)
+{
+  TpSvcChannelTypeStreamedMediaClass *klass =
+    (TpSvcChannelTypeStreamedMediaClass *)g_iface;
+
+#define IMPLEMENT(x) tp_svc_channel_type_streamed_media_implement_##x(  \
+    klass, ring_conference_channel_##x)
+  IMPLEMENT(list_streams);
+  /* IMPLEMENT(remove_streams); */
+  /* IMPLEMENT(request_stream_direction); */
+  IMPLEMENT(request_streams);
+#undef IMPLEMENT
+}
+
+static void
+ring_conference_channel_mergeable_conference_iface_init(gpointer g_iface,
   gpointer iface_data)
 {
   RingSvcChannelInterfaceMergeableConferenceClass *klass =
@@ -264,8 +874,11 @@ static void
 ring_conference_channel_constructed(GObject *object)
 {
   RingConferenceChannel *self = RING_CONFERENCE_CHANNEL(object);
+  TpBaseChannel *base = TP_BASE_CHANNEL (self);
   TpBaseConnection *connection =
-    tp_base_channel_get_connection(TP_BASE_CHANNEL(self));
+    tp_base_channel_get_connection(base);
+  const gchar *object_path;
+  char *nick;
 
   if (G_OBJECT_CLASS(ring_conference_channel_parent_class)->constructed)
     G_OBJECT_CLASS(ring_conference_channel_parent_class)->constructed(object);
@@ -275,10 +888,22 @@ ring_conference_channel_constructed(GObject *object)
     G_STRUCT_OFFSET(RingConferenceChannel, group),
     tp_base_connection_get_handles(connection, TP_HANDLE_TYPE_CONTACT),
     connection->self_handle);
+
+  object_path = tp_base_channel_get_object_path (base);
+  g_assert(object_path != NULL);
+
+  nick = strrchr(object_path, '/');
+  ++nick;
+  g_assert (nick != NULL);
+  self->nick = g_strdup(nick);
+
+  DEBUG("(%p) with %s", self, self->nick);
+
+  tp_base_channel_register (base);
 }
 
-static void
-ring_conference_channel_emit_initial(RingMediaChannel *_self)
+void
+ring_conference_channel_emit_initial(RingConferenceChannel *_self)
 {
   DEBUG("enter");
 
@@ -290,37 +915,29 @@ ring_conference_channel_emit_initial(RingMediaChannel *_self)
   char const *message;
   TpChannelGroupChangeReason reason;
   TpChannelGroupFlags add = 0, del = 0;
+  char const *member_path;
+  RingMemberChannel *member;
+  int i;
 
-  if (priv->cc) {
-    message = "Conference created";
-    reason = TP_CHANNEL_GROUP_CHANGE_REASON_INVITED;
-  }
-  else {
-    message = "Channel created";
-    reason = TP_CHANNEL_GROUP_CHANGE_REASON_NONE;
-  }
+  message = "Conference created";
+  reason = TP_CHANNEL_GROUP_CHANGE_REASON_INVITED;
 
-  priv->current = tp_intset_new();
-  tp_intset_add(priv->current, group->self_handle);
-  priv->pending = tp_intset_new();
+  priv->current = tp_intset_new ();
+  tp_intset_add (priv->current, group->self_handle);
+  priv->pending = tp_intset_new ();
 
-  if (priv->cc) {
-    char const *member_path;
-    RingMemberChannel *member;
-    int i;
-
-    for (i = 0; i < priv->initial_members->len; i++) {
-      member_path = priv->initial_members->odata[i];
-      member = ring_connection_lookup_channel(connection, member_path);
-      if (member) {
-        ring_conference_channel_emit_channel_merged(
-          self, RING_MEMBER_CHANNEL(member),
-          modem_call_is_member(RING_MEDIA_CHANNEL(member)->call_instance));
+  for (i = 0; i < priv->initial_members->len; i++) {
+    member_path = priv->initial_members->odata[i];
+    member = ring_connection_lookup_channel (connection, member_path);
+    if (member)
+      {
+	ring_conference_channel_emit_channel_merged (
+            self, RING_MEMBER_CHANNEL(member), TRUE);
       }
-      else {
+    else
+      {
         DEBUG("No member channel %s found\n", member_path);
       }
-    }
   }
 
   tp_group_mixin_change_members((GObject *)self, message,
@@ -337,10 +954,6 @@ ring_conference_channel_emit_initial(RingMediaChannel *_self)
   add |= TP_CHANNEL_GROUP_FLAG_MEMBERS_CHANGED_DETAILED;
 
   tp_group_mixin_change_flags((GObject *)self, add, del);
-
-  if (priv->cc)
-    ring_media_channel_set_state(RING_MEDIA_CHANNEL(self),
-      modem_call_get_state(self->base.call_instance), 0, 0);
 }
 
 static void
@@ -358,9 +971,6 @@ ring_conference_channel_get_property(GObject *obj,
       break;
     case PROP_CHANNELS:
       g_value_take_boxed(value, ring_conference_get_channels(self));
-      break;
-    case PROP_SUPPORTS_NON_MERGES:
-      g_value_set_boolean (value, FALSE);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID(obj, property_id, pspec);
@@ -417,6 +1027,8 @@ ring_conference_channel_finalize(GObject *obj)
   tp_group_mixin_finalize(obj);
 
   g_boxed_free(TP_ARRAY_TYPE_OBJECT_PATH_LIST, priv->initial_members);
+  g_free (self->nick);
+
   priv->initial_members = NULL;
 
   G_OBJECT_CLASS(ring_conference_channel_parent_class)->finalize(obj);
@@ -441,12 +1053,11 @@ ring_conference_channel_class_init(RingConferenceChannelClass *klass)
   object_class->dispose = ring_conference_channel_dispose;
   object_class->finalize = ring_conference_channel_finalize;
 
+  base_chan_class->channel_type = TP_IFACE_CHANNEL_TYPE_STREAMED_MEDIA;
+  base_chan_class->close = (TpBaseChannelCloseFunc) ring_conference_channel_close;
   base_chan_class->interfaces = ring_conference_channel_interfaces;
   base_chan_class->target_handle_type = TP_HANDLE_TYPE_NONE;
   base_chan_class->fill_immutable_properties = ring_conference_channel_fill_immutable_properties;
-
-  ring_conference_channel_implement_media_channel(
-    RING_MEDIA_CHANNEL_CLASS(klass));
 
   klass->dbus_properties_class.interfaces =
     ring_conference_channel_dbus_property_interfaces;
@@ -482,15 +1093,6 @@ ring_conference_channel_class_init(RingConferenceChannelClass *klass)
       TP_ARRAY_TYPE_OBJECT_PATH_LIST,
       G_PARAM_READABLE |
       G_PARAM_STATIC_STRINGS));
-
-  g_object_class_install_property(
-    object_class, PROP_SUPPORTS_NON_MERGES,
-    g_param_spec_boolean("supports-non-merges",
-      "SupportsNonMerges",
-      "Whether this channel supports non-merges",
-      FALSE,
-      G_PARAM_READABLE |
-      G_PARAM_STATIC_STRINGS));
 }
 
 /* ====================================================================== */
@@ -502,14 +1104,13 @@ ring_conference_channel_class_init(RingConferenceChannelClass *klass)
 static TpDBusPropertiesMixinPropImpl conference_properties[] = {
   { "InitialChannels", "initial-channels" },
   { "Channels", "channels" },
-  { "SupportsNonMerges", "supports-non-merges" },
   { NULL }
 };
 
 static TpDBusPropertiesMixinIfaceImpl
 ring_conference_channel_dbus_property_interfaces[] = {
   {
-    RING_IFACE_CHANNEL_INTERFACE_CONFERENCE,
+    TP_IFACE_CHANNEL_INTERFACE_CONFERENCE,
     tp_dbus_properties_mixin_getter_gobject_properties,
     NULL,
     conference_properties,
@@ -525,7 +1126,7 @@ ring_conference_channel_fill_immutable_properties(TpBaseChannel *base,
       base, props);
 
   tp_dbus_properties_mixin_fill_properties_hash (G_OBJECT(base), props,
-    RING_IFACE_CHANNEL_INTERFACE_CONFERENCE, "InitialChannels",
+    TP_IFACE_CHANNEL_INTERFACE_CONFERENCE, "InitialChannels",
     NULL);
 }
 
@@ -574,6 +1175,38 @@ ring_conference_channel_add_member(GObject *iface,
     return FALSE;
 }
 
+static void
+reply_to_modem_call_request_hangup_conference (ModemCallService *_service,
+    ModemRequest *request,
+    GError *error,
+    gpointer _self)
+{
+  RingConferenceChannel *self = RING_CONFERENCE_CHANNEL(_self);
+  RingConferenceChannelPrivate *priv = self->priv;
+  TpBaseChannel *base = TP_BASE_CHANNEL (self);
+
+  ring_conference_channel_dequeue_request (self, request);
+
+  DEBUG("");
+
+  priv->conf_created = FALSE;
+  tp_base_channel_destroyed (base);
+}
+
+/*
+ * Requests modem to hangup the multiparty call.
+ */
+static void ring_conference_do_hangup (RingConferenceChannel *self)
+{
+  RingConferenceChannelPrivate *priv = self->priv;
+  ModemCallService *service;
+
+  priv->hangup = TRUE;
+  service = ring_conference_channel_get_call_service (self);
+  ring_conference_channel_queue_request (self,
+      modem_call_request_hangup_conference (service,
+          reply_to_modem_call_request_hangup_conference, self));
+}
 
 static gboolean
 ring_conference_channel_remove_member_with_reason(GObject *iface,
@@ -598,7 +1231,10 @@ ring_conference_channel_remove_member_with_reason(GObject *iface,
   removing = tp_intset_new();
 
   if (handle == selfhandle)
-    tp_intset_add(removing, handle);
+    {
+      tp_intset_add(removing, handle);
+      ring_conference_do_hangup (self);
+    }
 
   for (i = 0; i < MODEM_MAX_CALLS; i++) {
     member = priv->members[i];
@@ -607,11 +1243,7 @@ ring_conference_channel_remove_member_with_reason(GObject *iface,
 
     g_object_get(member, "member-handle", &memberhandle, NULL);
 
-    if (handle == selfhandle) {
-      tp_intset_add(removing, memberhandle);
-      ring_member_channel_release(member, message, reason, NULL);
-    }
-    else if (handle == memberhandle) {
+    if (handle == memberhandle) {
       tp_intset_add(removing, memberhandle);
       if (!ring_member_channel_release(member, message, reason, error))
         goto error;
@@ -677,6 +1309,9 @@ ring_conference_channel_emit_channel_merged(RingConferenceChannel *self,
   char *member_object_path;
   GHashTable *member_map;
   TpHandle member_handle;
+  /* XXXKV: fill with correct values */
+  GHashTable *member_props =
+      tp_dbus_properties_mixin_make_properties_hash (G_OBJECT (member), NULL, NULL, NULL);
 
   g_object_get(member,
     "object-path", &member_object_path,
@@ -707,8 +1342,8 @@ ring_conference_channel_emit_channel_merged(RingConferenceChannel *self,
     strrchr(member_object_path, '/') + 1);
 
   /* XXX: This used to take member_map, which could be useful */
-  ring_svc_channel_interface_conference_emit_channel_merged(
-    self, member_object_path);
+  tp_svc_channel_interface_conference_emit_channel_merged(
+	  self, member_object_path, member_handle, member_props);
 
 emit_members_changed:
   DEBUG("%s member handle %u for %s",
@@ -761,6 +1396,7 @@ emit_members_changed:
 
 error:
   g_hash_table_destroy(member_map);
+  g_hash_table_destroy(member_props);
   g_free(member_object_path);
 }
 
@@ -777,6 +1413,7 @@ ring_conference_channel_emit_channel_removed(
   guint i, n;
   char *object_path;
   TpHandle member_handle;
+  GHashTable *details;
 
   if (!member)
     return;
@@ -811,12 +1448,19 @@ ring_conference_channel_emit_channel_removed(
       strrchr(object_path, '/') + 1,
       actor, reason);
 
-    /* XXX: this used to take actor and reason which could be
-       useful */
-    ring_svc_channel_interface_conference_emit_channel_removed(
-      self, object_path);
+    details = g_hash_table_new_full (g_str_hash, g_str_equal, NULL,
+      (GDestroyNotify) tp_g_value_slice_free);
+
+    g_hash_table_insert (details, "actor",
+      tp_g_value_slice_new_uint (actor));
+    g_hash_table_insert (details, "change-reason",
+      tp_g_value_slice_new_uint (reason));
+
+    tp_svc_channel_interface_conference_emit_channel_removed(
+	     self, object_path, details);
 
     g_free(object_path);
+    g_hash_table_destroy(details);
 
     ring_member_channel_left(member);
 
@@ -851,8 +1495,11 @@ ring_conference_channel_emit_channel_removed(
 
   DEBUG("Too few members, close channel %p", self);
 
-  /* Last member channel removed, close channel */
-  ring_media_channel_close(RING_MEDIA_CHANNEL(self));
+  /*
+   * Last member channel removed, close channel but do
+   * not hangup.
+   */
+  ring_conference_channel_close_impl (self, FALSE, FALSE);
 }
 
 
@@ -910,6 +1557,9 @@ ring_conference_channel_join(RingConferenceChannel *self,
   RingMemberChannel *member,
   GError **error)
 {
+  RingConferenceChannelPrivate *priv = RING_CONFERENCE_CHANNEL(self)->priv;
+  int i;
+
   if (!RING_IS_CONFERENCE_CHANNEL(self)) {
     g_set_error(error, TP_ERRORS, TP_ERROR_INVALID_ARGUMENT,
       "Not a Conference Channel");
@@ -920,68 +1570,28 @@ ring_conference_channel_join(RingConferenceChannel *self,
     return FALSE;
   }
 #endif
+  for (i = 0; i < MODEM_MAX_CALLS; i++) {
+    if (member == priv->members[i]) {
+      priv->is_current[i] = TRUE;
+    }
+  }
   ring_conference_channel_emit_channel_merged(self, member, FALSE);
 
   return TRUE;
 }
 
-static void
-on_modem_conference_joined(ModemCallConference *cc,
-  ModemCall *ci,
-  RingConferenceChannel *self)
-{
-  RingMemberChannel *member =
-    (RingMemberChannel *)modem_call_get_handler(ci);
-
-  DEBUG("called with ModemCall(%p) and RingMemberChannel(%p)", ci, member);
-
-  if (RING_IS_MEMBER_CHANNEL(member))
-    ring_conference_channel_emit_channel_merged(
-      RING_CONFERENCE_CHANNEL(self), member, TRUE);
-}
-
-void
-on_modem_conference_left(ModemCallConference *cc,
-  ModemCall *ci,
-  RingConferenceChannel *self)
-{
-  RingMemberChannel *member = modem_call_get_handler(ci);
-
-  DEBUG("called with ModemCall(%p) and RingMemberChannel(%p)", ci, member);
-
-  if (RING_IS_MEMBER_CHANNEL(member)) {
-    TpHandle actor = 0;
-    TpChannelGroupChangeReason reason = 0;
-    char const *message;
-
-    if (modem_call_get_state(ci) == MODEM_CALL_STATE_ACTIVE) {
-      message = "Split to private call";
-      actor = self->group.self_handle;
-      reason = TP_CHANNEL_GROUP_CHANGE_REASON_INVITED;
-    }
-    else {
-      message = "Member channel removed";
-      actor = self->group.self_handle;
-      reason = TP_CHANNEL_GROUP_CHANGE_REASON_ERROR;
-      DEBUG("got Left but member channel is not split (call in %s)",
-        modem_call_get_state_name(modem_call_get_state(ci)));
-    }
-
-    ring_conference_channel_emit_channel_removed(
-      RING_CONFERENCE_CHANNEL(self), member,
-      message, actor, reason);
-  }
-}
-
 /* ====================================================================== */
 /* RingMediaChannel interface */
 
-/** Close channel */
+/**
+ * Implements closing the channel
+ *
+ * @see ring_conference_channel_close() for the interface callback
+ */
 static gboolean
-ring_conference_channel_close(RingMediaChannel *_self,
-  gboolean immediately)
+ring_conference_channel_close_impl (RingConferenceChannel *self,
+    gboolean immediately, gboolean hangup)
 {
-  RingConferenceChannel *self = RING_CONFERENCE_CHANNEL(_self);
   RingConferenceChannelPrivate *priv = RING_CONFERENCE_CHANNEL(self)->priv;
   int i;
 
@@ -996,24 +1606,33 @@ ring_conference_channel_close(RingMediaChannel *_self,
     priv->members[i] = NULL;
   }
 
+  if (hangup)
+    {
+      ring_conference_do_hangup (self);
+    }
+  else
+    {
+      TpBaseChannel *base = TP_BASE_CHANNEL (self);
+      priv->conf_created = FALSE;
+      DEBUG("emitting close without hanging up");
+      tp_base_channel_destroyed (base);
+    }
+
   return TRUE;
 }
 
-static void
-ring_conference_channel_update_state(RingMediaChannel *_self,
-  unsigned state,
-  unsigned causetype,
-  unsigned cause)
+/**
+ * Implements the TpBaseChannel close method.
+ */
+static gboolean
+ring_conference_channel_close (RingConferenceChannel *self,
+    gboolean immediately)
 {
-  if (state != MODEM_CALL_STATE_DISCONNECTED) /* was: TERMINATED */
-    return;
-
-  /* Emit MemberChanged when request to build conference fails */
-  if (tp_handle_set_size(TP_GROUP_MIXIN(_self)->remote_pending) != 0)
-    ring_conference_channel_release(RING_CONFERENCE_CHANNEL(_self),
-      causetype, cause, NULL);
-
-  ring_media_channel_close(_self);
+  /**
+   * When Close() is requested explicitly, hangup the conference
+   * call (releases all member calls as well).
+   */
+  return ring_conference_channel_close_impl (self, immediately, TRUE);
 }
 
 static void
@@ -1092,67 +1711,11 @@ ring_conference_channel_release(RingConferenceChannel *self,
   g_free(debug);
 }
 
-static void
-ring_conference_channel_set_call_instance(RingMediaChannel *_self,
-  ModemCall *ci)
-{
-  DEBUG("(%p, %p): enter", _self, ci);
-
-#if XXX
-
-  RingConferenceChannel *self = RING_CONFERENCE_CHANNEL(_self);
-  RingConferenceChannelPrivate *priv = self->priv;
-
-  if (ci) {
-    g_assert(MODEM_IS_CALL_CONFERENCE(ci));
-
-    priv->cc = MODEM_CALL_CONFERENCE(ci);
-
-    priv->streams_created = 1;
-
-#define CONNECT(n, f)                                                   \
-    g_signal_connect(priv->cc, n, G_CALLBACK(on_modem_conference_ ## f), self)
-
-    priv->signals.joined = CONNECT("joined", joined);
-    priv->signals.left = CONNECT("left", left);
-#undef CONNECT
-  }
-  else {
-#define DISCONNECT(n)                                                   \
-    if (priv->signals.n &&                                              \
-      g_signal_handler_is_connected(priv->cc, priv->signals.n)) {       \
-      g_signal_handler_disconnect(priv->cc, priv->signals.n);           \
-    } (priv->signals.n = 0)
-
-    DISCONNECT(joined);
-    DISCONNECT(left);
-
-#undef DISCONNECT
-
-    priv->cc = NULL;
-  }
-#endif
-}
-
-static gboolean
-ring_conference_channel_validate_media_handle(RingMediaChannel *_self,
-  guint *handlep,
-  GError **error)
-{
-  if (*handlep != 0) {
-    g_set_error(error, TP_ERRORS, TP_ERROR_INVALID_ARGUMENT,
-      "Conference channel carries a multiparty stream only");
-    return FALSE;
-  }
-
-  return TRUE;
-}
-
 static void reply_to_modem_call_request_conference(ModemCallService *_service,
   ModemRequest *request, GError *error, gpointer _channel);
 
 static gboolean
-ring_conference_channel_create_streams(RingMediaChannel *_self,
+ring_conference_channel_create_streams(RingConferenceChannel *_self,
   guint handle,
   gboolean audio,
   gboolean video,
@@ -1176,9 +1739,9 @@ ring_conference_channel_create_streams(RingMediaChannel *_self,
       error))
     return FALSE;
 
-  service = ring_media_channel_get_call_service (RING_MEDIA_CHANNEL (self)),
+  service = ring_conference_channel_get_call_service (self);
 
-  ring_media_channel_queue_request(RING_MEDIA_CHANNEL(self),
+  ring_conference_channel_queue_request (self,
     modem_call_request_conference (service,
       reply_to_modem_call_request_conference, self));
 
@@ -1198,13 +1761,13 @@ ring_conference_channel_initial_audio(RingConferenceChannel *self,
 
   priv->streams_created = 1;
 
-  service = ring_media_channel_get_call_service (RING_MEDIA_CHANNEL (self)),
+  service = ring_conference_channel_get_call_service (self),
 
   request = modem_call_request_conference (service,
             reply_to_modem_call_request_conference,
             self);
 
-  ring_media_channel_queue_request(RING_MEDIA_CHANNEL(self), request);
+  ring_conference_channel_queue_request (self, request);
 
   modem_request_add_qdatas(
     request,
@@ -1223,34 +1786,25 @@ reply_to_modem_call_request_conference(ModemCallService *_service,
   RingConferenceChannel *self = RING_CONFERENCE_CHANNEL(_self);
   RingConferenceChannelPrivate *priv = self->priv;
   gpointer channelrequest;
-  ModemCallConference *cc = priv->cc;
   GError error0[1] = {{
       TP_ERRORS, TP_ERROR_NOT_AVAILABLE, "Conference channel already exists"
     }};
 
-  ring_media_channel_dequeue_request(RING_MEDIA_CHANNEL(self), request);
+  ring_conference_channel_dequeue_request (self, request);
 
+  g_assert(priv->conf_created == FALSE);
   if (error)
-    DEBUG("Call.CreateMultiparty with channel %s (%p) failed: " GERROR_MSG_FMT,
-      self->base.nick, self, GERROR_MSG_CODE(error));
+    {
+      DEBUG("Call.CreateMultiparty with channel %s (%p) failed: " GERROR_MSG_FMT,
+          self->nick, self, GERROR_MSG_CODE(error));
+    }
   else
-    DEBUG("Call.CreateMultiparty with channel %s (%p) returned",
-      self->base.nick, self);
-
-  if (error == NULL && cc == NULL) {
-    RingConferenceChannel *already;
-
-    cc = modem_call_service_get_conference (_service);
-    already = modem_call_get_handler(MODEM_CALL(cc));
-    if (already == NULL) {
-      g_object_set(self, "call-instance", cc, NULL);
+    {
+      priv->conf_created = TRUE;
+      DEBUG("Call.CreateMultiparty with channel %s (%p) returned",
+          self->nick, self);
     }
-    else {
-      DEBUG("RingConferenceChannel already exists (%p)", already);
-      cc = NULL;
-      error = error0;
-    }
-  }
+
 
   channelrequest = modem_request_steal_data(request, "RingChannelRequest");
   if (channelrequest) {
@@ -1261,22 +1815,11 @@ reply_to_modem_call_request_conference(ModemCallService *_service,
   }
   else if (error) {
     ring_conference_channel_release(_self, 0, 0, error);
-    ring_media_channel_close(_self);
+    ring_conference_channel_close_impl(_self, FALSE, FALSE);
   }
   else {
     ring_conference_channel_emit_initial(_self);
   }
-}
-
-static void
-ring_conference_channel_implement_media_channel(RingMediaChannelClass *media_class)
-{
-  media_class->emit_initial = ring_conference_channel_emit_initial;
-  media_class->close = ring_conference_channel_close;
-  media_class->update_state = ring_conference_channel_update_state;
-  media_class->set_call_instance = ring_conference_channel_set_call_instance;
-  media_class->validate_media_handle = ring_conference_channel_validate_media_handle;
-  media_class->create_streams = ring_conference_channel_create_streams;
 }
 
 /* ---------------------------------------------------------------------- */

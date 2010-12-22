@@ -98,40 +98,6 @@ GType modem_call_get_type (void);
 #define MODEM_CALL_GET_CLASS(obj) \
   (G_TYPE_INSTANCE_GET_CLASS ((obj), MODEM_TYPE_CALL, ModemCallClass))
 
-typedef struct _ModemCallConference ModemCallConference;
-typedef struct _ModemCallConferenceClass ModemCallConferenceClass;
-typedef struct _ModemCallConferencePrivate ModemCallConferencePrivate;
-
-struct _ModemCallConferenceClass
-{
-  ModemCallClass parent_class;
-};
-
-struct _ModemCallConference
-{
-  ModemCall parent;
-  ModemCallConferencePrivate *priv;
-};
-
-GType modem_call_conference_get_type (void);
-
-/* TYPE MACROS */
-#define MODEM_TYPE_CALL_CONFERENCE \
-  (modem_call_conference_get_type ())
-#define MODEM_CALL_CONFERENCE(obj) \
-  (G_TYPE_CHECK_INSTANCE_CAST ((obj), \
-      MODEM_TYPE_CALL_CONFERENCE, ModemCallConference))
-#define MODEM_CALL_CONFERENCE_CLASS(klass) \
-  (G_TYPE_CHECK_CLASS_CAST ((klass), \
-      MODEM_TYPE_CALL_CONFERENCE, ModemCallConferenceClass))
-#define MODEM_IS_CALL_CONFERENCE(obj) \
-  (G_TYPE_CHECK_INSTANCE_TYPE ((obj), MODEM_TYPE_CALL_CONFERENCE))
-#define MODEM_IS_CALL_CONFERENCE_CLASS(klass) \
-  (G_TYPE_CHECK_CLASS_TYPE ((klass), MODEM_TYPE_CALL_CONFERENCE))
-#define MODEM_CALL_CONFERENCE_GET_CLASS(obj) \
-  (G_TYPE_INSTANCE_GET_CLASS ((obj), \
-      MODEM_TYPE_CALL_CONFERENCE, ModemCallConferenceClass))
-
 /* ------------------------------------------------------------------------- */
 
 #define MODEM_OFACE_CALL_MANAGER "org.ofono.VoiceCallManager"
@@ -210,7 +176,6 @@ typedef void ModemCallServiceReply (ModemCallService *,
 
 ModemCall *modem_call_service_get_call (ModemCallService *, char const *);
 ModemCall **modem_call_service_get_calls (ModemCallService *);
-ModemCallConference *modem_call_service_get_conference (ModemCallService *);
 
 typedef void ModemCallRequestDialReply (ModemCallService *,
   ModemRequest *,
@@ -226,6 +191,14 @@ ModemRequest *modem_call_request_dial (ModemCallService *self,
 
 ModemRequest *modem_call_request_conference (ModemCallService *,
   ModemCallServiceReply *callback,
+  gpointer user_data);
+
+ModemRequest *modem_call_request_hangup_conference (ModemCallService *,
+  ModemCallServiceReply *callback,
+  gpointer user_data);
+
+ModemRequest *modem_call_service_swap_calls (ModemCallService *self,
+  ModemCallServiceReply callback,
   gpointer user_data);
 
 char const *modem_call_get_name (ModemCall const *);

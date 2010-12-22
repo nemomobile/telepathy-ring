@@ -1,9 +1,10 @@
 /*
  * modem/call-service.c - Interface towards oFono VoiceCallManager
  *
- * Copyright (C) 2008 Nokia Corporation
+ * Copyright (C) 2008,2010 Nokia Corporation
  *   @author Pekka Pessi <first.surname@nokia.com>
  *   @author Lassi Syrjala <first.surname@nokia.com>
+ *   @author Kai Vehmanen <first.surname@nokia.com>
  *
  * This work is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -75,7 +76,6 @@ struct _ModemCallServicePrivate
 
   struct {
     ModemCall *instance;
-    ModemCallConference *conference;
   } conference;
 
   char **emergency_numbers;
@@ -605,45 +605,6 @@ modem_call_service_get_dialed (ModemCallService *self,
 /* ---------------------------------------------------------------------- */
 /* ModemCallService interface */
 
-#if 0
-static void
-refresh_conference_memberships (ModemCallService *self,
-                                GPtrArray *members)
-{
-  guint i;
-  char const *path;
-  ModemCall *ci;
-  GList *instances;
-
-  instances = g_hash_table_get_values (self->priv->instances);
-
-  for (i = 0; i < members->len; i++)
-    {
-      path = g_ptr_array_index (members, i);
-
-      ci = g_hash_table_lookup (self->priv->instances, path);
-      if (ci != NULL)
-        {
-          if (!modem_call_is_member (ci))
-            g_object_set (ci, "member", TRUE, NULL);
-
-          instances = g_list_remove (instances, ci);
-        }
-    }
-
-  /* The remaining instances aren't members */
-  while (instances)
-    {
-      ci = instances->data;
-
-      if (modem_call_is_member (ci))
-        g_object_set (ci, "member", FALSE, NULL);
-
-      instances = g_list_delete_link (instances, instances);
-    }
-}
-#endif
-
 static void
 on_manager_call_added (DBusGProxy *proxy,
                        char const *path,
@@ -678,11 +639,7 @@ void
 modem_call_service_resume (ModemCallService *self)
 {
   GHashTableIter iter[1];
-  ModemCall *membercall = NULL;
   ModemCall *ci;
-#if nomore
-  ModemCallConference *mcc;
-#endif
 
   DEBUG ("enter");
   RETURN_IF_NOT_VALID (self);
@@ -697,18 +654,14 @@ modem_call_service_resume (ModemCallService *self)
   while (g_hash_table_iter_next (iter, NULL, (gpointer)&ci))
     {
       char *remote;
-      gboolean terminating = FALSE, member = FALSE;
+      gboolean terminating = FALSE;
       ModemCallState state;
 
       g_object_get (ci,
           "state", &state,
-          "member", &member,
           "remote", &remote,
           "terminating", &terminating,
           NULL);
-
-      if (member)
-        membercall = ci;
 
       if (state != MODEM_CALL_STATE_DISCONNECTED &&
           state != MODEM_CALL_STATE_INVALID)
@@ -740,26 +693,6 @@ modem_call_service_resume (ModemCallService *self)
 
       g_free (remote);
     }
-
-#if nomore
-  mcc = self->priv->conference.conference;
-
-  for (i = 0; i < MODEM_MAX_CALLS; i++)
-    {
-      ModemCall *ci = self->priv->instances[i].instance;
-      gboolean member = FALSE;
-
-      g_object_get (ci, "member", &member, NULL);
-
-      if (!member)
-        continue;
-
-      g_signal_emit_by_name (mcc, "joined", ci);
-    }
-
-  g_signal_emit_by_name (mcc, "state",
-      modem_call_get_state (MODEM_CALL (mcc)), 0, 0);
-#endif
 }
 
 /* ---------------------------------------------------------------------- */
@@ -1171,7 +1104,7 @@ modem_call_conference_request_reply (DBusGProxy *proxy,
           ci = g_hash_table_lookup (self->priv->instances, path);
           if (ci != NULL)
             {
-              g_object_set (ci, "member", TRUE, NULL);
+              g_object_set (ci, "multiparty", TRUE, NULL);
             }
         }
 
@@ -1185,6 +1118,43 @@ modem_call_conference_request_reply (DBusGProxy *proxy,
   g_clear_error (&error);
 }
 
+static void
+modem_call_service_noparams_request_reply (DBusGProxy *proxy,
+					   DBusGProxyCall *call,
+					   void *_request)
+{
+  ModemRequest *request = _request;
+  ModemCallService *self = modem_request_object (request);
+  ModemCallServiceReply *callback = modem_request_callback (request);
+  gpointer user_data = modem_request_user_data (request);
+  GError *error = NULL;
+
+  DEBUG ("enter");
+
+  if (dbus_g_proxy_end_call (proxy, call, &error, G_TYPE_INVALID))
+    ;
+  else
+    modem_error_fix (&error);
+
+  if (callback)
+    callback (self, request, error, user_data);
+
+  g_clear_error (&error);
+}
+
+ModemRequest *
+modem_call_request_hangup_conference (ModemCallService *self,
+				      ModemCallServiceReply *callback,
+				      gpointer user_data)
+{
+  RETURN_NULL_IF_NOT_VALID (self);
+
+  return modem_request (MODEM_CALL_SERVICE (self), DBUS_PROXY (self),
+      "HangupMultiparty",
+      modem_call_service_noparams_request_reply,
+      G_CALLBACK (callback), user_data,
+      G_TYPE_INVALID);
+}
 
 ModemCall *
 modem_call_service_get_call (ModemCallService *self, char const *object_path)
@@ -1192,6 +1162,28 @@ modem_call_service_get_call (ModemCallService *self, char const *object_path)
   ModemCallServicePrivate *priv = self->priv;
 
   return g_hash_table_lookup (priv->instances, object_path);
+}
+
+/**
+ * modem_call_service_swap_calls
+ * @self ModemCallService object
+ *
+ * Swaps active and held calls. 0 or more active calls become
+ * held, and 0 or more held calls become active.
+ */
+ModemRequest *
+modem_call_service_swap_calls (ModemCallService *self,
+			       ModemCallServiceReply callback,
+			       gpointer user_data)
+{
+  RETURN_NULL_IF_NOT_VALID (self);
+
+  DEBUG ("%s.%s", MODEM_OFACE_CALL_MANAGER, "SwapCalls");
+
+  return modem_request (MODEM_CALL_SERVICE (self), DBUS_PROXY (self),
+      "SwapCalls", modem_call_service_noparams_request_reply,
+      G_CALLBACK (callback), user_data,
+      G_TYPE_INVALID);
 }
 
 /**
@@ -1223,14 +1215,6 @@ modem_call_service_get_calls (ModemCallService *self)
   g_ptr_array_add (calls, NULL);
 
   return (ModemCall **)g_ptr_array_free (calls, FALSE);
-}
-
-ModemCallConference *
-modem_call_service_get_conference (ModemCallService *self)
-{
-  return MODEM_IS_CALL_SERVICE (self)
-    ? self->priv->conference.conference
-    : NULL;
 }
 
 /* ------------------------------------------------------------------------- */
