@@ -717,10 +717,6 @@ ring_media_requestotron(RingMediaManager *self,
   handle = tp_asv_get_uint32 (properties,
       TP_IFACE_CHANNEL ".TargetHandle", NULL);
 
-  if (handle == priv->connection->parent.self_handle ||
-    handle == priv->connection->anon_handle)
-    return FALSE;
-
   if (kind == METHOD_COMPATIBLE &&
     handle == 0 &&
     ring_properties_satisfy(properties,
@@ -753,7 +749,7 @@ ring_media_requestotron(RingMediaManager *self,
       g_error_free(error);
       return TRUE;
     }
-    /* We do not yes support 'w' */
+    /* We do not yet support 'w' */
     else if (strchr(target_id, 'w')) {
       tp_channel_manager_emit_request_failed(
         self, request,
