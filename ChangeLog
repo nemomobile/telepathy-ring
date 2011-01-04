@@ -1,3 +1,10 @@
+release 2.1.1
+	Initial conferencing support.
+	fd.o #32718: return InvalidHandle if calling to self or anonymous handle
+	fd.o #30954: advertize Message mixin immutable properties
+	fd.o #31726: use TpBaseChannel
+	fd.o #31664: avoid deprecated tp_get_bus
+
 release 2.1.0
 	Initial release for oFono 0.33 and later.
 	Refactored modem interface.
