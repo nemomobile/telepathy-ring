@@ -67,7 +67,7 @@ START_TEST(modem_call_properties)
       "terminating", &terminating,
       "emergency", &emergency,
       "onhold", &onhold,
-      "member", &member,
+      "multiparty", &member,
     NULL);
 
   fail_if(client == (gpointer)-1);
@@ -98,7 +98,7 @@ START_TEST(modem_call_properties)
     "terminating", 0,
     "emergency", "urn:service:sos",
     "onhold", 1,
-    "member", 1,
+    "multiparty", 1,
     NULL);
 
   g_object_get(ci,
@@ -108,7 +108,7 @@ START_TEST(modem_call_properties)
     "terminating", &terminating,
     "emergency", &emergency,
     "onhold", &onhold,
-    "member", &member,
+    "multiparty", &member,
     NULL);
 
   fail_unless(remote && strcmp(remote, "99001") == 0);
