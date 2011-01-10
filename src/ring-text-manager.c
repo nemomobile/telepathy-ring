@@ -121,6 +121,8 @@ static RingTextChannel *ring_text_manager_request(RingTextManager *self,
   gboolean require_mine,
   gboolean class0);
 
+static gboolean tp_asv_get_sms_channel (GHashTable *properties);
+
 static void on_text_channel_closed(RingTextChannel *, RingTextManager *);
 static void text_channel_removed (gpointer _channel);
 
@@ -418,6 +420,9 @@ static char const * const ring_text_channel_fixed_properties_list[] =
 static char const * const ring_text_channel_allowed_properties[] =
 {
   TP_IFACE_CHANNEL ".TargetHandle",
+#if HAVE_TP_SMS_CHANNEL
+  TP_IFACE_CHANNEL_INTERFACE_SMS ".SMSChannel",
+#endif
   NULL
 };
 
@@ -541,9 +546,26 @@ ring_text_requestotron(RingTextManager *self,
       ring_text_channel_allowed_properties))
     return FALSE;
 
+  if (!tp_asv_get_sms_channel (properties))
+    return FALSE;
+
   ring_text_manager_request(self, request, initiator, target, require_mine, 0);
   return TRUE;
 }
+
+static gboolean tp_asv_get_sms_channel (GHashTable *properties)
+{
+  GValue *value = g_hash_table_lookup (properties,
+      TP_IFACE_CHANNEL_INTERFACE_SMS ".SMSChannel");
+
+  if (value == NULL)
+    return TRUE;
+  else if (!G_VALUE_HOLDS_BOOLEAN (value))
+    return FALSE;
+  else
+    return g_value_get_boolean (value);
+}
+
 
 /* ---------------------------------------------------------------------- */
 /* RingTextManager interface */
