@@ -61,19 +61,14 @@ G_DEFINE_TYPE_WITH_CODE (RingTextChannel, ring_text_channel,
         tp_message_mixin_text_iface_init);
     G_IMPLEMENT_INTERFACE (TP_TYPE_SVC_CHANNEL_INTERFACE_DESTROYABLE,
         ring_text_channel_destroyable_iface_init);
+    G_IMPLEMENT_INTERFACE (TP_TYPE_SVC_CHANNEL_INTERFACE_SMS, NULL);
     G_IMPLEMENT_INTERFACE (TP_TYPE_SVC_CHANNEL_INTERFACE_MESSAGES,
         tp_message_mixin_messages_iface_init));
-
-#if nomore
-  G_IMPLEMENT_INTERFACE(RTCOM_TYPE_TP_SVC_CHANNEL_INTERFACE_SMS, NULL);
-#endif
 
 static const char * const ring_text_channel_interfaces[] = {
   TP_IFACE_CHANNEL_INTERFACE_DESTROYABLE,
   TP_IFACE_CHANNEL_INTERFACE_MESSAGES,
-#if nomore
-  RTCOM_TP_IFACE_CHANNEL_INTERFACE_SMS,
-#endif
+  TP_IFACE_CHANNEL_INTERFACE_SMS,
   NULL
 };
 
@@ -84,7 +79,7 @@ enum
   PROP_NONE,
 
   PROP_SMS_FLASH,
-  PROP_TARGET_MATCH,
+  PROP_SMS_CHANNEL,
 
   N_PROPS
 };
@@ -104,8 +99,6 @@ struct _RingTextChannelPrivate
 
 static void ring_text_base_channel_class_init (RingTextChannelClass *klass);
 static void ring_text_channel_close (TpBaseChannel *base);
-
-static void ring_text_channel_set_target_match(GValue *, char const *, int);
 
 static void ring_text_channel_set_receive_timestamps(RingTextChannel *self,
   TpMessage *msg,
@@ -229,9 +222,8 @@ ring_text_channel_get_property(GObject *object,
     case PROP_SMS_FLASH:
       g_value_set_boolean(value, priv->sms_flash);
       break;
-    case PROP_TARGET_MATCH:
-      ring_text_channel_set_target_match (value,
-          priv->destination, priv->sms_flash);
+    case PROP_SMS_CHANNEL:
+      g_value_set_boolean (value, TRUE);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
@@ -288,11 +280,31 @@ ring_text_channel_finalize(GObject *object)
   ((GObjectClass *)ring_text_channel_parent_class)->finalize (object);
 }
 
+/* Properties for o.f.T.Channel.Interface.SMS */
+static TpDBusPropertiesMixinPropImpl sms_properties[] = {
+  { "Flash", "sms-flash" },
+#if HAVE_TP_SMS_CHANNEL
+  { "SMSChannel", "sms-channel" },
+#endif
+  { NULL }
+};
+
+static TpDBusPropertiesMixinIfaceImpl
+ring_text_channel_dbus_property_interfaces[] = {
+  {
+    TP_IFACE_CHANNEL_INTERFACE_SMS,
+    tp_dbus_properties_mixin_getter_gobject_properties,
+    NULL,
+    sms_properties,
+  },
+  { NULL }
+};
+
 static void
 ring_text_channel_class_init(RingTextChannelClass *klass)
 {
   GObjectClass *object_class = (GObjectClass *) klass;
-
+  static gboolean properties_initialized = FALSE;
   g_type_class_add_private(klass, sizeof (RingTextChannelPrivate));
 
   object_class->constructed = ring_text_channel_constructed;
@@ -301,8 +313,7 @@ ring_text_channel_class_init(RingTextChannelClass *klass)
   object_class->dispose = ring_text_channel_dispose;
   object_class->finalize = ring_text_channel_finalize;
 
-  g_object_class_install_property(
-    object_class, PROP_SMS_FLASH,
+  g_object_class_install_property(object_class, PROP_SMS_FLASH,
     g_param_spec_boolean("sms-flash",
       "Channel for Flash SMS Messages",
       "This channel is only used to receive "
@@ -311,19 +322,28 @@ ring_text_channel_class_init(RingTextChannelClass *klass)
       G_PARAM_READWRITE | G_PARAM_CONSTRUCT_ONLY |
       G_PARAM_STATIC_STRINGS));
 
-  g_object_class_install_property(object_class,
-    PROP_TARGET_MATCH,
-    g_param_spec_string("target-match",
-      "Fuzzy target match",
-      "Value used to fuzzily match channels from same person but different "
-      "contact handle",
-      "",
-      G_PARAM_READABLE |
-      G_PARAM_STATIC_STRINGS));
+  g_object_class_install_property (object_class,
+      PROP_SMS_CHANNEL,
+      g_param_spec_boolean ("sms-channel",
+          "This channel is used with SMS",
+          "Messages sent and received on this channel are transmitted via SMS",
+          TRUE,
+          G_PARAM_READABLE |
+          G_PARAM_STATIC_STRINGS));
 
   ring_text_base_channel_class_init (klass);
 
-  tp_message_mixin_init_dbus_properties(object_class);
+  if (properties_initialized)
+    return;
+  properties_initialized = TRUE;
+
+  klass->dbus_properties_class.interfaces =
+    ring_text_channel_dbus_property_interfaces;
+
+  tp_dbus_properties_mixin_class_init (object_class,
+      G_STRUCT_OFFSET (RingTextChannelClass, dbus_properties_class));
+
+  tp_message_mixin_init_dbus_properties (object_class);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -359,9 +379,9 @@ ring_text_channel_fill_immutable_properties (TpBaseChannel *base,
       TP_IFACE_CHANNEL_INTERFACE_MESSAGES, "DeliveryReportingSupport",
 #endif
       TP_IFACE_CHANNEL_INTERFACE_MESSAGES, "SupportedContentTypes",
-#if notyet
-      RTCOM_TP_IFACE_CHANNEL_INTERFACE_SMS, "TargetMatch",
-      RTCOM_TP_IFACE_CHANNEL_INTERFACE_SMS, "Flash",
+      TP_IFACE_CHANNEL_INTERFACE_SMS, "Flash",
+#if HAVE_TP_SMS_CHANNEL
+      TP_IFACE_CHANNEL_INTERFACE_SMS, "SMSChannel",
 #endif
       NULL);
 }
@@ -490,23 +510,6 @@ ring_text_channel_destination(char const *inspection)
   else {
     return g_strdup("");
   }
-}
-
-static void
-ring_text_channel_set_target_match(GValue *value, char const *id, int flash)
-{
-  size_t idlen = strlen(id);
-
-  /* sms_g_is_valid_sms_address() fails for IA5 names */
-  if (idlen <= 6 || !sms_g_is_valid_sms_address(id))
-    ;
-  else
-    id = id + idlen - 6;
-
-  if (flash)
-    g_value_take_string(value, g_strdup_printf("sms-class-0-%s", id));
-  else
-    g_value_set_string(value, id);
 }
 
 static ModemSMSService *
