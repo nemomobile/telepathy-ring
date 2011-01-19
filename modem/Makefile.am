@@ -52,6 +52,10 @@ modem_HEADERS += sim.h
 
 libmodem_glib_la_SOURCES += sim-service.c
 
+modem_HEADERS += radio-settings.h
+
+libmodem_glib_la_SOURCES += radio-settings.c
+
 # ----------------------------------------------------------------------
 
 EXTRA_DIST = signals-marshal.list
