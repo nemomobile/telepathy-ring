@@ -43,6 +43,9 @@
 #include "ring-protocol.h"
 
 #include "modem/service.h"
+#include "modem/sim.h"
+#include "modem/call.h"
+#include "modem/sms.h"
 
 #include <telepathy-glib/errors.h>
 
@@ -99,4 +102,8 @@ ring_connection_manager_class_init(RingConnectionManagerClass *klass)
   parent_class->new_connection = NULL;
   parent_class->cm_dbus_name = "ring";
   parent_class->protocol_params = NULL;
+
+  modem_oface_register_type (MODEM_TYPE_SIM_SERVICE);
+  modem_oface_register_type (MODEM_TYPE_SMS_SERVICE);
+  modem_oface_register_type (MODEM_TYPE_CALL_SERVICE);
 }
