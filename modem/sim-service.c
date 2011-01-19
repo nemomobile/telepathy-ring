@@ -22,7 +22,7 @@
 
 #include "config.h"
 
-#define MODEM_DEBUG_FLAG MODEM_SERVICE_SIM
+#define MODEM_DEBUG_FLAG MODEM_LOG_SIM
 
 #include "debug.h"
 

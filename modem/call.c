@@ -20,7 +20,9 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#define MODEM_DEBUG_FLAG MODEM_SERVICE_CALL
+#include "config.h"
+
+#define MODEM_DEBUG_FLAG MODEM_LOG_CALL
 
 #include "modem/debug.h"
 #include "modem/errors.h"

@@ -20,7 +20,7 @@
 
 #include "config.h"
 
-#define MODEM_DEBUG_FLAG MODEM_SERVICE_TONES
+#define MODEM_DEBUG_FLAG MODEM_LOG_AUDIO
 
 #include "modem/debug.h"
 #include "modem/tones.h"

@@ -21,7 +21,7 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#define MODEM_DEBUG_FLAG MODEM_SERVICE_CALL
+#define MODEM_DEBUG_FLAG MODEM_LOG_CALL
 
 #include "modem/debug.h"
 
@@ -672,7 +672,7 @@ modem_call_service_resume (ModemCallService *self)
            * since we cannot rely on the call state here. */
           if (terminating)
             {
-              modem_message (MODEM_SERVICE_CALL,
+              modem_message (MODEM_LOG_CALL,
                   "incoming [with state %s] call from \"%s\"",
                   modem_call_get_state_name (state), remote);
               DEBUG ("emit \"incoming\"(%s (%p), %s)",
@@ -680,7 +680,7 @@ modem_call_service_resume (ModemCallService *self)
               g_signal_emit (self, signals[SIGNAL_INCOMING], 0, ci, remote);
             }
           else {
-            modem_message (MODEM_SERVICE_CALL,
+            modem_message (MODEM_LOG_CALL,
                 "created [with state %s] call to \"%s\"",
                 modem_call_get_state_name (state), remote);
             DEBUG ("emit \"created\"(%s (%p), %s)",
@@ -849,7 +849,7 @@ modem_call_request_dial (ModemCallService *self,
   g_return_val_if_fail (destination != NULL, NULL);
   g_return_val_if_fail (callback != NULL, NULL);
 
-  modem_message (MODEM_SERVICE_CALL,
+  modem_message (MODEM_LOG_CALL,
       "trying to create call to \"%s\"",
       destination);
 
@@ -922,7 +922,7 @@ modem_call_request_dial_reply (DBusGProxy *proxy,
       DEBUG ("%s: instance %s (%p)", MODEM_OFACE_CALL_MANAGER ".Dial",
           object_path, (void *)ci);
 
-      modem_message (MODEM_SERVICE_CALL,
+      modem_message (MODEM_LOG_CALL,
           "call create request to \"%s\" successful",
           destination);
     }
@@ -930,7 +930,7 @@ modem_call_request_dial_reply (DBusGProxy *proxy,
     {
       char ebuffer[32];
 
-      modem_message (MODEM_SERVICE_CALL,
+      modem_message (MODEM_LOG_CALL,
           "call create request to \"%s\" failed: %s.%s: %s",
           destination,
           modem_error_domain_prefix (error->domain),
@@ -1042,7 +1042,7 @@ on_modem_call_state (ModemCall *ci,
 
       gboolean mpty = MODEM_IS_CALL_CONFERENCE (ci);
 
-      modem_message (MODEM_SERVICE_CALL,
+      modem_message (MODEM_LOG_CALL,
           "%s %s %s%s%s %s.%s: %s",
           what,
           mpty ? "conference"

@@ -22,7 +22,7 @@
 
 #include "config.h"
 
-#define MODEM_DEBUG_FLAG MODEM_SERVICE_DBUS
+#define MODEM_DEBUG_FLAG MODEM_LOG_DBUS
 #include <modem/debug.h>
 
 #include <modem/errors.h>

@@ -30,13 +30,17 @@ G_BEGIN_DECLS
 
 typedef enum
 {
-  MODEM_SERVICE_DBUS          = 1 << 0,
-  MODEM_SERVICE_CALL          = 1 << 1,
-  MODEM_SERVICE_TONES         = 1 << 2,
-  MODEM_SERVICE_SMS           = 1 << 3,
-  MODEM_SERVICE_SIM           = 1 << 4,
-  MODEM_SERVICE_MODEM         = 1 << 5,
-} ModemDebugFlags;
+  MODEM_LOG_DBUS			= 1 << 0,
+  MODEM_LOG_MODEM			= 1 << 1,
+  MODEM_LOG_CALL			= 1 << 2,
+  MODEM_LOG_AUDIO			= 1 << 3,
+  MODEM_LOG_SMS				= 1 << 4,
+  MODEM_LOG_SIM				= 1 << 5,
+  MODEM_LOG_RADIO			= 1 << 6,
+  MODEM_LOG_SETTINGS			= 1 << 7,
+  MODEM_LOG_GPRS			= 1 << 8,
+  MODEM_LOG_CDMA			= 1 << 9,
+} ModemLogFlags;
 
 gboolean modem_debug_flag_is_set(int flag);
 void modem_debug_set_flags(int flag);
@@ -61,7 +65,7 @@ G_END_DECLS
   modem_debug(MODEM_DEBUG_FLAG, "%s: " format, G_STRFUNC, ##__VA_ARGS__)
 
 #define DEBUG_DBUS(format, ...) \
-  modem_debug(MODEM_SERVICE_DBUS, "%s: " format, G_STRFUNC, ##__VA_ARGS__)
+  modem_debug(MODEM_LOG_DBUS, "%s: " format, G_STRFUNC, ##__VA_ARGS__)
 
 #define DEBUGGING modem_debug_flag_is_set(MODEM_DEBUG_FLAG)
 

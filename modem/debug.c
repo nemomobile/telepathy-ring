@@ -26,15 +26,19 @@
 
 #include "modem/debug.h"
 
-static ModemDebugFlags modem_debug_flags = 0;
+static ModemLogFlags modem_debug_flags = 0;
 
 static const GDebugKey modem_debug_keys[] = {
-  { "dbus", MODEM_SERVICE_DBUS },
-  { "call",  MODEM_SERVICE_CALL },
-  { "tones", MODEM_SERVICE_TONES },
-  { "sms", MODEM_SERVICE_SMS },
-  { "sim", MODEM_SERVICE_SIM },
-  { "modem", MODEM_SERVICE_MODEM }
+  { "dbus", MODEM_LOG_DBUS },
+  { "modem", MODEM_LOG_MODEM },
+  { "call",  MODEM_LOG_CALL },
+  { "sms", MODEM_LOG_SMS },
+  { "sim", MODEM_LOG_SIM },
+  { "audio", MODEM_LOG_AUDIO },
+  { "radio", MODEM_LOG_RADIO },
+  { "settings", MODEM_LOG_SETTINGS },
+  { "gprs", MODEM_LOG_GPRS },
+  { "cdma", MODEM_LOG_CDMA },
 };
 
 void
@@ -78,16 +82,24 @@ modem_debug_flag_is_set(int flag)
 char const *
 modem_debug_domain(int flag)
 {
-  if (flag == MODEM_SERVICE_CALL)
-    return "Modem-Call";
-  else if (flag == MODEM_SERVICE_TONES)
-    return "Modem-Tones";
-  else if (flag == MODEM_SERVICE_SMS)
-    return "Modem-SMS";
-  else if (flag == MODEM_SERVICE_SIM)
-    return "Modem-SIM";
-  else
-    return "Modem";
+  if (flag & MODEM_LOG_CDMA)
+    return "modem-cdma";
+  if (flag & MODEM_LOG_CALL)
+    return "modem-call";
+  if (flag & MODEM_LOG_SMS)
+    return "modem-sms";
+  if (flag & MODEM_LOG_SIM)
+    return "modem-sim";
+  if (flag & MODEM_LOG_AUDIO)
+    return "modem-audio";
+  if (flag & MODEM_LOG_RADIO)
+    return "modem-radio";
+  if (flag & MODEM_LOG_SETTINGS)
+    return "modem-settings";
+  if (flag & MODEM_LOG_GPRS)
+    return "modem-gprs";
+
+  return "modem";
 }
 
 

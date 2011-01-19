@@ -21,7 +21,7 @@
 
 #include "config.h"
 
-#define MODEM_DEBUG_FLAG MODEM_SERVICE_MODEM
+#define MODEM_DEBUG_FLAG MODEM_LOG_MODEM
 
 #include "debug.h"
 

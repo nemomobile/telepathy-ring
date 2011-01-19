@@ -22,7 +22,7 @@
 
 #include "config.h"
 
-#define MODEM_DEBUG_FLAG MODEM_SERVICE_SMS
+#define MODEM_DEBUG_FLAG MODEM_LOG_SMS
 
 #include "debug.h"
 
@@ -597,7 +597,7 @@ on_incoming_message (DBusGProxy *proxy,
 
   if (!d)
     {
-      modem_message (MODEM_SERVICE_SMS,
+      modem_message (MODEM_LOG_SMS,
           "deserializing SMS-DELIVER \"%s\" failed: "
           GERROR_MSG_FMT, token, GERROR_MSG_CODE (error));
       g_clear_error (&error);
