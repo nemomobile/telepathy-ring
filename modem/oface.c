@@ -316,8 +316,9 @@ modem_oface_register_type (GType type)
 
   interface = (gpointer) modem_oface_get_interface_name_by_type (type);
 
-  if (interface)
-    g_hash_table_insert (modem_oface_types, interface, (gpointer)type);
+  g_return_if_fail (interface);
+
+  g_hash_table_insert (modem_oface_types, interface, (gpointer)type);
 }
 
 

@@ -364,9 +364,6 @@ ModemService *modem_service (void)
   if (!service) {
     modem_oface_register_type (MODEM_TYPE_SERVICE);
     modem_oface_register_type (MODEM_TYPE_MODEM);
-    modem_oface_register_type (MODEM_TYPE_SIM_SERVICE);
-    modem_oface_register_type (MODEM_TYPE_SMS_SERVICE);
-    modem_oface_register_type (MODEM_TYPE_CALL_SERVICE);
 
     service = MODEM_SERVICE (modem_oface_new (MODEM_OFACE_MANAGER, "/"));
   }
