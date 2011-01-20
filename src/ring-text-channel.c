@@ -96,7 +96,6 @@ struct _RingTextChannelPrivate
   GQueue sending[1];
 
   unsigned sms_flash:1;         /* c.n.T.Channel.Interface.SMS.Flash */
-  unsigned disposed:1;
   unsigned :0;
 
 };
@@ -105,7 +104,6 @@ struct _RingTextChannelPrivate
 
 static void ring_text_base_channel_class_init (RingTextChannelClass *klass);
 static void ring_text_channel_close (TpBaseChannel *base);
-static void ring_text_channel_destroy (RingTextChannel *self);
 
 static void ring_text_channel_set_target_match(GValue *, char const *, int);
 
@@ -266,15 +264,12 @@ static void
 ring_text_channel_dispose(GObject *object)
 {
   RingTextChannel *self = RING_TEXT_CHANNEL (object);
+  RingTextChannelPrivate *priv = self->priv;
 
-  if (self->priv->disposed)
-    return;
+  while (!g_queue_is_empty (priv->sending))
+    modem_request_cancel (g_queue_pop_head (priv->sending));
 
-  self->priv->disposed = TRUE;
-
-  ring_text_channel_destroy(self);
-
-  ((GObjectClass *) ring_text_channel_parent_class)->dispose(object);
+  ((GObjectClass *)ring_text_channel_parent_class)->dispose (object);
 }
 
 static void
@@ -390,12 +385,7 @@ ring_text_base_channel_class_init (RingTextChannelClass *klass)
 static void
 ring_text_channel_destroy (RingTextChannel *self)
 {
-  RingTextChannelPrivate *priv = self->priv;
-
   tp_message_mixin_clear ((gpointer)self);
-
-  while (!g_queue_is_empty (priv->sending))
-    modem_request_cancel (g_queue_pop_head (priv->sending));
 
   ring_text_channel_close (TP_BASE_CHANNEL (self));
 }
