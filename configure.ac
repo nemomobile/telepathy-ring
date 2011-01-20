@@ -67,6 +67,12 @@ AC_DEFINE([HAVE_TP_MESSAGE_MIXIN_WITH_DELI], 1,
   [Do you have working DeliveryReportingSupport])
 fi
 
+if pkg-config 'telepathy-glib >= 0.13.10'
+then
+AC_DEFINE([HAVE_TP_SMS_CHANNEL], 1,
+  [Do you have SMSChannel on Channel.Interface.SMS])
+fi
+
 AC_CHECK_PROGS([XSLTPROC], [$XSLTPROC xsltproc])
 AC_CHECK_PROGS([DBUS_BINDING_TOOL], [$DBUS_BINDING_TOOL dbus-binding-tool])
 AC_CHECK_PROGS([PYTHON], [$PYTHON python2.5 python2.4 python2.3 python])
