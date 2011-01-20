@@ -106,7 +106,7 @@ struct _RingCallChannelPrivate
 
   uint8_t state;
 
-  unsigned constructed:1, released:1, closing:1;
+  unsigned constructed:1, released:1, closing:1, disposed:1;
 
   unsigned call_instance_seen:1;
 
@@ -441,6 +441,10 @@ ring_call_channel_dispose(GObject *object)
   RingCallChannel *self = RING_CALL_CHANNEL(object);
   RingCallChannelPrivate *priv = self->priv;
   TpBaseChannel *base = TP_BASE_CHANNEL (object);
+
+  if (self->priv->disposed)
+    return;
+  self->priv->disposed = TRUE;
 
   if (priv->member.handle) {
     TpHandleRepoIface *repo = tp_base_connection_get_handles(
