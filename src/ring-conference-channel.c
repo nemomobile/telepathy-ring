@@ -1438,6 +1438,10 @@ ring_conference_channel_emit_channel_removed(
   if (i >= MODEM_MAX_CALLS)
     return;
 
+  /* note: as this function may lead to tearing down the whole
+   *       conference, keep a local self-reference */
+  g_object_ref (self);
+
   while (member) {
     TpIntSet *remove = tp_intset_new();
 
@@ -1495,7 +1499,7 @@ ring_conference_channel_emit_channel_removed(
   }
 
   if (n > 2)
-    return;
+    goto out;
 
   DEBUG("Too few members, close channel %p", self);
 
@@ -1504,6 +1508,9 @@ ring_conference_channel_emit_channel_removed(
    * not hangup.
    */
   ring_conference_channel_close_impl (self, FALSE, FALSE);
+
+out:
+  g_object_unref (self);
 }
 
 
