@@ -648,8 +648,8 @@ ring_call_channel_close(RingMediaChannel *_self, gboolean immediately)
       "Member channel closed",
       actor, reason);
 
+    /* above emit calls ring_member_channel_left() */
     g_assert(priv->member.conference == NULL);
-    priv->member.conference = NULL;
   }
 
   if (self->base.call_instance) {
@@ -1156,8 +1156,8 @@ on_modem_call_notify_multiparty(ModemCall *ci, GParamSpec *pspec, gpointer user_
       priv->member.conference, RING_MEMBER_CHANNEL(self),
       "Conference call split", actor, reason);
 
+    /* above emit calls ring_member_channel_left() */
     g_assert(priv->member.conference == NULL);
-    priv->member.conference = NULL;
   }
 }
 
@@ -1684,6 +1684,8 @@ ring_call_channel_released(RingCallChannel *self,
     ring_conference_channel_emit_channel_removed(
       self->priv->member.conference, RING_MEMBER_CHANNEL(self),
       message, actor, reason);
+    /* above emit calls ring_member_channel_left() */
+    g_assert(self->priv->member.conference == NULL);
   }
 
   g_free(dbus_error);
@@ -1841,6 +1843,7 @@ ring_member_channel_joined(RingMemberChannel *iface,
   RingCallChannelPrivate *priv = self->priv;
 
   if (priv->member.conference) {
+    DEBUG("switching to a new conference");
     if (priv->member.conference == conference)
       return;
     ring_conference_channel_emit_channel_removed(
@@ -1848,6 +1851,8 @@ ring_member_channel_joined(RingMemberChannel *iface,
       "Joined new conference",
       self->group.self_handle,
       TP_CHANNEL_GROUP_CHANGE_REASON_INVITED);
+    /* above emit calls ring_member_channel_left() */
+    g_assert(priv->member.conference == NULL);
   }
 
   g_assert(priv->member.conference == NULL);
