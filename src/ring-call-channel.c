@@ -413,9 +413,6 @@ ring_call_channel_set_property(GObject *obj,
     case PROP_TERMINATING:
       priv->terminating = g_value_get_boolean(value);
       break;
-    case PROP_MEMBER:
-      priv->member.handle = g_value_get_uint(value);
-      break;
     case PROP_INITIAL_EMERGENCY_SERVICE:
       priv->initial_emergency_service = g_value_dup_string(value);
       break;

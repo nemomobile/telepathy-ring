@@ -43,7 +43,7 @@ ring_member_channel_base_init(gpointer klass)
       "Member Handle",
       "Handle representing the channel target in conference",
       0, G_MAXUINT, 0,
-      G_PARAM_READWRITE |
+      G_PARAM_READABLE |
       G_PARAM_STATIC_STRINGS));
 
   g_object_interface_install_property(
