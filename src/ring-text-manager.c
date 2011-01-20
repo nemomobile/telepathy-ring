@@ -122,6 +122,7 @@ static RingTextChannel *ring_text_manager_request(RingTextManager *self,
   gboolean class0);
 
 static void on_text_channel_closed(RingTextChannel *, RingTextManager *);
+static void text_channel_removed (gpointer _channel);
 
 static void on_sms_service_deliver(ModemSMSService *,
   SMSGDeliver *, gpointer _self);
@@ -163,8 +164,8 @@ ring_text_manager_init (RingTextManager *self)
   self->priv = G_TYPE_INSTANCE_GET_PRIVATE(self, RING_TYPE_TEXT_MANAGER,
                RingTextManagerPrivate);
 
-  self->priv->channels = g_hash_table_new_full(g_str_hash, g_str_equal,
-                         NULL, g_object_unref);
+  self->priv->channels = g_hash_table_new_full (g_str_hash, g_str_equal,
+      NULL, text_channel_removed);
 }
 
 static void
@@ -626,6 +627,14 @@ ring_text_manager_request(RingTextManager *self,
   g_slist_free(requests);
 
   return channel;
+}
+
+static void
+text_channel_removed (gpointer _channel)
+{
+  /* Ensure "closed" has been emitted */
+  g_object_run_dispose (_channel);
+  g_object_unref (_channel);
 }
 
 static void
