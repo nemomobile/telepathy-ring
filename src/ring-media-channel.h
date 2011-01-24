@@ -26,6 +26,7 @@
 
 #include <telepathy-glib/base-channel.h>
 #include <telepathy-glib/dbus-properties-mixin.h>
+#include <telepathy-glib/svc-channel.h>
 
 G_BEGIN_DECLS
 
@@ -127,6 +128,14 @@ void ring_media_channel_set_state(RingMediaChannel *self,
   guint state,
   guint causetype,
   guint cause);
+
+void ring_media_channel_dtmf_start_tone(TpSvcChannelInterfaceDTMF *iface,
+  guint stream_id,
+  guchar event,
+    DBusGMethodInvocation *context);
+void ring_media_channel_dtmf_stop_tone(TpSvcChannelInterfaceDTMF *iface,
+  guint stream_id,
+    DBusGMethodInvocation *context);
 
 G_END_DECLS
 

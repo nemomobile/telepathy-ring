@@ -314,6 +314,21 @@ ring_mergeable_conference_merge(RingSvcChannelInterfaceMergeableConference *ifac
  * Telepathy.Channel.Interface.DTMF DBus interface - version 0.19.6
  */
 
+static RingMemberChannel *
+ring_conference_get_first_active_member (RingConferenceChannel *self)
+{
+  RingConferenceChannelPrivate *priv = self->priv;
+  int i;
+
+  for (i = 0; i < MODEM_MAX_CALLS; i++) {
+    RingMemberChannel *member = priv->members[i];
+    if (member && priv->is_current[i])
+      return member;
+  }
+
+  return 0;
+}
+
 /** DBus method StartTone ( u: stream_id, y: event ) -> nothing
  *
  * Start sending a DTMF tone on this stream. Where possible, the tone will
@@ -328,11 +343,23 @@ ring_conference_channel_dtmf_start_tone(TpSvcChannelInterfaceDTMF *iface,
   guchar event,
   DBusGMethodInvocation *context)
 {
-  GError error[] = {{
-      TP_ERRORS, TP_ERROR_NOT_IMPLEMENTED,
-      "Not implemented"
-    }};
-  dbus_g_method_return_error(context, error);
+  RingConferenceChannel *self = RING_CONFERENCE_CHANNEL (iface);
+  RingMemberChannel *member = ring_conference_get_first_active_member (self);
+
+  if (member)
+    {
+      TpSvcChannelInterfaceDTMF *dtmf_if = TP_SVC_CHANNEL_INTERFACE_DTMF (member);
+      g_assert (dtmf_if != NULL);
+      return ring_media_channel_dtmf_start_tone (dtmf_if, stream_id, event, context);
+    }
+  else
+    {
+      GError error[] = {{
+          TP_ERRORS, TP_ERROR_NOT_AVAILABLE,
+          "No member channels to send DTMFs through"
+        }};
+      dbus_g_method_return_error(context, error);
+    }
 }
 
 /** DBus method StopTone ( u: stream_id ) -> nothing
@@ -345,11 +372,23 @@ ring_conference_channel_dtmf_stop_tone(TpSvcChannelInterfaceDTMF *iface,
   guint stream_id,
   DBusGMethodInvocation *context)
 {
-  GError error[] = {{
-      TP_ERRORS, TP_ERROR_NOT_IMPLEMENTED,
-      "Not implemented"
-    }};
-  dbus_g_method_return_error(context, error);
+  RingConferenceChannel *self = RING_CONFERENCE_CHANNEL (iface);
+  RingMemberChannel *member = ring_conference_get_first_active_member (self);
+
+  if (member)
+    {
+      TpSvcChannelInterfaceDTMF *dtmf_if = TP_SVC_CHANNEL_INTERFACE_DTMF (member);
+      g_assert (dtmf_if != NULL);
+      return ring_media_channel_dtmf_stop_tone (dtmf_if, stream_id, context);
+    }
+  else
+    {
+      GError error[] = {{
+          TP_ERRORS, TP_ERROR_NOT_AVAILABLE,
+          "No member channels to send DTMFs through"
+        }};
+      dbus_g_method_return_error(context, error);
+    }
 }
 
 static void

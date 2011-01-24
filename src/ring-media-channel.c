@@ -1217,7 +1217,7 @@ static char const ring_media_channel_dtmf_events[16] = "0123456789*#ABCD";
  * implementation may emit a fixed-length tone, and the StopTone method call
  * should return NotAvailable.
  */
-static void
+void
 ring_media_channel_dtmf_start_tone(TpSvcChannelInterfaceDTMF *iface,
   guint stream_id,
   guchar event,
@@ -1316,7 +1316,7 @@ ring_media_channel_dtmf_start_tone_replied(ModemCall *call_instance,
  * Stop sending any DTMF tone which has been started using the StartTone
  * method. If there is no current tone, this method will do nothing.
  */
-static void
+void
 ring_media_channel_dtmf_stop_tone(TpSvcChannelInterfaceDTMF *iface,
   guint stream_id,
   DBusGMethodInvocation *context)
