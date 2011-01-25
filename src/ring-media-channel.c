@@ -1399,6 +1399,8 @@ ring_media_channel_dtmf_iface_init(gpointer g_iface, gpointer iface_data)
 /* ---------------------------------------------------------------------- */
 /* Implement org.freedesktop.Telepathy.Channel.Interface.Hold */
 
+static int ring_update_hold (RingMediaChannel *self, int hold, int reason);
+
 static
 void get_hold_state(TpSvcChannelInterfaceHold *iface,
   DBusGMethodInvocation *context)
@@ -1406,105 +1408,111 @@ void get_hold_state(TpSvcChannelInterfaceHold *iface,
   RingMediaChannel *self = RING_MEDIA_CHANNEL(iface);
   RingMediaChannelPrivate *priv = self->priv;
 
-  GError *error = NULL;
-
-  if (self->call_instance == NULL) {
-    g_set_error(&error, TP_ERRORS, TP_ERROR_DISCONNECTED,
-      "Channel is not connected");
-  }
-  else {
-    tp_svc_channel_interface_hold_return_from_get_hold_state
-      (context, priv->hold.state, priv->hold.reason);
-    return;
-  }
-
-  dbus_g_method_return_error(context, error);
-  g_error_free(error);
+  if (self->call_instance == NULL)
+    {
+      GError *error = NULL;
+      g_set_error(&error, TP_ERRORS, TP_ERROR_DISCONNECTED,
+          "Channel is not connected");
+      dbus_g_method_return_error(context, error);
+      g_error_free(error);
+    }
+  else
+    {
+      tp_svc_channel_interface_hold_return_from_get_hold_state (context,
+          priv->hold.state, priv->hold.reason);
+    }
 }
 
 static ModemCallReply response_to_hold;
 
 static
-void request_hold(TpSvcChannelInterfaceHold *iface,
-  gboolean hold,
-  DBusGMethodInvocation *context)
+void request_hold (TpSvcChannelInterfaceHold *iface,
+                   gboolean hold,
+                   DBusGMethodInvocation *context)
 {
-  RingMediaChannel *self = RING_MEDIA_CHANNEL(iface);
+  RingMediaChannel *self = RING_MEDIA_CHANNEL (iface);
   RingMediaChannelPrivate *priv = self->priv;
   ModemCall *instance = self->call_instance;
 
   GError *error = NULL;
+  ModemCallState expect;
 
-  DEBUG("(%u) on %s", hold, self->nick);
+  DEBUG ("(%u) on %s", hold, self->nick);
 
   hold = hold != 0;
+  if (hold)
+    expect = MODEM_CALL_STATE_ACTIVE;
+  else
+    expect = MODEM_CALL_STATE_HELD;
 
-  if (instance == NULL) {
-    g_set_error(&error, TP_ERRORS, TP_ERROR_DISCONNECTED,
-      "Channel is not connected");
-  }
-  else if (hold == priv->hold.state) {
-    priv->hold.reason = TP_LOCAL_HOLD_STATE_REASON_REQUESTED;
-    tp_svc_channel_interface_hold_return_from_request_hold(context);
-    return;
-  }
-  else if (hold ? priv->state != MODEM_CALL_STATE_ACTIVE :
-    priv->state != MODEM_CALL_STATE_HELD) {
-    priv->hold.reason =
-      TP_LOCAL_HOLD_STATE_REASON_RESOURCE_NOT_AVAILABLE;
-    g_set_error(&error, TP_ERRORS, TP_ERROR_NOT_AVAILABLE,
-      "Invalid call state %s",
-      modem_call_get_state_name(priv->state));
-  }
-  else if (priv->control) {
-    g_set_error(&error, TP_ERRORS, TP_ERROR_NOT_AVAILABLE,
-      "Invalid call state %s",
-      modem_call_get_state_name(priv->state));
-  }
-  else {
-    g_object_ref (self);
-    priv->hold.requested = hold;
-    priv->control = modem_call_request_hold(instance, hold, response_to_hold, self);
-    ring_media_channel_queue_request(self, priv->control);
-    modem_request_add_data_full(priv->control, "tp-request", context,
-      ring_method_return_internal_error);
-    return;
-  }
+  if (instance == NULL)
+    {
+      g_set_error(&error, TP_ERRORS, TP_ERROR_DISCONNECTED,
+          "Channel is not connected");
+    }
+  else if (hold == priv->hold.state)
+    {
+      priv->hold.reason = TP_LOCAL_HOLD_STATE_REASON_REQUESTED;
+      tp_svc_channel_interface_hold_return_from_request_hold(context);
+      return;
+    }
+  else if (priv->state != expect)
+    {
+      g_set_error (&error, TP_ERRORS, TP_ERROR_NOT_AVAILABLE,
+          "Invalid call state %s",
+          modem_call_get_state_name(priv->state));
+    }
+  else if (priv->control)
+    {
+      g_set_error (&error, TP_ERRORS, TP_ERROR_NOT_AVAILABLE,
+          "Call control operation pending");
+    }
+  else
+    {
+      tp_svc_channel_interface_hold_return_from_request_hold(context);
 
-  DEBUG("request_hold(%u) on %s: %s", hold, self->nick, error->message);
-  dbus_g_method_return_error(context, error);
-  g_clear_error(&error);
+      g_object_ref (self);
+
+      priv->control = modem_call_request_hold (instance, hold, response_to_hold, self);
+      ring_media_channel_queue_request (self, priv->control);
+
+      priv->hold.requested = hold;
+
+      ring_update_hold (self,
+        hold ? TP_LOCAL_HOLD_STATE_PENDING_HOLD : TP_LOCAL_HOLD_STATE_PENDING_UNHOLD,
+        TP_LOCAL_HOLD_STATE_REASON_REQUESTED);
+      return;
+    }
+
+  DEBUG ("request_hold(%u) on %s: %s", hold, self->nick, error->message);
+  dbus_g_method_return_error (context, error);
+  g_clear_error (&error);
 }
 
 static void
-response_to_hold(ModemCall *ci,
-  ModemRequest *request,
-  GError *error,
-  gpointer _self)
+response_to_hold (ModemCall *ci,
+                  ModemRequest *request,
+                  GError *error,
+                  gpointer _self)
 {
-  RingMediaChannel *self = RING_MEDIA_CHANNEL(_self);
+  RingMediaChannel *self = RING_MEDIA_CHANNEL (_self);
   RingMediaChannelPrivate *priv = self->priv;
-
-  gpointer _context = modem_request_steal_data(request, "tp-request");
 
   if (priv->control == request)
     priv->control = NULL;
 
-  ring_media_channel_dequeue_request(self, request);
+  ring_media_channel_dequeue_request (self, request);
 
-  if (!error) {
-    tp_svc_channel_interface_hold_return_from_request_hold(_context);
-  }
-  else {
-    GError *tperror = NULL;
-    g_set_error(&tperror, TP_ERRORS, TP_ERROR_NOT_AVAILABLE,
-      "%s: %s", "Hold", error->message);
-    dbus_g_method_return_error(_context, tperror);
-    g_clear_error(&tperror);
-    priv->hold.requested = -1;
-  }
+  if (error && priv->hold.requested != -1)
+    {
+      ring_update_hold (self,
+          priv->hold.requested ? TP_LOCAL_HOLD_STATE_UNHELD : TP_LOCAL_HOLD_STATE_HELD,
+          TP_LOCAL_HOLD_STATE_REASON_RESOURCE_NOT_AVAILABLE);
 
-  g_object_unref(self);
+      priv->hold.requested = -1;
+    }
+
+  g_object_unref (self);
 }
 
 
@@ -1521,9 +1529,9 @@ ring_channel_hold_iface_init(gpointer g_iface, gpointer iface_data)
 }
 
 static int
-ring_update_hold(RingMediaChannel *self,
-  int hold,
-  int reason)
+ring_update_hold (RingMediaChannel *self,
+                  int hold,
+                  int reason)
 {
   RingMediaChannelPrivate *priv = self->priv;
   unsigned old = priv->hold.state;
@@ -1559,17 +1567,9 @@ ring_update_hold(RingMediaChannel *self,
       break;
     case TP_LOCAL_HOLD_STATE_PENDING_HOLD:
       name = "Pending_Hold";
-      if (priv->hold.requested == TP_LOCAL_HOLD_STATE_HELD)
-        reason = TP_LOCAL_HOLD_STATE_REASON_REQUESTED;
-      else
-        reason = TP_LOCAL_HOLD_STATE_REASON_NONE;
       break;
     case TP_LOCAL_HOLD_STATE_PENDING_UNHOLD:
       name = "Pending_Unhold";
-      if (priv->hold.requested == TP_LOCAL_HOLD_STATE_UNHELD)
-        reason = TP_LOCAL_HOLD_STATE_REASON_REQUESTED;
-      else
-        reason = TP_LOCAL_HOLD_STATE_REASON_NONE;
       break;
     default:
       name = "Unknown";
@@ -1973,19 +1973,6 @@ on_modem_call_state_active(RingMediaChannel *self)
   ring_update_hold(self, TP_LOCAL_HOLD_STATE_UNHELD, 0);
 }
 
-#if nomore
-static void
-on_modem_call_state_hold_initiated(RingMediaChannel *self)
-{
-  ring_media_channel_update_audio(self, 0,
-    TP_MEDIA_STREAM_STATE_CONNECTED,
-    TP_MEDIA_STREAM_DIRECTION_BIDIRECTIONAL,
-    0);
-
-  ring_update_hold(self, TP_LOCAL_HOLD_STATE_PENDING_HOLD, 0);
-}
-#endif
-
 static void
 on_modem_call_state_held(RingMediaChannel *self)
 {
@@ -1996,22 +1983,6 @@ on_modem_call_state_held(RingMediaChannel *self)
 
   ring_update_hold(self, TP_LOCAL_HOLD_STATE_HELD, 0);
 }
-
-
-#if nomore
-static void
-on_modem_call_state_retrieve_initiated(RingMediaChannel *self)
-{
-  ring_media_channel_update_audio(self, 0,
-    TP_MEDIA_STREAM_STATE_CONNECTED,
-    TP_MEDIA_STREAM_DIRECTION_NONE,
-    TP_MEDIA_STREAM_PENDING_LOCAL_SEND |
-    TP_MEDIA_STREAM_PENDING_REMOTE_SEND);
-
-  ring_update_hold(self, TP_LOCAL_HOLD_STATE_PENDING_UNHOLD, 0);
-}
-#endif
-
 
 static void
 on_modem_call_state_release(RingMediaChannel *self)
