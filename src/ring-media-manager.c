@@ -1052,7 +1052,10 @@ static void
 media_channel_removed (gpointer _channel)
 {
   /* Ensure "closed" has been emitted */
-  g_object_run_dispose (_channel);
+  if (!tp_base_channel_is_destroyed (_channel))
+    {
+      g_object_run_dispose (_channel);
+    }
   g_object_unref (_channel);
 }
 
