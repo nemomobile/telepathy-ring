@@ -52,6 +52,7 @@ libtpring_la_SOURCES = \
     ring-media-channel.h ring-media-channel.c \
     ring-call-channel.h ring-call-channel.c \
     ring-member-channel.h ring-member-channel.c \
+    ring-conference-manager.h ring-conference-manager.c \
     ring-conference-channel.h ring-conference-channel.c \
     ring-param-spec.h ring-param-spec.c \
     ring-emergency-service.h ring-emergency-service.c \

@@ -88,16 +88,11 @@ void ring_conference_channel_emit_channel_removed(
 
 void ring_conference_channel_emit_initial(RingConferenceChannel *channel);
 
-/* ---------------------------------------------------------------------- */
-/* "initial-members" */
+gboolean ring_conference_channel_check_initial_members (
+    RingConferenceChannel const *,
+    RingInitialMembers const *);
 
-gboolean ring_conference_channel_check_initial_members(
-  RingConferenceChannel const *channel,
-  RingInitialMembers const *initial);
-
-void ring_conference_channel_initial_audio(RingConferenceChannel *self,
-  RingMediaManager *manager,
-  gpointer request);
+void ring_conference_channel_initial_audio (RingConferenceChannel *self);
 
 G_END_DECLS
 

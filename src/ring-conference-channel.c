@@ -1765,29 +1765,34 @@ static void reply_to_modem_call_request_conference(ModemCallService *_service,
   ModemRequest *request, GError *error, gpointer _channel);
 
 static gboolean
-ring_conference_channel_create_streams(RingConferenceChannel *_self,
-  guint handle,
-  gboolean audio,
-  gboolean video,
-  GError **error)
+ring_conference_channel_create_streams (RingConferenceChannel *_self,
+                                        guint handle,
+                                        gboolean audio,
+                                        gboolean video,
+                                        GError **error)
 {
   RingConferenceChannel *self = RING_CONFERENCE_CHANNEL(_self);
   RingConferenceChannelPrivate *priv = self->priv;
   ModemCallService *service;
+  TpBaseConnection *baseconn;
 
   (void)audio; (void)video;
 
-  if (priv->streams_created) {
-    DEBUG("Already associated with a conference");
-    return TRUE;
-  }
+  if (priv->streams_created)
+    {
+      DEBUG("Already associated with a conference");
+      return TRUE;
+    }
+
   priv->streams_created = 1;
 
-  if (!ring_connection_validate_initial_members(
-      RING_CONNECTION(tp_base_channel_get_connection(TP_BASE_CHANNEL(self))),
-      priv->initial_members,
-      error))
-    return FALSE;
+  baseconn = tp_base_channel_get_connection (TP_BASE_CHANNEL (self));
+
+  if (!ring_connection_validate_initial_members (RING_CONNECTION (baseconn),
+          priv->initial_members, error))
+    {
+      return FALSE;
+    }
 
   service = ring_conference_channel_get_call_service (self);
 
@@ -1799,32 +1804,23 @@ ring_conference_channel_create_streams(RingConferenceChannel *_self,
 }
 
 void
-ring_conference_channel_initial_audio(RingConferenceChannel *self,
-  RingMediaManager *manager,
-  gpointer channelrequest)
+ring_conference_channel_initial_audio (RingConferenceChannel *self)
 {
   RingConferenceChannelPrivate *priv = self->priv;
   ModemCallService *service;
   ModemRequest *request;
 
-  DEBUG("%s(%p, %p, %p) called", __func__, self, manager, channelrequest);
+  DEBUG ("(%p)", self);
 
   priv->streams_created = 1;
 
   service = ring_conference_channel_get_call_service (self),
 
   request = modem_call_request_conference (service,
-            reply_to_modem_call_request_conference,
-            self);
+      reply_to_modem_call_request_conference,
+      self);
 
   ring_conference_channel_queue_request (self, request);
-
-  modem_request_add_qdatas(
-    request,
-    g_type_qname(RING_TYPE_MEDIA_MANAGER), g_object_ref(manager), g_object_unref,
-    /* XXX - GDestroyNotify for channelrequest  */
-    g_quark_from_static_string("RingChannelRequest"), channelrequest, NULL,
-    NULL);
 }
 
 static void
@@ -1835,41 +1831,24 @@ reply_to_modem_call_request_conference(ModemCallService *_service,
 {
   RingConferenceChannel *self = RING_CONFERENCE_CHANNEL(_self);
   RingConferenceChannelPrivate *priv = self->priv;
-  gpointer channelrequest;
-  GError error0[1] = {{
-      TP_ERRORS, TP_ERROR_NOT_AVAILABLE, "Conference channel already exists"
-    }};
 
   ring_conference_channel_dequeue_request (self, request);
 
   g_assert(priv->conf_created == FALSE);
+
   if (error)
     {
-      DEBUG("Call.CreateMultiparty with channel %s (%p) failed: " GERROR_MSG_FMT,
-          self->nick, self, GERROR_MSG_CODE(error));
-    }
-  else
-    {
-      priv->conf_created = TRUE;
-      DEBUG("Call.CreateMultiparty with channel %s (%p) returned",
-          self->nick, self);
+      DEBUG("Call.CreateMultiparty with channel %s (%p) failed: "
+          GERROR_MSG_FMT, self->nick, self, GERROR_MSG_CODE(error));
+
+      ring_conference_channel_release(_self, 0, 0, error);
+      ring_conference_channel_close_impl(_self, FALSE, FALSE);
+      return;
     }
 
-
-  channelrequest = modem_request_steal_data(request, "RingChannelRequest");
-  if (channelrequest) {
-    RingMediaManager *manager = modem_request_get_data(request, "RingMediaManager");
-
-    ring_media_manager_emit_new_channel(manager,
-      channelrequest, self, error ? error0 : NULL);
-  }
-  else if (error) {
-    ring_conference_channel_release(_self, 0, 0, error);
-    ring_conference_channel_close_impl(_self, FALSE, FALSE);
-  }
-  else {
-    ring_conference_channel_emit_initial(_self);
-  }
+  priv->conf_created = TRUE;
+  DEBUG("VoiceCallManager.CreateMultiparty with channel %s (%p) returned",
+      self->nick, self);
 }
 
 /* ---------------------------------------------------------------------- */

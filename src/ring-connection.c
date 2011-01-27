@@ -25,7 +25,9 @@
 
 #include "ring-connection.h"
 #include "ring-emergency-service.h"
+
 #include "ring-media-manager.h"
+#include "ring-conference-manager.h"
 #include "ring-text-manager.h"
 
 #include "ring-param-spec.h"
@@ -75,6 +77,7 @@ struct _RingConnectionPrivate
 
   RingMediaManager *media;
   RingTextManager *text;
+  RingConferenceManager *conference;
 
   gchar *modem_path;
   Modem *modem;
@@ -371,12 +374,14 @@ ring_connection_get_property(GObject *obj,
       break;
     case PROP_STORED_MESSAGES:
 #if nomore
-      g_value_take_boxed(value, ring_text_manager_list_stored_messages(priv->text));
+      g_value_take_boxed(value,
+          ring_text_manager_list_stored_messages (priv->text));
 #endif
       break;
 
     case PROP_KNOWN_SERVICE_POINTS:
-      g_value_take_boxed(value, ring_media_manager_emergency_services(priv->media));
+      g_value_take_boxed(value,
+          ring_media_manager_emergency_services (priv->media));
       break;
 
     case PROP_ANON_MANDATORY:
@@ -870,10 +875,16 @@ ring_connection_create_channel_managers(TpBaseConnection *base)
 
   priv->media =
     g_object_new(RING_TYPE_MEDIA_MANAGER,
-      "connection", self,
-      "anon-modes", priv->anon_modes,
-      NULL);
+        "connection", self,
+        "anon-modes", priv->anon_modes,
+        NULL);
   g_ptr_array_add(channel_managers, priv->media);
+
+  priv->conference =
+    g_object_new (RING_TYPE_CONFERENCE_MANAGER,
+        "connection", self,
+        NULL);
+  g_ptr_array_add(channel_managers, priv->conference);
 
   priv->text =
     g_object_new(RING_TYPE_TEXT_MANAGER,
@@ -932,6 +943,7 @@ ring_connection_modem_interface_added (Modem *modem,
   else if (MODEM_IS_CALL_SERVICE (oface))
     {
       g_object_set (priv->media, "call-service", oface, NULL);
+      g_object_set (priv->conference, "call-service", oface, NULL);
     }
   else if (MODEM_IS_SMS_SERVICE (oface))
     {
@@ -952,18 +964,19 @@ ring_connection_modem_interface_removed (Modem *modem,
 
   if (MODEM_IS_SIM_SERVICE (oface))
     {
-      DEBUG ("active SIM_SERVICE");
+      DEBUG ("removed SIM_SERVICE");
       g_object_set (self, "sim-service", NULL, NULL);
     }
   else if (MODEM_IS_CALL_SERVICE (oface))
     {
-      DEBUG ("active CALL_SERVICE");
+      DEBUG ("removed CALL_SERVICE");
       g_assert (priv->media);
       g_object_set (priv->media, "call-service", NULL, NULL);
+      g_object_set (priv->conference, "call-service", NULL, NULL);
     }
   else if (MODEM_IS_SMS_SERVICE (oface))
     {
-      DEBUG ("active SMS_SERVICE");
+      DEBUG ("removed SMS_SERVICE");
       g_assert (priv->text);
       g_object_set (priv->text, "sms-service", NULL, NULL);
     }
@@ -1311,14 +1324,21 @@ ring_connection_inspect_contact(RingConnection const *self,
 }
 
 gpointer
-ring_connection_lookup_channel(RingConnection const *self,
-  char const *object_path)
+ring_connection_lookup_channel (RingConnection const *self,
+                                char const *object_path)
 {
+  RingConnectionPrivate *priv = RING_CONNECTION(self)->priv;
   gpointer channel;
 
-  channel = ring_media_manager_lookup(self->priv->media, object_path);
-  if (channel == NULL)
-    channel = ring_text_manager_lookup(self->priv->text, object_path);
+  channel = ring_media_manager_lookup (priv->media, object_path);
+  if (channel)
+    return channel;
+
+  channel = ring_text_manager_lookup (priv->text, object_path);
+  if (channel)
+    return channel;
+
+  channel = ring_conference_manager_lookup (priv->conference, object_path);
 
   return channel;
 }
