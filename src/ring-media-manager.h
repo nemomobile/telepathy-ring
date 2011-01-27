@@ -22,16 +22,15 @@
 #ifndef RING_MEDIA_MANAGER_H
 #define RING_MEDIA_MANAGER_H
 
-#include <telepathy-glib/channel-factory-iface.h>
-
 G_BEGIN_DECLS
 
-typedef struct _RingMediaFactory RingMediaManager;
-typedef struct _RingMediaFactoryClass RingMediaManagerClass;
+typedef struct _RingMediaManager RingMediaManager;
+typedef struct _RingMediaManagerClass RingMediaManagerClass;
 typedef struct _RingMediaManagerPrivate RingMediaManagerPrivate;
 
 G_END_DECLS
 
+#include <telepathy-glib/channel-manager.h>
 #include <ring-media-channel.h>
 #include <ring-emergency-service.h>
 #include <ring-util.h>
@@ -39,11 +38,11 @@ G_END_DECLS
 
 G_BEGIN_DECLS
 
-struct _RingMediaFactoryClass {
+struct _RingMediaManagerClass {
   GObjectClass parent_class;
 };
 
-struct _RingMediaFactory {
+struct _RingMediaManager {
   GObject parent;
   RingMediaManagerPrivate *priv;
 };

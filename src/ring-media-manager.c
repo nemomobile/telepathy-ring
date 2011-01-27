@@ -171,8 +171,6 @@ struct _RingMediaManagerPrivate
   /* Hash by object path */
   GHashTable *channels;
 
-  RingMediaChannel *conference; /* Special channel for conference */
-
   ModemCallService *call_service;
   ModemTones *tones;
 
@@ -277,7 +275,7 @@ ring_media_manager_set_property(GObject *object,
   switch (property_id) {
     case PROP_CONNECTION:
       /* We don't ref the connection, because it owns a reference to the
-       * factory, and it guarantees that the factory's lifetime is
+       * manager, and it guarantees that the manager's lifetime is
        * less than its lifetime */
       priv->connection = g_value_get_object(value);
       break;
