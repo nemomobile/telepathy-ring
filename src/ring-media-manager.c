@@ -498,33 +498,6 @@ ring_media_manager_add_capabilities(RingMediaManager *self,
 }
 
 /* ---------------------------------------------------------------------- */
-/* Initial media stuff */
-
-static gboolean
-tp_asv_get_initial_audio(GHashTable *properties, gboolean default_value)
-{
-  GValue *value = g_hash_table_lookup(properties,
-                  TP_IFACE_CHANNEL_TYPE_STREAMED_MEDIA ".InitialAudio");
-
-  if (value && G_VALUE_HOLDS_BOOLEAN(value))
-    return g_value_get_boolean(value);
-  else
-    return default_value;
-}
-
-static gboolean
-tp_asv_get_initial_video (GHashTable *properties, gboolean default_value)
-{
-  GValue *value = g_hash_table_lookup (properties,
-      TP_IFACE_CHANNEL_TYPE_STREAMED_MEDIA ".InitialVideo");
-
-  if (value && G_VALUE_HOLDS_BOOLEAN (value))
-    return g_value_get_boolean (value);
-  else
-    return default_value;
-}
-
-/* ---------------------------------------------------------------------- */
 /* TpChannelManagerIface interface */
 
 static GHashTable *

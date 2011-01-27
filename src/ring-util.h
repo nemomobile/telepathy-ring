@@ -1,5 +1,5 @@
 /*
- * ring-util.c - Miscellaneous utility functions
+-util.c - Miscellaneous utility functions
  *
  * Copyright (C) 2007-2010 Nokia Corporation
  *   @author Pekka Pessi <first.surname@nokia.com>
@@ -92,6 +92,12 @@ ring_signal_disconnect (gpointer object, gulong id[1])
     g_signal_handler_disconnect (object, *id);
   *id = 0;
 }
+
+#define tp_asv_get_initial_audio ring_tp_asv_get_initial_audio
+#define tp_asv_get_initial_video ring_tp_asv_get_initial_video
+
+gboolean tp_asv_get_initial_audio (GHashTable *asv, gboolean default_value);
+gboolean tp_asv_get_initial_video (GHashTable *asv, gboolean default_value);
 
 G_END_DECLS
 

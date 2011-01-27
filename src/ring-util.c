@@ -29,6 +29,7 @@
 #include <telepathy-glib/base-connection.h>
 #include <telepathy-glib/dbus-properties-mixin.h>
 #include <telepathy-glib/group-mixin.h>
+#include <telepathy-glib/interfaces.h>
 
 #include <string.h>
 
@@ -475,3 +476,31 @@ ring_channel_group_error_reason(GError *error)
 
   return TP_CHANNEL_GROUP_CHANGE_REASON_ERROR;
 }
+
+/* ---------------------------------------------------------------------- */
+/* Initial media stuff */
+
+gboolean
+tp_asv_get_initial_audio (GHashTable *properties, gboolean default_value)
+{
+  GValue *value = g_hash_table_lookup (properties,
+                  TP_IFACE_CHANNEL_TYPE_STREAMED_MEDIA ".InitialAudio");
+
+  if (value && G_VALUE_HOLDS_BOOLEAN (value))
+    return g_value_get_boolean (value);
+  else
+    return default_value;
+}
+
+gboolean
+tp_asv_get_initial_video (GHashTable *properties, gboolean default_value)
+{
+  GValue *value = g_hash_table_lookup (properties,
+      TP_IFACE_CHANNEL_TYPE_STREAMED_MEDIA ".InitialVideo");
+
+  if (value && G_VALUE_HOLDS_BOOLEAN (value))
+    return g_value_get_boolean (value);
+  else
+    return default_value;
+}
+
