@@ -91,15 +91,6 @@ struct _RingMediaChannelPrivate
 
   guint close_timer;
 
-  struct stream_state {
-    guint id;                   /* nonzero when active, 0 otherwise */
-    TpHandle handle;
-    TpMediaStreamType type;
-    TpMediaStreamState state;
-    TpMediaStreamDirection direction;
-    TpMediaStreamPendingSend pending;
-  } audio[1], video[1];
-
   struct {
     ModemRequest *request;
     guchar digit;
@@ -136,15 +127,8 @@ enum {
   LAST_PROPERTY
 };
 
-enum {
-  RING_MEDIA_STREAM_ID_AUDIO = 1,
-  RING_MEDIA_STREAM_ID_VIDEO = 2
-};
-
-static TpDBusPropertiesMixinPropImpl media_properties[];
 static void ring_media_channel_fill_immutable_properties(TpBaseChannel *base,
     GHashTable *props);
-static void ring_media_channel_streamed_media_iface_init(gpointer, gpointer);
 static void ring_media_channel_dtmf_iface_init(gpointer, gpointer);
 
 static void ring_channel_hold_iface_init(gpointer, gpointer);
@@ -165,15 +149,9 @@ G_DEFINE_TYPE_WITH_CODE(
   G_IMPLEMENT_INTERFACE(RTCOM_TYPE_TP_SVC_CHANNEL_INTERFACE_DIAL_STRINGS,
     ring_channel_dial_strings_iface_init);
 #endif
-  G_IMPLEMENT_INTERFACE(TP_TYPE_SVC_CHANNEL_TYPE_STREAMED_MEDIA,
-    ring_media_channel_streamed_media_iface_init);
+  G_IMPLEMENT_INTERFACE (TP_TYPE_SVC_CHANNEL_TYPE_STREAMED_MEDIA,
+    ring_streamed_media_mixin_iface_init);
   );
-
-static int ring_media_channel_update_audio(RingMediaChannel *self,
-  TpHandle handle,
-  TpMediaStreamState state,
-  TpMediaStreamDirection direction,
-  TpMediaStreamPendingSend pending);
 
 static void ring_media_channel_set_call_instance(RingMediaChannel *self,
   ModemCall *ci);
@@ -215,6 +193,9 @@ ring_media_channel_init(RingMediaChannel *self)
   self->priv = G_TYPE_INSTANCE_GET_PRIVATE(
     self, RING_TYPE_MEDIA_CHANNEL, RingMediaChannelPrivate);
   self->priv->hold.requested = -1;
+
+  ring_streamed_media_mixin_init (G_OBJECT(self),
+      G_STRUCT_OFFSET(RingMediaChannel, streamed_media));
 }
 
 static void
@@ -344,10 +325,9 @@ ring_media_channel_finalize(GObject *object)
   RingMediaChannelPrivate *priv = self->priv;
   gchar *nick = g_strdup (self->nick);
 
-  g_free(priv->dial.string);
+  ring_streamed_media_mixin_finalize (object);
 
-  memset(priv->audio, 0, sizeof *priv->audio);
-  memset(priv->video, 0, sizeof *priv->video);
+  g_free(priv->dial.string);
 
   G_OBJECT_CLASS(ring_media_channel_parent_class)->finalize(object);
 
@@ -376,13 +356,6 @@ ring_media_channel_class_init(RingMediaChannelClass *klass)
   base_chan_class->close = (TpBaseChannelCloseFunc) ring_media_channel_close;
   base_chan_class->fill_immutable_properties =
       ring_media_channel_fill_immutable_properties;
-
-  tp_dbus_properties_mixin_implement_interface (
-      object_class,
-      TP_IFACE_QUARK_CHANNEL_TYPE_STREAMED_MEDIA,
-      tp_dbus_properties_mixin_getter_gobject_properties,
-      NULL,
-      media_properties);
 
   g_object_class_install_property(
     object_class, PROP_HOLD_STATE,
@@ -470,26 +443,14 @@ ring_media_channel_class_init(RingMediaChannelClass *klass)
  * org.freedesktop.DBus properties
  */
 
-static TpDBusPropertiesMixinPropImpl media_properties[] = {
-  { "InitialAudio", "initial-audio", NULL },
-  { "InitialVideo", "initial-video", NULL },
-  { "ImmutableStreams", "immutable-streams", NULL },
-  { NULL }
-};
-
 static void
-ring_media_channel_fill_immutable_properties(TpBaseChannel *base,
-    GHashTable *props)
+ring_media_channel_fill_immutable_properties (TpBaseChannel *base,
+                                              GHashTable *props)
 {
-  TP_BASE_CHANNEL_CLASS (ring_media_channel_parent_class)->fill_immutable_properties (
-      base, props);
+  TP_BASE_CHANNEL_CLASS (ring_media_channel_parent_class)->
+    fill_immutable_properties (base, props);
 
-  tp_dbus_properties_mixin_fill_properties_hash (
-      G_OBJECT (base), props,
-      TP_IFACE_CHANNEL_TYPE_STREAMED_MEDIA, "InitialAudio",
-      TP_IFACE_CHANNEL_TYPE_STREAMED_MEDIA, "InitialVideo",
-      TP_IFACE_CHANNEL_TYPE_STREAMED_MEDIA, "ImmutableStreams",
-      NULL);
+  ring_streamed_media_mixin_fill_immutable_properties (base, props);
 }
 
 /* ====================================================================== */
@@ -524,7 +485,7 @@ ring_media_channel_emit_initial(RingMediaChannel *_self)
   RING_MEDIA_CHANNEL_GET_CLASS(self)->emit_initial(self);
 
   if (priv->initial_audio) {
-    ring_media_channel_update_audio(self, 0,
+    ring_streamed_media_mixin_update_audio (self, 0,
       TP_MEDIA_STREAM_STATE_CONNECTING,
       TP_MEDIA_STREAM_DIRECTION_NONE,
       TP_MEDIA_STREAM_PENDING_LOCAL_SEND |
@@ -533,7 +494,7 @@ ring_media_channel_emit_initial(RingMediaChannel *_self)
 }
 
 ModemRequest *
-ring_media_channel_queue_request(RingMediaChannel *self,
+ring_media_channel_queue_request (RingMediaChannel *self,
   ModemRequest *request)
 {
   if (request)
@@ -615,587 +576,6 @@ ring_media_channel_emit_closed(RingMediaChannel *self)
 }
 
 /* ====================================================================== */
-
-/**
- * Telepathy.Channel.Type.StreamedMedia DBus interface - version 0.15
- *
- * Methods:
- * ListStreams ( ) -> a(uuuuuu)
- *
- * Returns an array of structs representing the streams currently active
- * within this channel. Each stream is identified by an unsigned integer
- * which is unique for each stream within the channel.
- *
- * Returns
- *
- * a(uuuuuu)
- *     An array of structs containing:
- *
- *         * the stream identifier
- *         * the contact handle who the stream is with
- *           (or 0 if the stream represents more than a single member)
- *         * the type of the stream
- *         * the current stream state
- *         * the current direction of the stream
- *         * the current pending send flags
- *
- *
- * RemoveStreams ( au: streams ) -> nothing
- *
- * Request that the given streams are removed.
- *
- * Parameters
- *
- * streams - au
- *     An array of stream identifiers (as defined in ListStreams)
- *
- * Possible errors
- *
- * org.freedesktop.Telepathy.Error.InvalidArgument
- *     Raised when one of the provided arguments is invalid.
- *
- * RequestStreamDirection ( u: stream_id, u: stream_direction ) -> nothing
- *
- * Request a change in the direction of an existing stream. In particular,
- * this might be useful to stop sending media of a particular type, or
- * inform the peer that you are no longer using media that is being sent to
- * you.
- *
- * Depending on the protocol, streams which are no longer sending in either
- * direction should be removed and a StreamRemoved signal emitted. Some
- * direction changes can be enforced locally (for example, BIDIRECTIONAL ->
- * RECEIVE can be achieved by merely stopping sending), others may not be
- * possible on some protocols, and some need agreement from the remote end.
- * In this case, the MEDIA_STREAM_PENDING_REMOTE_SEND flag will be set in
- * the StreamDirectionChanged signal, and the signal emitted again without
- * the flag to indicate the resulting direction when the remote end has
- * accepted or rejected the change. Parameters
- *
- * stream_id - u
- *     The stream identifier (as defined in ListStreams)
- * stream_direction - u
- *     The desired stream direction (a value of MediaStreamDirection)
- *
- * Possible errors
- *
- * org.freedesktop.Telepathy.Error.InvalidArgument
- *     Raised when one of the provided arguments is invalid.
- * org.freedesktop.Telepathy.Error.NotAvailable
- *     Raised when the requested functionality is temporarily unavailable. (generic description)
- *
- * RequestStreams ( u: contact_handle, au: types ) -> a(uuuuuu)
- *
- * Request that streams be established to exchange the given types of media
- * with the given member. In general this will try and establish a
- * bidirectional stream, but on some protocols it may not be possible to
- * indicate to the peer that you would like to receive media, so a send-only
- * stream will be created initially. In the cases where the stream requires
- * remote agreement (eg you wish to receive media from them), the
- * StreamDirectionChanged signal will be emitted with the
- * MEDIA_STREAM_PENDING_REMOTE_SEND flag set, and the signal emitted again
- * with the flag cleared when the remote end has replied. Parameters
- *
- * contact_handle - u
- *     A contact handle with whom to establish the streams
- * types - au
- *     An array of stream types (values of MediaStreamType)
- *
- * Returns
- *
- * a(uuuuuu)
- *     An array of structs (in the same order as the given stream types) containing:
- *
- *         * the stream identifier
- *         * the contact handle who the stream is with (or 0 if the stream represents more than a single member)
- *         * the type of the stream
- *         * the current stream state
- *         * the current direction of the stream
- *         * the current pending send flags
- *
- * Possible errors
- *
- * org.freedesktop.Telepathy.Error.InvalidHandle
- *     The contact name specified is unknown on this channel or connection. (generic description)
- * org.freedesktop.Telepathy.Error.InvalidArgument
- *     Raised when one of the provided arguments is invalid. (generic description)
- * org.freedesktop.Telepathy.Error.NotAvailable
- *     Raised when the requested functionality is temporarily unavailable. (generic description)
- *
- * Signals:
- * -> StreamAdded ( u: stream_id, u: contact_handle, u: stream_type )
- *
- * Emitted when a new stream has been added to this channel.
- *
- * Parameters
- *
- * stream_id - u
- *     The stream identifier (as defined in ListStreams)
- * contact_handle - u
- *     The contact handle who the stream is with (or 0 if it represents more than a single member)
- * stream_type - u
- *     The stream type (a value from MediaStreamType)
- *
- * -> StreamDirectionChanged ( u: stream_id, u: stream_direction, u: pending_flags )
- *
- * Emitted when the direction or pending flags of a stream are changed. If
- * the MEDIA_STREAM_PENDING_LOCAL_SEND flag is set, the remote user has
- * requested that we begin sending on this stream. RequestStreamDirection
- * should be called to indicate whether or not this change is acceptable.
- * Parameters
- *
- * stream_id - u
- *     The stream identifier (as defined in ListStreams)
- * stream_direction - u
- *     The new stream direction (as defined in ListStreams)
- * pending_flags - u
- *     The new pending send flags (as defined in ListStreams)
- *
- * StreamError ( u: stream_id, u: errno, s: message )
- *
- * Emitted when a stream encounters an error.
- *
- * Parameters
- *
- * stream_id - u
- *     The stream identifier (as defined in ListStreams)
- * errno - u
- *     A stream error number, one of the values of MediaStreamError
- * message - s
- *     A string describing the error (for debugging purposes only)
- *
- * StreamRemoved ( u: stream_id )
- *
- * Emitted when a stream has been removed from this channel.
- *
- * Parameters
- *
- * stream_id - u
- *     stream_id - the stream identifier (as defined in ListStreams)
- *
- * StreamStateChanged ( u: stream_id, u: stream_state )
- *
- * Emitted when a member's stream's state changes.
- *
- * Parameters
- *
- * stream_id - u
- *     The stream identifier (as defined in ListStreams)
- * stream_state - u
- *     The new stream state (as defined in ListStreams)
- */
-
-static int update_media_stream(RingMediaChannel *self,
-  TpHandle handle,
-  struct stream_state *ss,
-  guint id,
-  TpMediaStreamType type,
-  TpMediaStreamState state,
-  TpMediaStreamDirection direction,
-  TpMediaStreamPendingSend pending);
-static GPtrArray *list_media_streams(RingMediaChannel *self);
-static void free_media_stream_list(GPtrArray *list);
-static gpointer describe_stream(struct stream_state *ss);
-static gpointer describe_null_media(TpMediaStreamType tptype);
-
-#define TP_CHANNEL_STREAM_TYPE                  \
-  (dbus_g_type_get_struct("GValueArray",        \
-    G_TYPE_UINT,                                \
-    G_TYPE_UINT,                                \
-    G_TYPE_UINT,                                \
-    G_TYPE_UINT,                                \
-    G_TYPE_UINT,                                \
-    G_TYPE_UINT,                                \
-    G_TYPE_INVALID))
-
-/** DBus method ListStreams ( ) -> a(uuuuuu)
- *
- * Returns an array of structs representing the streams currently active
- * within this channel. Each stream is identified by an unsigned integer
- * which is unique for each stream within the channel.
- *
- * Returns
- *
- * a(uuuuuu)
- *     An array of structs containing:
- *
- *         * the stream identifier
- *         * the contact handle who the stream is with
- *           (or 0 if the stream represents more than a single member)
- *         * the type of the stream
- *         * the current stream state
- *         * the current direction of the stream
- *         * the current pending send flags
- */
-static void
-ring_media_channel_list_streams(TpSvcChannelTypeStreamedMedia *iface,
-  DBusGMethodInvocation *context)
-{
-  RingMediaChannel *self = RING_MEDIA_CHANNEL(iface);
-  GPtrArray *list;
-
-  list = list_media_streams(self);
-
-  tp_svc_channel_type_streamed_media_return_from_list_streams(context, list);
-
-  free_media_stream_list(list);
-}
-
-/** DBus method
- *  RemoveStreams ( au: streams ) -> nothing
- *
- * Request that the given streams are removed.
- */
-static void
-ring_media_channel_remove_streams(TpSvcChannelTypeStreamedMedia *self,
-  const GArray *streams,
-  DBusGMethodInvocation *context)
-{
-  GError error[] = {{
-      TP_ERRORS, TP_ERROR_NOT_IMPLEMENTED,
-      "RemoveStreams not implemented"
-    }};
-
-  /* Put call on hold? */
-
-  DEBUG("not implemented");
-
-  dbus_g_method_return_error(context, error);
-}
-
-/** DBus method
- * RequestStreamDirection ( u: stream_id, u: stream_direction ) -> nothing
- *
- * Request a change in the direction of an existing stream. In particular,
- * this might be useful to stop sending media of a particular type, or
- * inform the peer that you are no longer using media that is being sent to
- * you.
- *
- * Depending on the protocol, streams which are no longer sending in either
- * direction should be removed and a StreamRemoved signal emitted. Some
- * direction changes can be enforced locally (for example, BIDIRECTIONAL ->
- * RECEIVE can be achieved by merely stopping sending), others may not be
- * possible on some protocols, and some need agreement from the remote end.
- * In this case, the MEDIA_STREAM_PENDING_REMOTE_SEND flag will be set in
- * the StreamDirectionChanged signal, and the signal emitted again without
- * the flag to indicate the resulting direction when the remote end has
- * accepted or rejected the change. Parameters
- */
-static void
-ring_media_channel_request_stream_direction(
-  TpSvcChannelTypeStreamedMedia *iface,
-  guint stream_id,
-  guint stream_direction,
-  DBusGMethodInvocation *context)
-{
-  GError error[] = {{
-      TP_ERRORS, TP_ERROR_NOT_IMPLEMENTED,
-      "RequestStreamDirection not implemented"
-    }};
-
-  /* Put call on hold, or resume? */
-
-  DEBUG("not implemented");
-
-  dbus_g_method_return_error(context, error);
-}
-
-/** DBus method RequestStreams ( u: contact_handle, au: types ) -> a(uuuuuu)
- *
- * Request that streams be established to exchange the given types of media
- * with the given member. In general this will try and establish a
- * bidirectional stream, but on some protocols it may not be possible to
- * indicate to the peer that you would like to receive media, so a send-only
- * stream will be created initially. In the cases where the stream requires
- * remote agreement (eg you wish to receive media from them), the
- * StreamDirectionChanged signal will be emitted with the
- * MEDIA_STREAM_PENDING_REMOTE_SEND flag set, and the signal emitted again
- * with the flag cleared when the remote end has replied.
- *
- */
-static void
-ring_media_channel_request_streams(TpSvcChannelTypeStreamedMedia *iface,
-  guint handle,
-  const GArray *media_types,
-  DBusGMethodInvocation *context)
-{
-  RingMediaChannel *self = RING_MEDIA_CHANNEL(iface);
-  RingMediaChannelClass *cls = RING_MEDIA_CHANNEL_GET_CLASS(iface);
-  RingMediaChannelPrivate *priv = self->priv;
-  GError *error = NULL;
-  GPtrArray *list;
-  guint i, create_audio_stream = 0, create_video_stream = 0;
-  struct stream_state audio[1], video[1];
-
-  DEBUG("(...) on %s", self->nick);
-
-  if (!cls->validate_media_handle(self, &handle, &error)) {
-    dbus_g_method_return_error(context, error);
-    g_clear_error(&error);
-    return;
-  }
-
-  *audio = *priv->audio;
-
-  /* We can create media only when call has not been initiated */
-  for (i = 0; i < media_types->len; i++) {
-    guint media_type = g_array_index(media_types, guint, i);
-
-    if (media_type == TP_MEDIA_STREAM_TYPE_AUDIO && !create_audio_stream)
-      create_audio_stream = update_media_stream(self, handle,
-                            audio, RING_MEDIA_STREAM_ID_AUDIO, media_type,
-                            TP_MEDIA_STREAM_STATE_CONNECTING,
-                            TP_MEDIA_STREAM_DIRECTION_NONE,
-                            TP_MEDIA_STREAM_PENDING_LOCAL_SEND |
-                            TP_MEDIA_STREAM_PENDING_REMOTE_SEND);
-    else if (media_type == TP_MEDIA_STREAM_TYPE_VIDEO && !create_video_stream)
-      create_video_stream = update_media_stream(self, handle,
-                            video, RING_MEDIA_STREAM_ID_VIDEO, media_type,
-                            TP_MEDIA_STREAM_STATE_CONNECTING,
-                            TP_MEDIA_STREAM_DIRECTION_NONE,
-                            TP_MEDIA_STREAM_PENDING_LOCAL_SEND |
-                            TP_MEDIA_STREAM_PENDING_REMOTE_SEND);
-  }
-
-  if (create_audio_stream || create_video_stream) {
-    if (!cls->create_streams(
-        self, handle, create_audio_stream, create_video_stream, &error)) {
-      dbus_g_method_return_error(context, error);
-      g_clear_error(&error);
-      return;
-    }
-    *priv->audio = *audio;
-  }
-
-  list = g_ptr_array_sized_new(media_types->len);
-
-  for (i = 0; i < media_types->len; i++) {
-    guint media_type = g_array_index(media_types, guint, i);
-    gpointer element;
-
-    if (media_type == TP_MEDIA_STREAM_TYPE_AUDIO && create_audio_stream)
-      element = describe_stream(priv->audio), create_audio_stream = 0;
-    else if (media_type == TP_MEDIA_STREAM_TYPE_VIDEO && create_video_stream)
-      element = describe_stream(priv->video), create_video_stream = 0;
-    else
-      element = describe_null_media(media_type);
-
-    g_ptr_array_add(list, element);
-  }
-
-  tp_svc_channel_type_streamed_media_return_from_request_streams(
-    context, list);
-
-  free_media_stream_list(list);
-
-  DEBUG("exit");
-}
-
-
-/** Update audio state.
- *
- * @retval 0 if nothing changed
- * @retval 1 (or nonzero) if state changed
- */
-static int
-ring_media_channel_update_audio(RingMediaChannel *self,
-  TpHandle handle,
-  TpMediaStreamState state,
-  TpMediaStreamDirection direction,
-  TpMediaStreamPendingSend pending)
-{
-  return update_media_stream(self, handle, self->priv->audio,
-    RING_MEDIA_STREAM_ID_AUDIO,
-    TP_MEDIA_STREAM_TYPE_AUDIO, state, direction, pending);
-}
-
-/** Update media stream state.
- *
- * @retval 0 if nothing changed
- * @retval 1 (or nonzero) if state changed
- */
-static int
-update_media_stream(RingMediaChannel *self,
-  TpHandle handle,
-  struct stream_state *ss,
-  guint id,
-  TpMediaStreamType type,
-  TpMediaStreamState state,
-  TpMediaStreamDirection direction,
-  TpMediaStreamPendingSend pending)
-{
-  int changed = 0;
-
-  if (type != TP_MEDIA_STREAM_TYPE_AUDIO)
-    return 0;
-
-  if (state == TP_MEDIA_STREAM_STATE_DISCONNECTED) {
-    if (ss->id == id) {
-      changed = 1;
-      /* emit StreamRemoved */
-      tp_svc_channel_type_streamed_media_emit_stream_removed(
-        (TpSvcChannelTypeStreamedMedia *)self, id);
-      memset(ss, 0, sizeof ss);
-    }
-    return changed;
-  }
-
-  /* emit StreamAdded */
-  if (ss->id != id) {
-    if (handle == 0)
-      g_object_get(self, "peer", &handle, NULL);
-    changed = 1;
-    ss->id = id;
-    ss->handle = handle;
-    ss->type = type;
-
-    if (DEBUGGING) {
-      DEBUG("emitting StreamAdded(%u, %d, %s)",
-        id, handle,
-        type == TP_MEDIA_STREAM_TYPE_AUDIO ?
-        "AUDIO" :
-        type == TP_MEDIA_STREAM_TYPE_VIDEO ?
-        "VIDEO" : "???");
-    }
-
-    tp_svc_channel_type_streamed_media_emit_stream_added(
-      (TpSvcChannelTypeStreamedMedia *)self,
-      ss->id, ss->handle, ss->type);
-  }
-
-  /* emit StreamStateChanged */
-  if (ss->state != state) {
-    changed = 1;
-    ss->state = state;
-
-    if (DEBUGGING) {
-      DEBUG("emitting StreamStateChanged(%u, %s)",
-        ss->id,
-        state == TP_MEDIA_STREAM_STATE_DISCONNECTED ?
-        "DISCONNECTED" :
-        state == TP_MEDIA_STREAM_STATE_CONNECTING ?
-        "CONNECTING" :
-        state == TP_MEDIA_STREAM_STATE_CONNECTED ?
-        "CONNECTED" : "???");
-    }
-
-    tp_svc_channel_type_streamed_media_emit_stream_state_changed (
-      (TpSvcChannelTypeStreamedMedia *)self,
-      ss->id, state);
-  }
-
-  /* emit StreamDirectionChanged */
-  if (ss->direction != direction || ss->pending != pending) {
-    changed = 1;
-    ss->direction = direction;
-    ss->pending = pending;
-
-    if (DEBUGGING) {
-      DEBUG("emitting StreamDirectionChanged(%u, %s,%s%s%s)",
-        ss->id,
-        direction == TP_MEDIA_STREAM_DIRECTION_BIDIRECTIONAL
-        ? "BIDIRECTIONAL" :
-        direction == TP_MEDIA_STREAM_DIRECTION_SEND
-        ? "SEND" :
-        direction == TP_MEDIA_STREAM_DIRECTION_RECEIVE
-        ? "RECV" :
-        "NONE",
-        pending & TP_MEDIA_STREAM_PENDING_REMOTE_SEND ?
-        " remote" : "",
-        pending & TP_MEDIA_STREAM_PENDING_LOCAL_SEND ?
-        " local" : "",
-        pending == 0 ? " 0" : "");
-    }
-
-    tp_svc_channel_type_streamed_media_emit_stream_direction_changed(
-      (TpSvcChannelTypeStreamedMedia *)self,
-      ss->id, ss->direction, ss->pending);
-  }
-
-  return changed;
-}
-
-static GPtrArray *
-list_media_streams(RingMediaChannel *self)
-{
-  RingMediaChannelPrivate *priv = self->priv;
-  GPtrArray *list;
-  size_t size;
-
-  size = (priv->audio->id != 0) + (priv->video->id != 0);
-
-  list = g_ptr_array_sized_new(size);
-
-  if (priv->audio->id)
-    g_ptr_array_add(list, describe_stream(priv->audio));
-  if (priv->video->id)
-    g_ptr_array_add(list, describe_stream(priv->video));
-
-  return list;
-}
-
-static void
-free_media_stream_list(GPtrArray *list)
-{
-  if (list) {
-    const GType ElementType = TP_CHANNEL_STREAM_TYPE;
-    guint i;
-
-    for (i = list->len; i-- > 0;)
-      g_boxed_free(ElementType, g_ptr_array_index(list, i));
-
-    g_ptr_array_free(list, TRUE);
-  }
-}
-
-/* Return a pointer to GValue with boxed stream struct */
-static gpointer
-describe_stream(struct stream_state *ss)
-{
-  const GType ElementType = TP_CHANNEL_STREAM_TYPE;
-  GValue element[1] = {{ 0 }};
-
-  g_value_init(element, ElementType);
-  g_value_take_boxed(element, dbus_g_type_specialized_construct(ElementType));
-
-  dbus_g_type_struct_set(element,
-    0, ss->id,
-    1, ss->handle,
-    2, ss->type,
-    3, ss->state,
-    4, ss->direction,
-    5, ss->pending,
-    G_MAXUINT);
-
-  return g_value_get_boxed(element);
-}
-
-static gpointer
-describe_null_media(TpMediaStreamType tptype)
-{
-  struct stream_state ss[1] = {{ 0 }};
-
-  ss->type = tptype;
-
-  return describe_stream(ss);
-}
-
-static void
-ring_media_channel_streamed_media_iface_init(gpointer g_iface,
-  gpointer iface_data)
-{
-  TpSvcChannelTypeStreamedMediaClass *klass =
-    (TpSvcChannelTypeStreamedMediaClass *)g_iface;
-
-#define IMPLEMENT(x) tp_svc_channel_type_streamed_media_implement_##x(  \
-    klass, ring_media_channel_##x)
-  IMPLEMENT(list_streams);
-  IMPLEMENT(remove_streams);
-  IMPLEMENT(request_stream_direction);
-  IMPLEMENT(request_streams);
-#undef IMPLEMENT
-}
-
-/* ====================================================================== */
 /*
  * Telepathy.Channel.Interface.DTMF DBus interface - version 0.15
  */
@@ -1230,7 +610,7 @@ ring_media_channel_dtmf_start_tone(TpSvcChannelInterfaceDTMF *iface,
 
   DEBUG("(%u, %u) on %s", stream_id, event, self->nick);
 
-  if (stream_id == 0 || priv->audio->id != stream_id) {
+  if (stream_id == 0 /* XXXX || priv->audio->id != stream_id */) {
     g_set_error(&error, TP_ERRORS, TP_ERROR_INVALID_ARGUMENT,
       "invalid stream id %u", stream_id);
   }
@@ -1322,13 +702,12 @@ ring_media_channel_dtmf_stop_tone(TpSvcChannelInterfaceDTMF *iface,
   DBusGMethodInvocation *context)
 {
   RingMediaChannel *self = RING_MEDIA_CHANNEL(iface);
-  RingMediaChannelPrivate *priv = self->priv;
 
   GError *error = NULL;
 
   DEBUG("(%u) on %s", stream_id, self->nick);
 
-  if (stream_id == 0 || priv->audio->id != stream_id) {
+  if (ring_streamed_media_mixin_is_audio_stream (iface, stream_id)) {
     g_set_error(&error, TP_ERRORS, TP_ERROR_INVALID_ARGUMENT,
       "invalid stream id %u", stream_id);
   }
@@ -1783,13 +1162,13 @@ ring_media_channel_send_dialstring(RingMediaChannel *self,
   (void)duration;
   (void)pause;
 
-  if (id != priv->audio->id) {
+  if (ring_streamed_media_mixin_is_audio_stream (self, id)) {
     g_set_error(error, TP_ERRORS, TP_ERROR_INVALID_ARGUMENT,
       "Invalid stream");
     return FALSE;
   }
   else if (self->call_instance == NULL ||
-    priv->audio->state != TP_MEDIA_STREAM_STATE_CONNECTED) {
+      !ring_streamed_media_mixin_is_stream_connected (self, id)) {
     g_set_error(error, TP_ERRORS, TP_ERROR_NOT_AVAILABLE,
       "Channel is not connected");
     return FALSE;
@@ -1900,7 +1279,7 @@ ring_media_channel_set_state(RingMediaChannel *self,
 
 static void on_modem_call_state_incoming(RingMediaChannel *self)
 {
-  ring_media_channel_update_audio(self, 0,
+  ring_streamed_media_mixin_update_audio (self, 0,
     TP_MEDIA_STREAM_STATE_CONNECTING,
     TP_MEDIA_STREAM_DIRECTION_NONE,
     TP_MEDIA_STREAM_PENDING_LOCAL_SEND |
@@ -1910,7 +1289,7 @@ static void on_modem_call_state_incoming(RingMediaChannel *self)
 static void
 on_modem_call_state_dialing(RingMediaChannel *self)
 {
-  ring_media_channel_update_audio(self, 0,
+  ring_streamed_media_mixin_update_audio (self, 0,
     TP_MEDIA_STREAM_STATE_CONNECTING,
     TP_MEDIA_STREAM_DIRECTION_NONE,
     TP_MEDIA_STREAM_PENDING_LOCAL_SEND |
@@ -1920,7 +1299,7 @@ on_modem_call_state_dialing(RingMediaChannel *self)
 static void
 on_modem_call_state_mo_alerting(RingMediaChannel *self)
 {
-  ring_media_channel_update_audio(self, 0,
+  ring_streamed_media_mixin_update_audio (self, 0,
     TP_MEDIA_STREAM_STATE_CONNECTED,
     TP_MEDIA_STREAM_DIRECTION_RECEIVE,
     TP_MEDIA_STREAM_PENDING_LOCAL_SEND);
@@ -1931,7 +1310,7 @@ static void
 on_modem_call_state_mt_alerting(RingMediaChannel *self)
 {
   /* Audio has been connected - at least locally */
-  ring_media_channel_update_audio(self, 0,
+  ring_streamed_media_mixin_update_audio (self, 0,
     TP_MEDIA_STREAM_STATE_CONNECTED,
     TP_MEDIA_STREAM_DIRECTION_SEND,
     TP_MEDIA_STREAM_PENDING_REMOTE_SEND);
@@ -1942,7 +1321,7 @@ static void
 on_modem_call_state_waiting(RingMediaChannel *self)
 {
   /* Audio has been connected - at least locally */
-  ring_media_channel_update_audio(self, 0,
+  ring_streamed_media_mixin_update_audio (self, 0,
     TP_MEDIA_STREAM_STATE_CONNECTED,
     TP_MEDIA_STREAM_DIRECTION_NONE,
     TP_MEDIA_STREAM_PENDING_LOCAL_SEND |
@@ -1954,7 +1333,7 @@ static void
 on_modem_call_state_answered(RingMediaChannel *self)
 {
   /* Call has been answered we might not have radio channel */
-  ring_media_channel_update_audio(self, 0,
+  ring_streamed_media_mixin_update_audio (self, 0,
     TP_MEDIA_STREAM_STATE_CONNECTED,
     TP_MEDIA_STREAM_DIRECTION_SEND,
     TP_MEDIA_STREAM_PENDING_REMOTE_SEND);
@@ -1965,7 +1344,7 @@ static void
 on_modem_call_state_active(RingMediaChannel *self)
 {
   /* Call should be active now and media channels open. */
-  ring_media_channel_update_audio(self, 0,
+  ring_streamed_media_mixin_update_audio (self, 0,
     TP_MEDIA_STREAM_STATE_CONNECTED,
     TP_MEDIA_STREAM_DIRECTION_BIDIRECTIONAL,
     0);
@@ -1976,7 +1355,7 @@ on_modem_call_state_active(RingMediaChannel *self)
 static void
 on_modem_call_state_held(RingMediaChannel *self)
 {
-  ring_media_channel_update_audio(self, 0,
+  ring_streamed_media_mixin_update_audio (self, 0,
     TP_MEDIA_STREAM_STATE_CONNECTED,
     TP_MEDIA_STREAM_DIRECTION_NONE,
     0);
@@ -1993,7 +1372,7 @@ on_modem_call_state_release(RingMediaChannel *self)
 static void
 on_modem_call_state_terminated(RingMediaChannel *self)
 {
-  ring_media_channel_update_audio(self, 0,
+  ring_streamed_media_mixin_update_audio (self, 0,
     TP_MEDIA_STREAM_STATE_DISCONNECTED,
     TP_MEDIA_STREAM_DIRECTION_NONE,
     0);

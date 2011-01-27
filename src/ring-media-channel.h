@@ -27,6 +27,7 @@
 #include <telepathy-glib/base-channel.h>
 #include <telepathy-glib/dbus-properties-mixin.h>
 #include <telepathy-glib/svc-channel.h>
+#include <ring-streamed-media-mixin.h>
 
 G_BEGIN_DECLS
 
@@ -45,18 +46,17 @@ G_BEGIN_DECLS
 struct _RingMediaChannelClass {
   TpBaseChannelClass parent_class;
 
+  RingStreamedMediaMixinClass streamed_media_class;
+
   void (*emit_initial)(RingMediaChannel *self);
   void (*update_state)(RingMediaChannel *self, guint status, guint causetype, guint cause);
   gboolean (*close)(RingMediaChannel *, gboolean immediately);
   void (*set_call_instance)(RingMediaChannel *self, ModemCall *ci);
-  gboolean (*validate_media_handle)(RingMediaChannel *, guint *, GError **);
-  gboolean (*create_streams)(RingMediaChannel *,
-    guint handle, gboolean audio, gboolean video,
-    GError **);
 };
 
 struct _RingMediaChannel {
   TpBaseChannel parent;
+  RingStreamedMediaMixin streamed_media;
 
   /* Read-only */
   ModemCall *call_instance;

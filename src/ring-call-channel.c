@@ -202,11 +202,10 @@ static gboolean ring_call_channel_close(RingMediaChannel *_self,
   gboolean immediately);
 static void ring_call_channel_set_call_instance(RingMediaChannel *_self,
   ModemCall *ci);
-static gboolean ring_call_channel_validate_media_handle(
-  RingMediaChannel *_self,
+static gboolean ring_call_channel_validate_media_handle (gpointer _self,
   guint *handle,
   GError **);
-static gboolean ring_call_channel_create_streams(RingMediaChannel *_self,
+static gboolean ring_call_channel_create_streams (gpointer _self,
   TpHandle handle,
   gboolean audio,
   gboolean video,
@@ -494,7 +493,7 @@ ring_call_channel_class_init(RingCallChannelClass *klass)
   base_chan_class->target_handle_type = TP_HANDLE_TYPE_CONTACT;
   base_chan_class->fill_immutable_properties = ring_call_channel_fill_immutable_properties;
 
-  ring_call_channel_implement_media_channel(RING_MEDIA_CHANNEL_CLASS(klass));
+  ring_call_channel_implement_media_channel (RING_MEDIA_CHANNEL_CLASS(klass));
 
   klass->dbus_properties_class.interfaces =
     ring_call_channel_dbus_property_interfaces;
@@ -806,9 +805,9 @@ ring_call_channel_set_call_instance(RingMediaChannel *_self,
 }
 
 static gboolean
-ring_call_channel_validate_media_handle(RingMediaChannel *_self,
-  guint *handlep,
-  GError **error)
+ring_call_channel_validate_media_handle (gpointer _self,
+                                         guint *handlep,
+                                         GError **error)
 {
   DEBUG("enter");
 
@@ -866,8 +865,8 @@ static void reply_to_modem_call_request_dial(ModemCallService *_service,
   gpointer _channel);
 
 static gboolean
-ring_call_channel_create_streams(RingMediaChannel *_self,
-  guint handle,
+ring_call_channel_create_streams (gpointer _self,
+  TpHandle handle,
   gboolean audio,
   gboolean video,
   GError **error)
@@ -1057,8 +1056,11 @@ ring_call_channel_implement_media_channel(RingMediaChannelClass *media_class)
   media_class->close = ring_call_channel_close;
   media_class->update_state = ring_call_channel_update_state;
   media_class->set_call_instance = ring_call_channel_set_call_instance;
-  media_class->validate_media_handle = ring_call_channel_validate_media_handle;
-  media_class->create_streams = ring_call_channel_create_streams;
+
+  ring_streamed_media_mixin_class_init (G_OBJECT_CLASS(media_class),
+      G_STRUCT_OFFSET(RingCallChannelClass, base_class.streamed_media_class),
+      ring_call_channel_validate_media_handle,
+      ring_call_channel_create_streams);
 }
 
 /* ---------------------------------------------------------------------- */
