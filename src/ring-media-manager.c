@@ -41,7 +41,6 @@
 #include "ring-media-manager.h"
 #include "ring-media-channel.h"
 #include "ring-call-channel.h"
-#include "ring-conference-channel.h"
 #include "ring-connection.h"
 #include "ring-param-spec.h"
 #include "ring-util.h"
@@ -117,12 +116,6 @@ static gboolean ring_media_manager_outgoing_call(RingMediaManager *self,
   char const *emergency,
   gboolean initial_audio);
 
-static gboolean ring_media_manager_conference(RingMediaManager *self,
-  gpointer request,
-  RingInitialMembers *initial,
-  gboolean initial_audio,
-  GError **error);
-
 static void media_channel_removed (gpointer _channel);
 
 static void on_media_channel_closed(GObject *chan, RingMediaManager *self);
@@ -143,12 +136,6 @@ static void on_modem_call_created(ModemCallService *call_service,
   ModemCall *ci,
   char const *destination,
   RingMediaManager *self);
-
-#if nomore
-static void on_modem_call_conference_joined(ModemCallConference *mcc,
-  ModemCall *mc,
-  RingMediaManager *self);
-#endif
 
 static void on_modem_call_user_connection(ModemCallService *call_service,
   gboolean active,
@@ -567,38 +554,6 @@ static char const * const ring_anon_channel_allowed_properties[] =
   NULL
 };
 
-static GHashTable *
-ring_conference_channel_fixed_properties(void)
-{
-  static GHashTable *hash;
-
-  if (hash)
-    return hash;
-
-  hash = g_hash_table_new(g_str_hash, g_str_equal);
-
-  char const *key;
-  GValue *value;
-
-  key = TP_IFACE_CHANNEL ".ChannelType";
-  value = tp_g_value_slice_new(G_TYPE_STRING);
-  g_value_set_static_string(value, TP_IFACE_CHANNEL_TYPE_STREAMED_MEDIA);
-
-  g_hash_table_insert(hash, (gpointer)key, value);
-
-  return hash;
-}
-
-static char const * const ring_conference_channel_allowed_properties[] =
-{
-  TP_IFACE_CHANNEL ".InitialChannels",
-  TP_IFACE_CHANNEL ".TargetHandleType",
-  TP_IFACE_CHANNEL_TYPE_STREAMED_MEDIA ".InitialAudio",
-  TP_IFACE_CHANNEL_TYPE_STREAMED_MEDIA ".InitialVideo",
-  NULL
-};
-
-
 static void
 ring_media_manager_foreach_channel_class(TpChannelManager *_self,
   TpChannelManagerChannelClassFunc func,
@@ -622,12 +577,6 @@ ring_media_manager_foreach_channel_class(TpChannelManager *_self,
     ring_anon_channel_allowed_properties,
     userdata);
 #endif
-
-  func(_self,
-    ring_conference_channel_fixed_properties(),
-    ring_conference_channel_allowed_properties,
-    userdata);
-
 }
 
 static void
@@ -766,39 +715,6 @@ ring_media_requestotron(RingMediaManager *self,
       tp_asv_get_initial_audio(properties, FALSE));
   }
 
-  if (ring_properties_satisfy(properties,
-      ring_conference_channel_fixed_properties(),
-      ring_conference_channel_allowed_properties)) {
-    RingInitialMembers *initial = tp_asv_get_boxed(
-      properties,
-      TP_IFACE_CHANNEL ".InitialChannels",
-      TP_ARRAY_TYPE_OBJECT_PATH_LIST);
-
-    if (initial == NULL)
-      return FALSE;
-
-    GError *error = NULL;
-
-    if (tp_asv_get_uint32(properties,
-        TP_IFACE_CHANNEL ".TargetHandleType", NULL) != 0) {
-      g_set_error(&error, TP_ERRORS, TP_ERROR_INVALID_ARGUMENT,
-        "Invalid TargetHandleType");
-    }
-    else if (ring_media_manager_conference(self, request, initial,
-        tp_asv_get_initial_audio(properties, TRUE),
-        &error)) {
-      return TRUE;
-    }
-
-    DEBUG("failing request: " GERROR_MSG_FMT, GERROR_MSG_CODE(error));
-    tp_channel_manager_emit_request_failed(
-      self, request,
-      error->domain, error->code, error->message);
-    g_clear_error(&error);
-
-    return TRUE;
-  }
-
   return FALSE;
 }
 
@@ -850,59 +766,6 @@ ring_media_manager_validate_initial_members(RingMediaManager *self,
   return TRUE;
 }
 
-static gboolean
-ring_media_manager_conference(RingMediaManager *self,
-  gpointer request,
-  RingInitialMembers *initial,
-  gboolean initial_audio,
-  GError **error)
-{
-  RingMediaManagerPrivate *priv = self->priv;
-  RingConferenceChannel *channel;
-  GHashTableIter i[1];
-  gpointer existing = NULL;
-
-  for (g_hash_table_iter_init(i, priv->channels);
-       g_hash_table_iter_next(i, NULL, &existing);) {
-    if (!RING_IS_CONFERENCE_CHANNEL(existing))
-      continue;
-
-    if (initial->len == 0 ||
-      ring_conference_channel_check_initial_members(existing, initial)) {
-      tp_channel_manager_emit_request_already_satisfied(
-        self, request, TP_EXPORTABLE_CHANNEL(existing));
-      return TRUE;
-    }
-  }
-
-  if (!ring_media_manager_validate_initial_members(self, initial, error)) {
-    return FALSE;
-  }
-
-  char *object_path = ring_media_manager_new_object_path(self, "conf");
-
-  channel = (RingConferenceChannel *)
-    g_object_new(RING_TYPE_CONFERENCE_CHANNEL,
-      "connection", priv->connection,
-      /* KVXXX: "tones", priv->tones, */
-      "object-path", object_path,
-      "initial-channels", initial,
-      "initial-audio", initial_audio,
-      "initiator-handle", tp_base_connection_get_self_handle(
-          TP_BASE_CONNECTION (priv->connection)),
-      "requested", TRUE,
-      NULL);
-
-  g_free(object_path);
-
-  if (initial_audio)
-    ring_conference_channel_initial_audio(channel, self, request);
-  else
-    ring_media_manager_emit_new_channel(self, request, channel, NULL);
-
-  return TRUE;
-}
-
 static char *
 ring_media_manager_new_object_path(RingMediaManager const *self,
   char const *type)
@@ -931,12 +794,7 @@ ring_media_manager_new_object_path(RingMediaManager const *self,
 static const gchar*
 get_nick(TpBaseChannel *channel)
 {
-  if (RING_IS_MEDIA_CHANNEL (channel))
-    return RING_MEDIA_CHANNEL (channel)->nick;
-  else if (RING_IS_CONFERENCE_CHANNEL (channel))
-    return RING_CONFERENCE_CHANNEL (channel)->nick;
-
-  return NULL;
+  return RING_MEDIA_CHANNEL (channel)->nick;
 }
 
 void
@@ -968,10 +826,7 @@ ring_media_manager_emit_new_channel(RingMediaManager *self,
       TP_EXPORTABLE_CHANNEL(channel), requests);
 
     /* Emit Group and StreamedMedia signals */
-    if (RING_IS_MEDIA_CHANNEL (channel))
-      ring_media_channel_emit_initial(RING_MEDIA_CHANNEL (channel));
-    else if (RING_IS_CONFERENCE_CHANNEL (channel))
-      ring_conference_channel_emit_initial(RING_CONFERENCE_CHANNEL (channel));
+    ring_media_channel_emit_initial(RING_MEDIA_CHANNEL (channel));
   }
   else {
     DEBUG("new channel %p nick %s type %s failed with " GERROR_MSG_FMT,
@@ -1217,69 +1072,6 @@ on_modem_call_created(ModemCallService *call_service,
   ring_media_channel_set_state(RING_MEDIA_CHANNEL(channel),
     MODEM_CALL_STATE_DIALING, 0, 0);
 }
-
-#ifdef nomore
-static void
-on_modem_call_conference_joined(ModemCallConference *mcc,
-  ModemCall *mc,
-  RingMediaManager *self)
-{
-  RingMediaManagerPrivate *priv = RING_MEDIA_MANAGER(self)->priv;
-  ModemCall **members;
-  GPtrArray *initial;
-  guint i;
-
-  if (modem_call_get_handler(MODEM_CALL(mcc)))
-    return;
-
-  members = modem_call_service_get_calls(priv->call_service);
-  initial = g_ptr_array_sized_new(MODEM_MAX_CALLS + 1);
-
-  for (i = 0; members[i]; i++) {
-    if (modem_call_is_member(members[i]) &&
-      modem_call_get_handler(members[i])) {
-      RingMemberChannel *member;
-      char *object_path = NULL;
-
-      member = RING_MEMBER_CHANNEL(modem_call_get_handler(members[i]));
-      g_object_get(member, "object-path", &object_path, NULL);
-
-      if (object_path)
-        g_ptr_array_add(initial, object_path);
-    }
-  }
-
-  if (initial->len >= 2) {
-    RingConferenceChannel *channel;
-    char *object_path;
-
-    object_path = ring_media_manager_new_object_path(self, "cconf");
-
-    channel = (RingConferenceChannel *)
-      g_object_new(RING_TYPE_CONFERENCE_CHANNEL,
-        "connection", priv->connection,
-        "call-instance", mcc,
-        /* KVXXX: "tones", priv->tones, */
-        "object-path", object_path,
-        "initial-channels", initial,
-        "initial-audio", TRUE,
-        "initiator-handle", tp_base_connection_get_self_handle(
-            TP_BASE_CONNECTION (priv->connection)),
-        "requested", TRUE,
-        NULL);
-
-    g_free(object_path);
-
-    g_assert(channel == modem_call_get_handler(MODEM_CALL(mcc)));
-
-    ring_media_manager_emit_new_channel(self, NULL, channel, NULL);
-  }
-
-  g_ptr_array_add(initial, NULL);
-  g_strfreev((char **)g_ptr_array_free(initial, FALSE));
-  g_free(members);
-}
-#endif
 
 static void
 on_modem_call_removed (ModemCallService *call_service,
