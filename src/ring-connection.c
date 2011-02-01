@@ -1452,12 +1452,10 @@ ring_connection_expunge_messages(
   char const **messages,
   DBusGMethodInvocation *context)
 {
-#if nomore
   ring_text_manager_expunge_messages(
     RING_CONNECTION(iface)->priv->text,
     messages,
     context);
-#endif
 }
 
 static void
@@ -1466,12 +1464,10 @@ ring_connection_set_storage_state(
   gboolean out_of_storage,
   DBusGMethodInvocation *context)
 {
-#if nomore
   ring_text_manager_set_storage_state(
     RING_CONNECTION(iface)->priv->text,
     out_of_storage,
     context);
-#endif
 }
 
 static void

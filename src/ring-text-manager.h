@@ -60,6 +60,7 @@ GType ring_text_manager_get_type(void);
 gpointer ring_text_manager_lookup(RingTextManager *self,
   char const *object_path);
 
+#if nomore
 void ring_text_manager_deliver_stored_messages(RingTextManager *,
   char const **messages,
   gpointer context);
@@ -73,6 +74,8 @@ void ring_text_manager_set_storage_status(RingTextManager *,
   gpointer context);
 
 char **ring_text_manager_list_stored_messages(RingTextManager const *);
+
+#endif
 
 void ring_text_manager_add_capabilities(RingTextManager *self,
   guint handle, GPtrArray *returns);

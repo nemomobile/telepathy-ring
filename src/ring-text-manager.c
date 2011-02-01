@@ -896,7 +896,6 @@ ring_text_manager_not_connected(gpointer context)
     { TP_ERRORS, TP_ERROR_NOT_AVAILABLE, "SMS service is not available" };
   dbus_g_method_return_error(context, &error);
 }
-#endif
 
 void
 ring_text_manager_deliver_stored_messages(RingTextManager *self,
@@ -936,7 +935,6 @@ ring_text_manager_deliver_stored_messages(RingTextManager *self,
 #endif
 }
 
-#if nomore
 void
 ring_text_manager_expunge_messages(RingTextManager *self,
   char const **messages,
