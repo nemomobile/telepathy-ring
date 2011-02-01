@@ -97,6 +97,7 @@ struct _RingTextManagerPrivate
   struct {
     gulong receiving_sms_deliver, receiving_sms_status_report;
     gulong outgoing_sms_complete, outgoing_sms_error;
+    gulong status_changed;
   } signals;
 };
 
@@ -108,6 +109,10 @@ static void ring_text_manager_set_sms_service (RingTextManager *,
 static void ring_text_manager_connected(RingTextManager *self);
 
 static void ring_text_manager_disconnect(RingTextManager *self);
+
+static void on_connection_status_changed (TpBaseConnection *conn,
+    guint status, guint reason,
+    RingTextManager *self);
 
 static gboolean ring_text_requestotron(RingTextManager *self,
   gpointer request,
@@ -156,6 +161,12 @@ static void ring_text_manager_receive_status_report(
 static void
 ring_text_manager_constructed(GObject *object)
 {
+  RingTextManager *self = RING_TEXT_MANAGER(object);
+  RingTextManagerPrivate *priv = self->priv;
+
+  priv->signals.status_changed = g_signal_connect (priv->connection,
+      "status-changed", (GCallback) on_connection_status_changed, self);
+
   if (G_OBJECT_CLASS(ring_text_manager_parent_class)->constructed)
     G_OBJECT_CLASS(ring_text_manager_parent_class)->constructed(object);
 }
@@ -179,6 +190,8 @@ ring_text_manager_dispose(GObject *object)
   ring_text_manager_disconnect (self);
 
   g_hash_table_remove_all (priv->channels);
+
+  ring_signal_disconnect (priv->connection, &priv->signals.status_changed);
 
   G_OBJECT_CLASS(ring_text_manager_parent_class)->dispose(object);
 }
@@ -372,6 +385,20 @@ ring_text_manager_disconnect (RingTextManager *self)
   if (priv->sms_service)
     g_object_unref (priv->sms_service);
   priv->sms_service = NULL;
+}
+
+static void
+on_connection_status_changed (TpBaseConnection *conn,
+                              guint status,
+                              guint reason,
+                              RingTextManager *self)
+{
+  RingTextManagerPrivate *priv = self->priv;
+
+  if (status == TP_CONNECTION_STATUS_DISCONNECTED)
+    {
+      g_hash_table_remove_all (priv->channels);
+    }
 }
 
 /* ---------------------------------------------------------------------- */
