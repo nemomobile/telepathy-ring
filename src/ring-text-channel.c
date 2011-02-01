@@ -705,6 +705,7 @@ ring_text_channel_receive_deliver(RingTextChannel *self,
 
   tp_message_set_string(msg, 0, "sms-service-centre", sms_g_deliver_get_smsc(sms));
 
+#if nomore
   {
     char *mwi_type = NULL;
     guint mwi_line = 0, mwi_messages = 0;
@@ -722,7 +723,6 @@ ring_text_channel_receive_deliver(RingTextChannel *self,
     if (mwi_type) {
       msg_type = TP_CHANNEL_TEXT_MESSAGE_TYPE_NOTICE;
 
-#if nomore
       /* XXX: waiting for upstream tp-glib to get these */
       if (g_str_equal(mwi_type, "voice"))
         tp_message_set_string(msg, 0, NOKIA_VOICEMAIL_TYPE, "tel");
@@ -745,7 +745,6 @@ ring_text_channel_receive_deliver(RingTextChannel *self,
             mwi_discard);
         }
       }
-#endif
       g_free(mwi_type);
     }
     else {
@@ -754,6 +753,10 @@ ring_text_channel_receive_deliver(RingTextChannel *self,
 
     tp_message_set_uint32(msg, 0, "message-type", msg_type);
   }
+#endif
+
+  tp_message_set_uint32(msg, 0, "message-type",
+                        TP_CHANNEL_TEXT_MESSAGE_TYPE_NORMAL);
 
   gboolean string = FALSE, bytes = FALSE;
 
