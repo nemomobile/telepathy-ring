@@ -346,10 +346,6 @@ modem_service_class_init(ModemServiceClass *klass)
       DBUS_TYPE_G_OBJECT_PATH, G_TYPE_INVALID);
 
   modem_error_domain_prefix (0); /* Init errors */
-
-  modem_oface_quark_sim ();
-  modem_oface_quark_call_manager ();
-  modem_oface_quark_sms ();
 }
 
 /* ------------------------------------------------------------------------ */

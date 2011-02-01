@@ -66,8 +66,6 @@ GType modem_sms_service_get_type (void);
 /* ---------------------------------------------------------------------- */
 
 #define MODEM_OFACE_SMS "org.ofono.MessageManager"
-#define MODEM_OFACE_QUARK_SMS modem_oface_quark_sms ()
-GQuark modem_oface_quark_sms (void);
 
 typedef void ModemSMSConnectedHandler (ModemSMSService *, gpointer);
 typedef void ModemSMSDeliverHandler (ModemSMSService *,

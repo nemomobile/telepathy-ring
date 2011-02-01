@@ -103,9 +103,6 @@ GType modem_call_get_type (void);
 #define MODEM_OFACE_CALL_MANAGER "org.ofono.VoiceCallManager"
 #define MODEM_OFACE_CALL         "org.ofono.VoiceCall"
 
-#define MODEM_OFACE_QUARK_CALL_MANAGER modem_oface_quark_call_manager ()
-GQuark modem_oface_quark_call_manager (void);
-
 /**
  * Call properties
  */

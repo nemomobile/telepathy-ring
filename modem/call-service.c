@@ -90,22 +90,6 @@ struct _ModemCallServicePrivate
 
 /* ---------------------------------------------------------------------- */
 
-GQuark
-modem_oface_quark_call_manager (void)
-{
-  static gsize quark = 0;
-
-  if (g_once_init_enter (&quark))
-    {
-      GQuark q = g_quark_from_static_string (MODEM_OFACE_CALL_MANAGER);
-      g_once_init_leave (&quark, q);
-    }
-
-  return quark;
-}
-
-/* ---------------------------------------------------------------------- */
-
 static void modem_call_service_connect_to_instance (ModemCallService *self,
     ModemCall *ci);
 

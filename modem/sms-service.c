@@ -93,22 +93,6 @@ struct _ModemSMSServicePrivate
 
 /* ------------------------------------------------------------------------ */
 
-GQuark
-modem_oface_quark_sms (void)
-{
-  static gsize quark = 0;
-
-  if (g_once_init_enter (&quark))
-    {
-      GQuark q = g_quark_from_static_string (MODEM_OFACE_SMS);
-      g_once_init_leave (&quark, q);
-    }
-
-  return quark;
-}
-
-/* ------------------------------------------------------------------------ */
-
 static void modem_sms_incoming_deliver (ModemSMSService *self,
     SMSGDeliver *deliver);
 static void on_incoming_message (DBusGProxy *, char const *, GHashTable *, gpointer);

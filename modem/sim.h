@@ -66,9 +66,6 @@ GType modem_sim_service_get_type (void);
 /* ---------------------------------------------------------------------- */
 
 #define MODEM_OFACE_SIM "org.ofono.SimManager"
-#define MODEM_OFACE_QUARK_SIM modem_oface_quark_sim ()
-
-GQuark modem_oface_quark_sim (void);
 
 enum _ModemSIMState
 {

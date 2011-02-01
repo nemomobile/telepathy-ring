@@ -80,22 +80,6 @@ struct _ModemSIMServicePrivate
 };
 
 /* ------------------------------------------------------------------------ */
-
-GQuark
-modem_oface_quark_sim (void)
-{
-  static gsize quark = 0;
-
-  if (g_once_init_enter (&quark))
-    {
-      GQuark q = g_quark_from_static_string (MODEM_OFACE_SIM);
-      g_once_init_leave (&quark, q);
-    }
-
-  return quark;
-}
-
-/* ------------------------------------------------------------------------ */
 /* Local functions */
 
 /* ------------------------------------------------------------------------ */
