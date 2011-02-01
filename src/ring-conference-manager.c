@@ -373,10 +373,10 @@ conference_manager_create_channel (TpChannelManager *_self,
 {
   RingConferenceManager *self = RING_CONFERENCE_MANAGER (_self);
 
-  if (!ring_properties_satisfy (properties,
+  if (tp_asv_get_initial_members (properties) == NULL ||
+      !ring_properties_satisfy (properties,
           conference_channel_fixed_properties (),
-          conference_channel_allowed_properties) ||
-      tp_asv_get_initial_members (properties) == NULL)
+          conference_channel_allowed_properties))
     return FALSE;
 
   return conference_requestotron (self, request, properties);
@@ -389,10 +389,10 @@ conference_manager_ensure_channel (TpChannelManager *_self,
 {
   RingConferenceManager *self = RING_CONFERENCE_MANAGER (_self);
 
-  if (!ring_properties_satisfy (properties,
+  if (tp_asv_get_initial_members (properties) == NULL ||
+      !ring_properties_satisfy (properties,
           conference_channel_fixed_properties (),
-          conference_channel_allowed_properties) ||
-      tp_asv_get_initial_members (properties) == NULL)
+          conference_channel_allowed_properties))
     return FALSE;
 
   return conference_requestotron (self, request, properties);
