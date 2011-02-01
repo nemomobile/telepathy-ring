@@ -752,8 +752,70 @@ modem_sms_request_send (ModemSMSService *self,
   return request;
 }
 
-/* ---------------------------------------------------------------------- */
-/* Handler interface */
+static gchar const *
+_modem_sms_is_valid_address (gchar const *address)
+{
+  size_t len;
 
-/* ---------------------------------------------------------------------- */
-/* Error handling */
+  if (address == NULL)
+    return "NULL";
+
+  if (address[0] == '+')
+    {
+      address++;
+    }
+
+  len = strspn (address, "0123456789");
+
+  if (address[len])
+    return "invalid character";
+
+  if (len == 0)
+    return "too short";
+
+  if (len > 20)
+    return "too long";
+
+  return NULL;
+}
+
+/** Return TRUE if @a address is a valid SMS address.
+ *
+ * A valid SMS address is a phone number with at most 20 digits either in
+ * national or in international format (starting with +).
+ *
+ * @param address - ISDN address of address
+ *
+ * @retval TRUE - address is a valid SMS address
+ * @retval FALSE - address is NULL, does not contain valid phone number, or it
+ * is too long.
+ */
+gboolean
+modem_sms_is_valid_address (gchar const *address)
+{
+  return !_modem_sms_is_valid_address (address);
+}
+
+/** Validate a SMS address @a address.
+ *
+ * A valid SMS address is a phone number with at most 20 digits either
+ * in national or in international format (starting with +).
+ *
+ * @param address - ISDN address of address
+ * @param error - return value for GError describing the validation error
+ *
+ * @retval TRUE - address is a valid SMS address
+ * @retval FALSE - address is NULL, does not contain valid phone number, or it
+ * is too long.
+ */
+gboolean
+modem_sms_validate_address (gchar const *address, GError **error)
+{
+  gchar const *reason = _modem_sms_is_valid_address (address);
+
+  if (reason)
+    g_set_error (error, MODEM_SMS_ERRORS, MODEM_SMS_ERROR_INVALID_PARAMETER,
+      "Invalid SMS address \"%s\": %s", address, reason);
+
+  return !reason;
+}

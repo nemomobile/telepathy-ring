@@ -115,6 +115,9 @@ ModemRequest *modem_sms_request_send (ModemSMSService *self,
 
 /* ---------------------------------------------------------------------- */
 
+gboolean modem_sms_is_valid_address (gchar const *address);
+gboolean modem_sms_validate_address (gchar const *address, GError **error);
+
 G_END_DECLS
 
 #endif /* #ifndef _MODEM_SMS_SERVICE_H_*/
