@@ -92,11 +92,10 @@ AC_CHECK_LIB([mlocknice], [mln_lock_data],,
 
 AC_SUBST([testdir],'${libdir}/tests/telepathy-ring-tests')
 AC_SUBST([includemodemdir],'${includedir}/modem-glib')
-AC_SUBST([includesmsdir],'${includedir}/sms-glib')
 
 AC_CONFIG_FILES([Makefile])
 AC_CONFIG_FILES([modem/Makefile modem/tests/Makefile \
 	         src/Makefile tests/Makefile docs/Makefile \
-		 scripts/Makefile sms-glib/Makefile \
+		 scripts/Makefile \
                  tools/Makefile ring-extensions/Makefile])
 AC_OUTPUT

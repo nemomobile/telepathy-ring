@@ -80,10 +80,3 @@ CLEANFILES = ${BUILT_SOURCES}
 # -----------------------------------------------------------------------------
 
 # include Makefile-tests.am
-
-noinst_LTLIBRARIES += libtest-modem-sms.la
-
-libtest_modem_sms_la_SOURCES = \
-	$(nodist_libmodem_sms_glib_la_SOURCES)
-
-libtest_modem_sms_la_LIBADD = libmodem-glib.la

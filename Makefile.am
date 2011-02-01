@@ -8,10 +8,10 @@
 
 ACLOCAL_AMFLAGS = -I m4
 
-SUBDIRS = tests ring-extensions sms-glib modem src docs tools scripts
+SUBDIRS = tests ring-extensions modem src docs tools scripts
 
 TAGS:
-	find src sms-glib modem ring-extensions -name '*.[hc]' | \
+	find src modem ring-extensions -name '*.[hc]' | \
 	xargs etags
 
 EXTRA_DIST = \
