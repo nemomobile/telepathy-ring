@@ -44,12 +44,14 @@
 #include <modem/errors.h>
 #include <modem/call.h>
 
+#if nomore
 #include <sms-glib/enums.h>
 #include <sms-glib/errors.h>
 #include <sms-glib/submit.h>
 #include <sms-glib/message.h>
 #include <sms-glib/deliver.h>
 #include <sms-glib/utils.h>
+#endif
 
 #include <string.h>
 
@@ -100,10 +102,11 @@ struct _RingTextChannelPrivate
 static void ring_text_base_channel_class_init (RingTextChannelClass *klass);
 static void ring_text_channel_close (TpBaseChannel *base);
 
+#if nomore
 static void ring_text_channel_set_receive_timestamps(RingTextChannel *self,
   TpMessage *msg,
   gpointer sms);
-
+#endif
 /* Sending */
 
 static void modem_sms_request_send_reply(ModemSMSService *,
@@ -179,7 +182,7 @@ ring_text_channel_constructed(GObject *object)
   target_id = tp_handle_inspect (repo, target);
   priv->destination = ring_text_channel_destination (target_id);
 
-  valid = sms_g_is_valid_sms_address (priv->destination);
+  valid = modem_sms_is_valid_address (priv->destination);
   if (!valid)
     /* Invalid destination - allow channel creation, but refuse sending */
     DEBUG ("Destination '%s' invalid", priv->destination);
@@ -670,6 +673,8 @@ modem_sms_request_send_reply(ModemSMSService *service,
 /* ------------------------------------------------------------------------ */
 /* RingTextChannel interface */
 
+#if nomore
+
 gboolean
 ring_text_channel_can_handle(gpointer sms)
 {
@@ -806,6 +811,8 @@ ring_text_channel_receive_deliver(RingTextChannel *self,
   DEBUG("message mixin received with id=%u", id);
 }
 
+#endif
+
 static void
 ring_text_channel_delivery_report(RingTextChannel *self,
   char const *token,
@@ -831,6 +838,7 @@ ring_text_channel_delivery_report(RingTextChannel *self,
     tp_message_set_uint32(msg, 0, "delivery-status", delivery_status);
 
   if (sr) {
+#if nomore
     char const *message_token = sms_g_status_report_get_message_token(sr);
     guint8 failure_cause = sms_g_status_report_get_status(sr);
 
@@ -839,6 +847,7 @@ ring_text_channel_delivery_report(RingTextChannel *self,
     tp_message_set_uint32(msg, 0, "sms-failure-cause", failure_cause);
 
     ring_text_channel_set_receive_timestamps(self, msg, sr);
+#endif
   }
   else {
     GTimeVal gt[1];
@@ -881,6 +890,7 @@ ring_text_channel_delivery_report(RingTextChannel *self,
   DEBUG("delivery report received with id=%u", id);
 }
 
+#if nomore
 
 static void
 ring_text_channel_set_receive_timestamps(RingTextChannel *self,
@@ -913,6 +923,7 @@ ring_text_channel_set_receive_timestamps(RingTextChannel *self,
   g_object_set(sms, "time-delivered", now, NULL);
 }
 
+#endif
 
 void
 ring_text_channel_outgoing_sms_complete(RingTextChannel *self,
@@ -940,6 +951,7 @@ ring_text_channel_outgoing_sms_error(RingTextChannel *self,
   ring_text_channel_delivery_report(self, token, delivery_status, NULL, error);
 }
 
+#if nomore
 
 void
 ring_text_channel_receive_status_report(RingTextChannel *self,
@@ -963,3 +975,5 @@ ring_text_channel_receive_status_report(RingTextChannel *self,
 
   ring_text_channel_delivery_report(self, token, delivery_status, sr, NULL);
 }
+
+#endif

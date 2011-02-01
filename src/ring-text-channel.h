@@ -27,9 +27,6 @@
 #include <telepathy-glib/message-mixin.h>
 #include <telepathy-glib/base-channel.h>
 
-#include <sms-glib/deliver.h>
-#include <sms-glib/status-report.h>
-
 G_BEGIN_DECLS
 
 typedef struct _RingTextChannel RingTextChannel;
@@ -69,10 +66,14 @@ GType ring_text_channel_get_type (void);
 
 char *ring_text_channel_destination(char const *inspection);
 
+#if nomore
+
 /* FIXME: the gpointers are temporary hacks */
 gboolean ring_text_channel_can_handle(gpointer);
 void ring_text_channel_receive_deliver(RingTextChannel *, gpointer);
 void ring_text_channel_receive_status_report(RingTextChannel *, gpointer);
+
+#endif
 
 void ring_text_channel_outgoing_sms_complete(RingTextChannel *,
   char const *token);
