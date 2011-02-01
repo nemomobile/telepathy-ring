@@ -71,9 +71,17 @@ char *ring_text_channel_destination(char const *inspection);
 /* FIXME: the gpointers are temporary hacks */
 gboolean ring_text_channel_can_handle(gpointer);
 void ring_text_channel_receive_deliver(RingTextChannel *, gpointer);
+
 void ring_text_channel_receive_status_report(RingTextChannel *, gpointer);
 
 #endif
+
+void ring_text_channel_receive_text (RingTextChannel *self,
+    gchar const *message_token,
+    gchar const *message,
+    gint64 message_sent,
+    gint64 message_received,
+    guint32 sms_class);
 
 void ring_text_channel_outgoing_sms_complete(RingTextChannel *,
   char const *token);

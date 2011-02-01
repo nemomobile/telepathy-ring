@@ -813,6 +813,46 @@ ring_text_channel_receive_deliver(RingTextChannel *self,
 
 #endif
 
+void
+ring_text_channel_receive_text (RingTextChannel *self,
+                                gchar const *message_token,
+                                gchar const *message,
+                                gint64 message_sent,
+                                gint64 message_received,
+                                guint32 sms_class)
+{
+  TpBaseChannel *base = TP_BASE_CHANNEL (self);
+  TpBaseConnection *connection = tp_base_channel_get_connection (base);
+  TpMessage *msg;
+  guint id;
+
+  DEBUG("enter");
+
+  msg = tp_message_new (connection, 2, 2);
+
+  tp_message_set_handle (msg, 0, "message-sender",
+      TP_HANDLE_TYPE_CONTACT, tp_base_channel_get_target_handle (base));
+  tp_message_set_string (msg, 0, "message-token", message_token);
+  tp_message_set_uint32 (msg, 0, "message-type",
+      TP_CHANNEL_TEXT_MESSAGE_TYPE_NORMAL);
+
+  tp_message_set_int64 (msg, 0, "message-sent", message_sent);
+  tp_message_set_int64 (msg, 0, "message-received", message_received);
+
+  if (0 <= sms_class && sms_class <= 3)
+    {
+      tp_message_set_uint32 (msg, 0, "sms-class", sms_class);
+    }
+
+  tp_message_set_string (msg, 1, "content-type", text_plain);
+  tp_message_set_string (msg, 1, "type", text_plain);
+  tp_message_set_string (msg, 1, "content", message);
+
+  id = tp_message_mixin_take_received ((GObject *) self, msg);
+
+  DEBUG("message mixin received with id=%u", id);
+}
+
 static void
 ring_text_channel_delivery_report(RingTextChannel *self,
   char const *token,
