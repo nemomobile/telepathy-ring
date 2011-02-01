@@ -814,22 +814,30 @@ void request_hold (TpSvcChannelInterfaceHold *iface,
   ModemCall *instance = self->call_instance;
 
   GError *error = NULL;
+  uint8_t state, next;
   ModemCallState expect;
 
   DEBUG ("(%u) on %s", hold, self->nick);
 
-  hold = hold != 0;
   if (hold)
-    expect = MODEM_CALL_STATE_ACTIVE;
+    {
+      expect = MODEM_CALL_STATE_ACTIVE;
+      state = TP_LOCAL_HOLD_STATE_HELD;
+      next = TP_LOCAL_HOLD_STATE_PENDING_HOLD;
+    }
   else
-    expect = MODEM_CALL_STATE_HELD;
+    {
+      expect = MODEM_CALL_STATE_HELD;
+      state = TP_LOCAL_HOLD_STATE_UNHELD;
+      next = TP_LOCAL_HOLD_STATE_PENDING_UNHOLD;
+    }
 
   if (instance == NULL)
     {
       g_set_error(&error, TP_ERRORS, TP_ERROR_DISCONNECTED,
           "Channel is not connected");
     }
-  else if (hold == priv->hold.state)
+  else if (state == priv->hold.state || next == priv->hold.state)
     {
       priv->hold.reason = TP_LOCAL_HOLD_STATE_REASON_REQUESTED;
       tp_svc_channel_interface_hold_return_from_request_hold(context);
@@ -852,14 +860,13 @@ void request_hold (TpSvcChannelInterfaceHold *iface,
 
       g_object_ref (self);
 
-      priv->control = modem_call_request_hold (instance, hold, response_to_hold, self);
+      priv->control = modem_call_request_hold (instance, hold,
+          response_to_hold, self);
       ring_media_channel_queue_request (self, priv->control);
 
-      priv->hold.requested = hold;
+      priv->hold.requested = state;
 
-      ring_update_hold (self,
-        hold ? TP_LOCAL_HOLD_STATE_PENDING_HOLD : TP_LOCAL_HOLD_STATE_PENDING_UNHOLD,
-        TP_LOCAL_HOLD_STATE_REASON_REQUESTED);
+      ring_update_hold (self, next, TP_LOCAL_HOLD_STATE_REASON_REQUESTED);
       return;
     }
 
