@@ -54,6 +54,8 @@
 #include <telepathy-glib/errors.h>
 #include <telepathy-glib/interfaces.h>
 
+#include <uuid/uuid.h>
+
 #include <string.h>
 
 static void channel_manager_iface_init(gpointer, gpointer);
@@ -94,6 +96,7 @@ struct _RingTextManagerPrivate
   guint sms_reduced_charset :1;
 
   struct {
+    gulong incoming_message, immediate_message;
 #if nomore
     gulong receiving_sms_deliver, receiving_sms_status_report;
     gulong outgoing_sms_complete, outgoing_sms_error;
@@ -151,6 +154,15 @@ static void ring_text_manager_receive_deliver(
 static void ring_text_manager_receive_status_report(
   RingTextManager *, SMSGStatusReport *);
 #endif
+
+static void on_incoming_message (ModemSMSService *,
+    gchar const *message,
+    GHashTable *info,
+    gpointer user_data);
+static void on_immediate_message (ModemSMSService *,
+    gchar const *message,
+    GHashTable *info,
+    gpointer user_data);
 
 /* ------------------------------------------------------------------------ */
 /* GObject interface */
@@ -347,10 +359,17 @@ ring_text_manager_is_connected (void const * _self)
 static void
 ring_text_manager_connected (RingTextManager *self)
 {
-#if nomore
   RingTextManagerPrivate *priv = self->priv;
   ModemSMSService *sms = priv->sms_service;
 
+  priv->signals.incoming_message =
+    modem_sms_connect_to_incoming_message (sms,
+        on_incoming_message, self);
+  priv->signals.immediate_message =
+    modem_sms_connect_to_immediate_message (sms,
+        on_immediate_message, self);
+
+#if nomore
   priv->signals.receiving_sms_deliver =
     modem_sms_connect_to_deliver (sms, on_sms_service_deliver, self);
 
@@ -737,6 +756,8 @@ get_text_channel(RingTextManager *self,
   TpHandle handle, initiator;
   GError *error = NULL;
 
+  g_return_val_if_fail (address != NULL, NULL);
+
   repo = tp_base_connection_get_handles(
     (TpBaseConnection *)self->priv->connection, TP_HANDLE_TYPE_CONTACT);
 
@@ -883,6 +904,87 @@ ring_text_manager_receive_status_report(RingTextManager *self,
     ring_text_channel_receive_status_report(channel, status_report);
 }
 #endif
+
+static char *
+generate_token (void)
+{
+  char *token;
+  uuid_t uu;
+
+  token = g_new (gchar, 37);
+  uuid_generate_random (uu);
+  uuid_unparse_lower (uu, token);
+
+  return token;
+}
+
+static void
+receive_text (RingTextManager *self,
+              RingTextChannel *channel,
+              gchar const *message,
+              GHashTable *info,
+              guint32 sms_class)
+{
+  char const *sent;
+  char *token;
+  gint64 message_sent;
+  gint64 message_received = (gint64) time(NULL);
+
+  sent = tp_asv_get_string (info, "SentTime");
+  if (sent)
+    message_sent = modem_sms_parse_time (sent);
+  else
+    message_sent = message_received;
+
+  token = generate_token ();
+  ring_text_channel_receive_text (channel,
+      token, message, message_sent, message_received, sms_class);
+  g_free (token);
+}
+
+static void
+on_incoming_message (ModemSMSService *sms,
+                     gchar const *message,
+                     GHashTable *info,
+                     gpointer _self)
+{
+  RingTextManager *self = RING_TEXT_MANAGER (_self);
+  char const *sender;
+  RingTextChannel *channel;
+
+  g_return_if_fail (info != NULL);
+  g_return_if_fail (message != NULL);
+
+  sender = tp_asv_get_string (info, "Sender");
+  g_return_if_fail (sender != NULL);
+
+  channel = get_text_channel (self, sender, 0, 0);
+  g_return_if_fail (channel != NULL);
+
+  receive_text (self, channel, message, info, G_MAXUINT32);
+}
+
+static void
+on_immediate_message (ModemSMSService *sms,
+                      gchar const *message,
+                      GHashTable *info,
+                      gpointer _self)
+{
+  RingTextManager *self = RING_TEXT_MANAGER (_self);
+  char const *sender;
+  RingTextChannel *channel;
+
+  g_return_if_fail (info != NULL);
+  g_return_if_fail (message != NULL);
+
+  sender = tp_asv_get_string (info, "Sender");
+  g_return_if_fail (sender != NULL);
+
+  channel = get_text_channel (self, sender, 0, 0);
+  g_return_if_fail (channel != NULL);
+
+  receive_text (self, channel, message, info, 0);
+}
 
 /* ---------------------------------------------------------------------- */
 /* StoredMessages interface */
