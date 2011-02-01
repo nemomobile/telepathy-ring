@@ -24,9 +24,12 @@
 
 #include <glib-object.h>
 
+#if nomore
 #include <sms-glib/deliver.h>
 #include <sms-glib/status-report.h>
 #include <sms-glib/submit.h>
+#endif
+
 #include <modem/request.h>
 #include <modem/oface.h>
 
@@ -67,9 +70,11 @@ GType modem_sms_service_get_type (void);
 
 #define MODEM_OFACE_SMS "org.ofono.MessageManager"
 
+#if nomore
 typedef void ModemSMSConnectedHandler (ModemSMSService *, gpointer);
 typedef void ModemSMSDeliverHandler (ModemSMSService *,
     SMSGDeliver *, gpointer);
+#endif
 
 typedef void ModemSMSServiceReply (ModemSMSService *self,
   ModemRequest *request,
@@ -84,6 +89,7 @@ typedef void ModemSMSServiceSendReply (ModemSMSService *self,
 
 /* ---------------------------------------------------------------------- */
 
+#if nomore
 char const *modem_sms_service_property_name_by_ofono_name (char const *);
 
 gulong modem_sms_connect_to_connected (ModemSMSService *self,
@@ -93,6 +99,7 @@ gulong modem_sms_connect_to_connected (ModemSMSService *self,
 gulong modem_sms_connect_to_deliver (ModemSMSService *self,
   ModemSMSDeliverHandler *user_function,
   gpointer user_data);
+#endif
 
 guint64 modem_sms_service_time_connected (ModemSMSService const *self);
 
