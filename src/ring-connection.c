@@ -55,8 +55,6 @@
 #include "modem/call.h"
 #include "modem/sms.h"
 
-#include <sms-glib/utils.h>
-
 #include <dbus/dbus-glib.h>
 
 #include <stdio.h>
@@ -814,7 +812,7 @@ ring_normalize_contact (char const *input,
 
   s[j] = s[i];
 
-  if (modem_call_is_valid_address(s) || sms_g_is_valid_sms_address(s))
+  if (modem_call_is_valid_address (s) || modem_sms_is_valid_address (s))
     return s;
 
   if (g_utf8_strlen(input, -1) <= 11)
