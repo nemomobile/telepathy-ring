@@ -45,8 +45,6 @@
 #include "ring-param-spec.h"
 #include "ring-util.h"
 
-#include "sms-glib/deliver.h"
-
 #include "ring-extensions/ring-extensions.h"
 
 #include "modem/call.h"
