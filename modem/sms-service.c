@@ -56,6 +56,8 @@ G_DEFINE_TYPE (ModemSMSService, modem_sms_service, MODEM_TYPE_OFACE)
 /* Signals we emit */
 enum
 {
+  SIGNAL_INCOMING_MESSAGE,
+  SIGNAL_IMMEDIATE_MESSAGE,
 #if nomore
   SIGNAL_DELIVER,
   SIGNAL_OUTGOING_COMPLETE,
@@ -104,6 +106,7 @@ static void modem_sms_incoming_deliver (ModemSMSService *self,
 #endif
 
 static void on_incoming_message (DBusGProxy *, char const *, GHashTable *, gpointer);
+static void on_immediate_message (DBusGProxy *, char const *, GHashTable *, gpointer);
 static void on_manager_message_added (DBusGProxy *, char const *, GHashTable *,
     gpointer);
 static void on_manager_message_removed (DBusGProxy *, char const *, gpointer);
@@ -277,10 +280,7 @@ modem_sms_service_connect (ModemOface *_self)
     dbus_g_proxy_add_signal (proxy, (name), ##signature); \
     dbus_g_proxy_connect_signal (proxy, (name), G_CALLBACK (handler), self, NULL)
 
-      /* XXX: SMS class 0. Does Ofono actually need a separate
-       * signal for them instead of providing the class in the
-       * properties dict? */
-      CONNECT (on_incoming_message, "ImmediateMessage",
+      CONNECT (on_immediate_message, "ImmediateMessage",
           G_TYPE_STRING, MODEM_TYPE_DBUS_DICT, G_TYPE_INVALID);
 
       CONNECT (on_incoming_message, "IncomingMessage",
@@ -365,7 +365,7 @@ modem_sms_service_disconnect (ModemOface *_self)
       priv->signals = FALSE;
 
       dbus_g_proxy_disconnect_signal (proxy, "IncomingMessage",
-          G_CALLBACK (on_incoming_message), self);
+          G_CALLBACK (on_immediate_message), self);
       dbus_g_proxy_disconnect_signal (proxy, "ImmediateMessage",
           G_CALLBACK (on_incoming_message), self);
       dbus_g_proxy_disconnect_signal (proxy, "MessageAdded",
@@ -441,6 +441,26 @@ modem_sms_service_class_init (ModemSMSServiceClass *klass)
           G_PARAM_READWRITE | G_PARAM_CONSTRUCT |
           G_PARAM_STATIC_STRINGS));
 
+  signals[SIGNAL_IMMEDIATE_MESSAGE] =
+    g_signal_new ("immediate-message",
+        G_OBJECT_CLASS_TYPE (klass),
+        G_SIGNAL_RUN_LAST | G_SIGNAL_DETAILED,
+        0,
+        NULL, NULL,
+        _modem__marshal_VOID__STRING_BOXED,
+        G_TYPE_NONE, 2,
+        G_TYPE_STRING, G_TYPE_HASH_TABLE);
+
+  signals[SIGNAL_INCOMING_MESSAGE] =
+    g_signal_new ("incoming-message",
+        G_OBJECT_CLASS_TYPE (klass),
+        G_SIGNAL_RUN_LAST | G_SIGNAL_DETAILED,
+        0,
+        NULL, NULL,
+        _modem__marshal_VOID__STRING_BOXED,
+        G_TYPE_NONE, 2,
+        G_TYPE_STRING, G_TYPE_HASH_TABLE);
+
 #if nomore
   signals[SIGNAL_DELIVER] =
     g_signal_new ("deliver",
@@ -508,6 +528,24 @@ modem_sms_connect_to_deliver (ModemSMSService *self,
 }
 #endif
 
+gulong
+modem_sms_connect_to_incoming_message (ModemSMSService *self,
+                                       ModemSMSMessageHandler *handler,
+                                       gpointer data)
+{
+  return g_signal_connect (self, "incoming-message",
+      G_CALLBACK (handler), data);
+}
+
+gulong
+modem_sms_connect_to_immediate_message (ModemSMSService *self,
+                                        ModemSMSMessageHandler *handler,
+                                        gpointer data)
+{
+  return g_signal_connect (self, "immediate-message",
+      G_CALLBACK (handler), data);
+}
+
 /* ------------------------------------------------------------------------- */
 /* modem_sms_service interface */
 
@@ -519,6 +557,18 @@ modem_sms_service_time_connected (ModemSMSService const *self)
   else
     return 0;
 }
+
+gint64
+modem_sms_parse_time (gchar const *s)
+{
+  struct tm tm = { };
+  char *rest;
+
+  rest = strptime (s, "%Y-%m-%dT%H:%M:%S%z", &tm);
+
+  return (gint64) mktime (&tm);
+}
+
 
 /* ------------------------------------------------------------------------- */
 
@@ -577,17 +627,6 @@ dump_message_dict (GHashTable *dict)
       DEBUG ("%s = %s", key, s);
       g_free (s);
     }
-}
-
-static void
-on_incoming_message (DBusGProxy *proxy,
-                     char const *message,
-                     GHashTable *dict,
-                     gpointer _self)
-{
-  DEBUG ("message = \"%s\"", message);
-
-  dump_message_dict (dict);
 }
 
 #if nomore
@@ -742,6 +781,45 @@ modem_sms_incoming_status_report (ModemSMSService *self,
     g_signal_emit (self, signals[SIGNAL_STATUS_REPORT], 0, sr);
 }
 #endif
+
+static void
+on_immediate_message (DBusGProxy *proxy,
+                      char const *message,
+                      GHashTable *dict,
+                      gpointer _self)
+{
+  ModemSMSService *self = MODEM_SMS_SERVICE (_self);
+  ModemSMSServicePrivate *priv = self->priv;
+
+  if (!priv->connected)
+    return;
+
+  DEBUG ("immediate = \"%50s\"%s", message, strlen (message) > 50 ? "..." : "");
+  dump_message_dict (dict);
+
+  g_signal_emit (self, signals[SIGNAL_IMMEDIATE_MESSAGE], 0,
+      message, dict);
+}
+
+static void
+on_incoming_message (DBusGProxy *proxy,
+                     char const *message,
+                     GHashTable *dict,
+                     gpointer _self)
+{
+  ModemSMSService *self = MODEM_SMS_SERVICE (_self);
+  ModemSMSServicePrivate *priv = self->priv;
+
+  if (!priv->connected)
+    return;
+
+  DEBUG ("incoming = \"%50s\"%s", message, strlen (message) > 50 ? "..." : "");
+  dump_message_dict (dict);
+
+  g_signal_emit (self, signals[SIGNAL_INCOMING_MESSAGE], 0,
+      message, dict);
+}
+
 
 /* ---------------------------------------------------------------------- */
 /* Sending */

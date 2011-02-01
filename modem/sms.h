@@ -76,6 +76,11 @@ typedef void ModemSMSDeliverHandler (ModemSMSService *,
     SMSGDeliver *, gpointer);
 #endif
 
+typedef void ModemSMSMessageHandler (ModemSMSService *self,
+    gchar const *message,
+    GHashTable *info,
+    gpointer user_data);
+
 typedef void ModemSMSServiceReply (ModemSMSService *self,
   ModemRequest *request,
   GError const *error,
@@ -101,7 +106,17 @@ gulong modem_sms_connect_to_deliver (ModemSMSService *self,
   gpointer user_data);
 #endif
 
+gulong modem_sms_connect_to_incoming_message (ModemSMSService *self,
+    ModemSMSMessageHandler *handler,
+    gpointer data);
+
+gulong modem_sms_connect_to_immediate_message (ModemSMSService *self,
+    ModemSMSMessageHandler *handler,
+    gpointer data);
+
 guint64 modem_sms_service_time_connected (ModemSMSService const *self);
+
+gint64 modem_sms_parse_time (gchar const *);
 
 /* ---------------------------------------------------------------------- */
 
