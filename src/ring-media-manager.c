@@ -98,6 +98,10 @@ static void ring_media_manager_connected (RingMediaManager *self);
 
 static void ring_media_manager_disconnect(RingMediaManager *self);
 
+static void on_connection_status_changed (TpBaseConnection *conn,
+    guint status, guint reason,
+    RingMediaManager *self);
+
 static gboolean ring_media_requestotron(RingMediaManager *,
   gpointer,
   GHashTable *,
@@ -175,6 +179,7 @@ struct _RingMediaManagerPrivate
   struct {
     gulong incoming, created, removed;
     gulong emergency_numbers, joined, user_connection;
+    gulong status_changed;
   } signals;
 
   unsigned dispose_has_run:1, :0;
@@ -195,6 +200,12 @@ ring_media_manager_init(RingMediaManager *self)
 static void
 ring_media_manager_constructed(GObject *object)
 {
+  RingMediaManager *self = RING_MEDIA_MANAGER(object);
+  RingMediaManagerPrivate *priv = self->priv;
+
+  priv->signals.status_changed = g_signal_connect (priv->connection,
+      "status-changed", (GCallback) on_connection_status_changed, self);
+
   if (G_OBJECT_CLASS(ring_media_manager_parent_class)->constructed)
     G_OBJECT_CLASS(ring_media_manager_parent_class)->constructed(object);
 }
@@ -208,6 +219,8 @@ ring_media_manager_dispose(GObject *object)
   if (priv->dispose_has_run)
     return;
   priv->dispose_has_run = TRUE;
+
+  ring_signal_disconnect (priv->connection, &priv->signals.status_changed);
 
   g_object_set (object, "call-service", NULL, NULL);
   g_object_run_dispose (G_OBJECT (priv->tones));
@@ -387,6 +400,20 @@ static gboolean
 ring_media_manager_is_connected (RingMediaManager *self)
 {
   return RING_IS_MEDIA_MANAGER (self) && self->priv->call_service != NULL;
+}
+
+static void
+on_connection_status_changed (TpBaseConnection *conn,
+                              guint status,
+                              guint reason,
+                              RingMediaManager *self)
+{
+  RingMediaManagerPrivate *priv = self->priv;
+
+  if (status == TP_CONNECTION_STATUS_DISCONNECTED)
+    {
+      g_hash_table_remove_all (priv->channels);
+    }
 }
 
 /* ---------------------------------------------------------------------- */
