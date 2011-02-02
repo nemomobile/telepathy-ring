@@ -891,8 +891,16 @@ response_to_hold (ModemCall *ci,
 
   if (error && priv->hold.requested != -1)
     {
-      ring_update_hold (self,
-          priv->hold.requested ? TP_LOCAL_HOLD_STATE_UNHELD : TP_LOCAL_HOLD_STATE_HELD,
+      uint8_t next;
+
+      DEBUG ("%s: %s", self->nick, error->message);
+
+      if (priv->hold.requested)
+        next = TP_LOCAL_HOLD_STATE_UNHELD;
+      else
+        next = TP_LOCAL_HOLD_STATE_HELD;
+
+      ring_update_hold (self, next,
           TP_LOCAL_HOLD_STATE_REASON_RESOURCE_NOT_AVAILABLE);
 
       priv->hold.requested = -1;
