@@ -1372,6 +1372,17 @@ ring_call_channel_remote_pending(RingCallChannel *self,
   return done;
 }
 
+void
+reply_to_answer (ModemCall *call_instance,
+                 ModemRequest *request,
+                 GError *error,
+                 gpointer user_data)
+{
+  DEBUG ("%s: %s", (char *)user_data, error ? error->message : "ok");
+
+  g_free (user_data);
+}
+
 gboolean
 ring_call_channel_accept_pending(GObject *iface,
   TpHandle handle,
@@ -1400,7 +1411,8 @@ ring_call_channel_accept_pending(GObject *iface,
   if (!self->priv->accepted)
     self->priv->accepted = g_strdup(message ? message : "Call accepted");
 
-  modem_call_request_answer(self->base.call_instance, NULL, NULL);
+  modem_call_request_answer(self->base.call_instance, reply_to_answer,
+      g_strdup(self->base.nick));
 
   return TRUE;
 }
