@@ -118,6 +118,8 @@ static void on_connection_status_changed (TpBaseConnection *conn,
     guint status, guint reason,
     RingTextManager *self);
 
+static void foreach_dispose (gpointer, gpointer, gpointer);
+
 static gboolean ring_text_requestotron(RingTextManager *self,
   gpointer request,
   GHashTable *properties,
@@ -133,7 +135,6 @@ static RingTextChannel *ring_text_manager_request(RingTextManager *self,
 static gboolean tp_asv_get_sms_channel (GHashTable *properties);
 
 static void on_text_channel_closed(RingTextChannel *, RingTextManager *);
-static void text_channel_removed (gpointer _channel);
 
 #if nomore
 static void on_sms_service_deliver(ModemSMSService *,
@@ -187,7 +188,7 @@ ring_text_manager_init (RingTextManager *self)
                RingTextManagerPrivate);
 
   self->priv->channels = g_hash_table_new_full (g_str_hash, g_str_equal,
-      NULL, text_channel_removed);
+      NULL, g_object_unref);
 }
 
 static void
@@ -196,11 +197,12 @@ ring_text_manager_dispose(GObject *object)
   RingTextManager *self = RING_TEXT_MANAGER(object);
   RingTextManagerPrivate *priv = self->priv;
 
+  ring_signal_disconnect (priv->connection, &priv->signals.status_changed);
+
   ring_text_manager_disconnect (self);
 
+  g_hash_table_foreach (priv->channels, foreach_dispose, NULL);
   g_hash_table_remove_all (priv->channels);
-
-  ring_signal_disconnect (priv->connection, &priv->signals.status_changed);
 
   G_OBJECT_CLASS(ring_text_manager_parent_class)->dispose(object);
 }
@@ -411,11 +413,21 @@ on_connection_status_changed (TpBaseConnection *conn,
                               guint reason,
                               RingTextManager *self)
 {
-  RingTextManagerPrivate *priv = self->priv;
-
   if (status == TP_CONNECTION_STATUS_DISCONNECTED)
     {
-      g_hash_table_remove_all (priv->channels);
+      ring_text_manager_dispose (G_OBJECT (self));
+    }
+}
+
+static void
+foreach_dispose (gpointer key,
+                 gpointer _channel,
+                 gpointer user_data)
+{
+  /* Ensure "closed" has been emitted */
+  if (!tp_base_channel_is_destroyed (_channel))
+    {
+      g_object_run_dispose (_channel);
     }
 }
 
@@ -694,17 +706,6 @@ ring_text_manager_request(RingTextManager *self,
   g_slist_free(requests);
 
   return channel;
-}
-
-static void
-text_channel_removed (gpointer _channel)
-{
-  /* Ensure "closed" has been emitted */
-  if (!tp_base_channel_is_destroyed (_channel))
-    {
-      g_object_run_dispose (_channel);
-    }
-  g_object_unref (_channel);
 }
 
 static void
