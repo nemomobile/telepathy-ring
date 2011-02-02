@@ -114,9 +114,9 @@ static gboolean ring_media_manager_outgoing_call(RingMediaManager *self,
   char const *emergency,
   gboolean initial_audio);
 
-static void media_channel_removed (gpointer _channel);
-
 static void on_media_channel_closed(GObject *chan, RingMediaManager *self);
+
+static void foreach_dispose (gpointer, gpointer, gpointer);
 
 static gpointer ring_media_manager_lookup_by_peer(RingMediaManager *self,
   TpHandle handle);
@@ -175,7 +175,7 @@ ring_media_manager_init(RingMediaManager *self)
     self, RING_TYPE_MEDIA_MANAGER, RingMediaManagerPrivate);
 
   self->priv->channels = g_hash_table_new_full (g_str_hash, g_str_equal,
-      NULL, media_channel_removed);
+      NULL, g_object_unref);
 
   self->priv->tones = g_object_new(MODEM_TYPE_TONES, NULL);
 }
@@ -205,7 +205,8 @@ ring_media_manager_dispose(GObject *object)
 
   ring_signal_disconnect (priv->connection, &priv->signals.status_changed);
 
-  g_object_set (object, "call-service", NULL, NULL);
+  ring_media_manager_disconnect (self);
+
   g_object_run_dispose (G_OBJECT (priv->tones));
 
   ((GObjectClass *) ring_media_manager_parent_class)->dispose(object);
@@ -372,6 +373,7 @@ ring_media_manager_disconnect(RingMediaManager *self)
   ring_signal_disconnect (priv->call_service, &priv->signals.user_connection);
   ring_signal_disconnect (priv->call_service, &priv->signals.emergency_numbers);
 
+  g_hash_table_foreach (priv->channels, foreach_dispose, NULL);
   g_hash_table_remove_all (priv->channels);
 
   if (priv->call_service)
@@ -391,11 +393,21 @@ on_connection_status_changed (TpBaseConnection *conn,
                               guint reason,
                               RingMediaManager *self)
 {
-  RingMediaManagerPrivate *priv = self->priv;
-
   if (status == TP_CONNECTION_STATUS_DISCONNECTED)
     {
-      g_hash_table_remove_all (priv->channels);
+      ring_media_manager_disconnect (self);
+    }
+}
+
+static void
+foreach_dispose (gpointer key,
+                 gpointer _channel,
+                 gpointer user_data)
+{
+  /* Ensure "closed" has been emitted */
+  if (!tp_base_channel_is_destroyed (_channel))
+    {
+      g_object_run_dispose (_channel);
     }
 }
 
@@ -897,17 +909,6 @@ on_media_channel_closed(GObject *chan, RingMediaManager *self)
     tp_channel_manager_emit_channel_closed (self, object_path);
     g_free (object_path);
   }
-}
-
-static void
-media_channel_removed (gpointer _channel)
-{
-  /* Ensure "closed" has been emitted */
-  if (!tp_base_channel_is_destroyed (_channel))
-    {
-      g_object_run_dispose (_channel);
-    }
-  g_object_unref (_channel);
 }
 
 /** Find a RingMediaChannel by object_path. */
