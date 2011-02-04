@@ -393,9 +393,12 @@ static void
 ring_text_manager_disconnect (RingTextManager *self)
 {
   RingTextManagerPrivate *priv = self->priv;
-#if nomore
   ModemSMSService *sms = priv->sms_service;
 
+  ring_signal_disconnect (sms, &priv->signals.incoming_message);
+  ring_signal_disconnect (sms, &priv->signals.immediate_message);
+
+#if nomore
   ring_signal_disconnect (sms, &priv->signals.receiving_sms_deliver);
   ring_signal_disconnect (sms, &priv->signals.outgoing_sms_complete);
   ring_signal_disconnect (sms, &priv->signals.outgoing_sms_error);
