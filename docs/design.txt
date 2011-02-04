@@ -1,12 +1,12 @@
 title: Design notes for Telepathy-Ring
-version: 2008-12-11
+version: 2011-02-04
 
 
 General
 -------
 
-Telepathy-ring is a Telepathy connection manager for GSM and similar circuit
-switched (CS) mobile telephony. Currently, it implements basic Connection
+Telepathy-ring is a Telepathy connection manager for GSM and similar Circuit
+Switched (CS) mobile telephony. Currently, it implements basic Connection
 Manager functionality with Contacts and Capabilities extensions,
 StreamedMedia channels for voice calls, and Text channel for SMS.
 
@@ -22,8 +22,8 @@ Use of CS Telephone
 -------------------
 
 Interface between the host and the CS TE (terminal equipment, in other
-words, actual phone or modem) is implemented using the "modem" libraries and
-D-Bus services provided by Ofono.
+words, actual phone or modem) is implemented using the "modem" libraries
+and D-Bus services provided by oFono.
 
 The modem library interface provides uniform interface towards the phone, be
 it physically and software-wise implemented in any way.
@@ -33,25 +33,24 @@ and SIM services provided by TE. The Call and SMS links are implemented
 using telepathy-glib ChannelManager interface.
 
 
-Short Overview of Telepathy Media Handling with CS Calls
---------------------------------------------------------
+Short Overview of Telepathy Media Handling with VoIP Calls
+----------------------------------------------------------
 
-The Telepathy framework has been originally developed with packet switched
-calls in mind. With packet switcing (in other words, VoIP) the call
-signaling and media connections use separate transport streams and they can
-be handled by separate software elements. For example, when a SIP VoIP call
-is set up, the phone application can starting up a separate media stream
-engine. The media stream engine takes care of the actual media transport and
-processing.
+The Telepathy framework has been originally developed with VoIP calls in
+mind. With VoIP. the call signaling and media connections use separate
+transport streams and they can be handled by separate software elements.
+For example, when a SIP VoIP call is set up, the phone application can
+start up a separate stream engine process. The stream engine takes care
+of the actual media transport and processing.
 
 The Telepathy.Channel.Type.StreamedMedia interface is used to represent the
-signaling connection of a PS call within the Telepathy connection manager.
+signaling connection of a VoIP call within the Telepathy connection manager.
 The channel provides additional media handler interfaces in order set up and
-negotiate the separate media connections for the PS call.
+negotiate the separate media connections for the VoIP call.
 
 When the call is set up, the new Telepathy.Channel instance is dispatched to
 the ChannelHandler responsible for the StreamedMedia channels. It is usually
-the actual PS call application, taking care of user interface and media
+the actual call UI application, taking care of user interface and media
 aspects. While the Telepathy framework provides a Stream Engine package for
 media processing, it does specify that a Telepathy client should use this
 particular media stream engine with standard interfaces, however.
@@ -65,8 +64,8 @@ session and emits them to the media engine. The Media.StreamHandler
 interface is then used to negotiate and set up the individual media
 stream(s).
 
-Usually, the PS call application itself do not use the above-mentioned media
-signaling interfaces directly. It uses Telepathy.Channel.Type.StreamedMedia
+The call UI application itself does not necessarily use the above-mentioned
+media signaling interfaces directly. It can use Channel.Type.StreamedMedia
 interface towards the call signaling and the Telepathy.StreamEngine
 interface towards the media stream engine. Unfortunately, that latter
 interface is not mandatory part of the Telepathy framework.
@@ -76,8 +75,9 @@ CS Calls and Media Handling in Telepathy
 ----------------------------------------
 
 The TelepathyChannel object can be used represent a circuit switched call
-connection. The optional interfaces like Interface.DTMF can be used as is
-with the CS call. However, the media handling is more problematic.
+connection. The optional interfaces like Channel.Interface.DTMF or
+Channel.Interface.Hold can be used as is with the CS call. However, the
+media handling is more problematic.
 
 The media within a circuit-switched call can be handled with different
 modes, depending on the processing it requires:
@@ -102,7 +102,7 @@ described above.
 The shared media mode looks pretty much like the VoIP case above: a separate
 media stream engine should be started and it negotiates the media transport
 connection using the media handler interfaces. However, the existing
-Media.StreamHandler interface is very PS-centric. Even the very basic
+Media.StreamHandler interface is very VoIP-centric. Even the very basic
 media semantics are quite different when handling a CS call.
 
 There are multiple options for handling the CS calls:
@@ -144,20 +144,20 @@ The discussion below follows these assumptions:
   - Telepathy.Channel.Type.StreamedMedia (as is)
   - Telepathy.Channel.Interface.Group (accepting or rejecting calls)
   - Telepathy.Channel.Interface.DTMF (sending or receiving DTMF tones)
+  - Telepathy.Channel.Interface.Hold (placing call on hold or retrieving it)
 
-There is no Telepathy.Channel.Interface.CSMediaSignaling.
+There is no Telepathy.Channel.Interface.MediaSignaling.
 
 
 Outbound calls
 --------------
-- client binds remote remote telephone number to a handle (bob)
-- client requests a Channel.Type.StreamedMedia with remote handle (bob) using the
-  Telepathy.Connection.RequestChannel() method
+- client requests a Channel.Type.StreamedMedia with target id (dialed
+  telephone number) using the Connection.Requests.CreateChannel() method
     - RingCallChannel object (rc) is created
     - RingConnection emits NewChannel with ringchannel
     - emit MembersChanged:
       - selfhandle is added to current members
-      - handle (bob) is added to the list of remote pending members
+      - handle for dialed number is added to the list of remote pending members
 - client requests channel to set up media streams to remote handle with
   Telepathy.Channel.Type.StreamedMedia.RequestStreams() method
     - RingCallChannel calls modem_call_request_dial() (org.ofono.VoiceCallManager.Dial())
