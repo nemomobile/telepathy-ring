@@ -1,5 +1,6 @@
 release 2.1.3
 	BMC#12164, 12932: emitting correct message type
+	Added manual page, updated documentation
 	Not using sms-glib
 	Add manager for Conference channels
 	Fix problems closing channels when disconnecting
