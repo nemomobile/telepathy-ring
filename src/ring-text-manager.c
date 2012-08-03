@@ -480,6 +480,7 @@ static char const * const ring_text_channel_fixed_properties_list[] =
 static char const * const ring_text_channel_allowed_properties[] =
 {
   TP_IFACE_CHANNEL ".TargetHandle",
+  TP_IFACE_CHANNEL ".TargetID",
 #if HAVE_TP_SMS_CHANNEL
   TP_IFACE_CHANNEL_INTERFACE_SMS ".SMSChannel",
 #endif
