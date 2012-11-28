@@ -16,7 +16,7 @@ AM_CFLAGS = $(ERROR_CFLAGS) @GLIB_CFLAGS@ @DBUS_CFLAGS@ @TP_CFLAGS@ \
 
 INCLUDES = -I$(top_srcdir) -I$(top_srcdir)/modem
 
-AM_LDFLAGS =
+AM_LDFLAGS = -static
 
 LIBADD = @TP_LIBS@ @DBUS_LIBS@ @GLIB_LIBS@ @UUID_LIBS@
 
