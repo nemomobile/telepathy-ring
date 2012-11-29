@@ -11,7 +11,6 @@ AC_PROG_CC
 AC_PROG_CC_STDC
 
 dnl Not yet
-AC_DISABLE_SHARED
 AM_PROG_LIBTOOL
 
 dnl decide on error flags
@@ -31,6 +30,31 @@ AC_ARG_ENABLE(debug,
 
 if test x$enable_debug = xyes; then
   AC_DEFINE([ENABLE_DEBUG], [1], [Enable debug code])
+fi
+
+AC_ARG_ENABLE(mc-account-plugin,
+              AS_HELP_STRING([--enable-mc-account-plugin=@<:@no/yes/auto@:>@],
+                             [build MC account plugin]), , enable_mc_account_plugin=auto)
+
+if test "x$enable_mc_account_plugin" != "xno"; then
+    PKG_CHECK_MODULES(MCP,
+        [
+            mission-control-plugins
+        ], have_mcp="yes", have_mcp="no")
+
+    AC_MSG_CHECKING([Mission Control plugins dir])
+    MISSION_CONTROL_PLUGINS_DIR=${libdir}/mission-control-plugins.`pkg-config --variable=MCP_ABI_VERSION mission-control-plugins`
+
+    AC_MSG_RESULT([$MISSION_CONTROL_PLUGINS_DIR])
+    AC_SUBST(MISSION_CONTROL_PLUGINS_DIR)
+else
+    have_mcp=no
+fi
+
+if test "x$enable_mc_account_plugin" = "xyes" -a "x$have_mcp" != "xyes"; then
+    AC_MSG_ERROR([Could not find mission-control plugin dependencies:
+
+$MCP_PKG_ERRORS])
 fi
 
 AC_HEADER_STDC
@@ -97,5 +121,6 @@ AC_CONFIG_FILES([Makefile])
 AC_CONFIG_FILES([modem/Makefile modem/tests/Makefile \
 	         src/Makefile tests/Makefile docs/Makefile \
 		 scripts/Makefile \
-                 tools/Makefile ring-extensions/Makefile])
+                 tools/Makefile ring-extensions/Makefile \
+                 mc-plugin/Makefile])
 AC_OUTPUT

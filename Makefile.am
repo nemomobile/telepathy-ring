@@ -8,7 +8,7 @@
 
 ACLOCAL_AMFLAGS = -I m4
 
-SUBDIRS = tests ring-extensions modem src docs tools scripts
+SUBDIRS = tests ring-extensions modem src docs tools scripts mc-plugin
 
 TAGS:
 	find src modem ring-extensions -name '*.[hc]' | \
