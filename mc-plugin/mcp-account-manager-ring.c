@@ -62,6 +62,7 @@ static void mcp_account_manager_ring_init(McpAccountManagerRing *self)
     g_hash_table_insert(self->priv->params, g_strdup("DisplayName"), g_strdup("Cellular"));
     g_hash_table_insert(self->priv->params, g_strdup("Enabled"), g_strdup("true"));
     g_hash_table_insert(self->priv->params, g_strdup("ConnectAutomatically"), g_strdup("true"));
+    g_hash_table_insert(self->priv->params, g_strdup("always_dispatch"), g_strdup("true"));
 }
 
 static void mcp_account_manager_ring_class_init(McpAccountManagerRingClass *klass)
