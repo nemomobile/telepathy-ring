@@ -1,3 +1,6 @@
+release 2.2.1
+	Added always_dispatch flag to mcp account
+
 release 2.2.0
 	Added mission-control plugin
 
