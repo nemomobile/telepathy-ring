@@ -12,3 +12,5 @@ libtestcommon_la_SOURCES = \
 tools_dir = $(top_srcdir)/tools
 
 MOSTLYCLEANFILES = $(BUILT_SOURCES)
+
+test_DATA = tests.xml
