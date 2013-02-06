@@ -114,7 +114,7 @@ AC_SEARCH_LIBS(pthread_mutex_trylock, pthread,,
 AC_CHECK_LIB([mlocknice], [mln_lock_data],,
   AC_MSG_WARN([Library mlocknice not found]))
 
-AC_SUBST([testdir],'${libdir}/tests/telepathy-ring-tests')
+AC_SUBST([testdir],'/opt/tests/telepathy-ring')
 AC_SUBST([includemodemdir],'${includedir}/modem-glib')
 
 AC_CONFIG_FILES([Makefile])
