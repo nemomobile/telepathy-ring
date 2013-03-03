@@ -3,6 +3,9 @@ tools_dir = $(top_srcdir)/tools
 EXTRA_DIST = all.xml.in $(EXT_IFACES)
 
 EXT_IFACES = \
+    $(srcdir)/Call_Content.xml \
+    $(srcdir)/Call_Stream.xml \
+    $(srcdir)/Channel_Type_Call.xml \
     $(srcdir)/Channel_Future.xml \
     $(srcdir)/Channel_Interface_Splittable.xml \
     $(srcdir)/Channel_Interface_Mergeable_Conference.xml
