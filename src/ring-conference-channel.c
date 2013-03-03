@@ -101,7 +101,7 @@ struct _RingConferenceChannelPrivate
     gboolean requested;
   } hold;
 
-  unsigned streams_created:1, conf_created:1, hangup:1, closing:1, disposed:1, :0;
+  unsigned streams_created:1, conf_created:1, hangup:1, closing:1, closed:1, disposed:1, :0;
 };
 
 /* properties */
@@ -109,7 +109,11 @@ enum
 {
   PROP_NONE,
 
+  /* telepathy-glib properties */
+  PROP_CHANNEL_PROPERTIES,
+
   /* o.f.T.Channel.Interfaces */
+  PROP_INTERFACES,
   PROP_INITIAL_CHANNELS,
   PROP_CHANNELS,
 
@@ -140,8 +144,7 @@ static gboolean ring_conference_channel_remove_member_with_reason(
 static GPtrArray *ring_conference_get_channels(
   RingConferenceChannel const *self);
 
-static void ring_conference_channel_fill_immutable_properties(TpBaseChannel *base,
-  GHashTable *props);
+static GHashTable* ring_conference_channel_properties(RingConferenceChannel *self);
 
 static void ring_conference_channel_emit_channel_merged(
   RingConferenceChannel *channel,
@@ -163,7 +166,7 @@ static gboolean ring_conference_channel_create_streams(RingConferenceChannel *_s
 /* GObject interface */
 
 G_DEFINE_TYPE_WITH_CODE(
-  RingConferenceChannel, ring_conference_channel, TP_TYPE_BASE_CHANNEL,
+  RingConferenceChannel, ring_conference_channel, RING_TYPE_MEDIA_CHANNEL,
   G_IMPLEMENT_INTERFACE(TP_TYPE_SVC_DBUS_PROPERTIES,
     tp_dbus_properties_mixin_iface_init);
   G_IMPLEMENT_INTERFACE(TP_TYPE_SVC_CHANNEL_INTERFACE_DTMF,
@@ -242,11 +245,8 @@ modem_call_service_join_reply (ModemCallService *service,
   context = modem_request_steal_data(request, "tp-request");
 
   if (!error) {
-    RingConnection *conn = RING_CONNECTION (
-        tp_base_channel_get_connection (TP_BASE_CHANNEL (self)));
-
     member_path = modem_request_get_data(request, "member-object-path");
-    member = ring_connection_lookup_channel(conn, member_path);
+    member = ring_connection_lookup_channel(self->base.connection, member_path);
 
     if (ring_conference_channel_join(self, member, &error)) {
       ring_svc_channel_interface_mergeable_conference_return_from_merge
@@ -273,9 +273,7 @@ ring_mergeable_conference_merge(RingSvcChannelInterfaceMergeableConference *ifac
 
   DEBUG("enter");
 
-  member = ring_connection_lookup_channel(
-    RING_CONNECTION(tp_base_channel_get_connection(TP_BASE_CHANNEL(self))),
-    channel_path);
+  member = ring_connection_lookup_channel(self->base.connection, channel_path);
 
   if (!member || !RING_IS_MEMBER_CHANNEL(member)) {
     error = g_error_new(TP_ERRORS, TP_ERROR_INVALID_ARGUMENT,
@@ -914,8 +912,7 @@ ring_conference_channel_constructed(GObject *object)
 {
   RingConferenceChannel *self = RING_CONFERENCE_CHANNEL(object);
   TpBaseChannel *base = TP_BASE_CHANNEL (self);
-  TpBaseConnection *connection =
-    tp_base_channel_get_connection(base);
+  TpBaseConnection *connection = TP_BASE_CONNECTION(self->base.connection);
   const gchar *object_path;
   char *nick;
 
@@ -948,8 +945,7 @@ ring_conference_channel_emit_initial(RingConferenceChannel *_self)
 
   RingConferenceChannel *self = RING_CONFERENCE_CHANNEL(_self);
   RingConferenceChannelPrivate *priv = self->priv;
-  RingConnection *connection =
-    RING_CONNECTION(tp_base_channel_get_connection(TP_BASE_CHANNEL(self)));
+  RingConnection *connection = self->base.connection;
   TpGroupMixin *group = TP_GROUP_MIXIN(self);
   char const *message;
   TpChannelGroupChangeReason reason;
@@ -1005,6 +1001,12 @@ ring_conference_channel_get_property(GObject *obj,
   RingConferenceChannelPrivate *priv = self->priv;
 
   switch (property_id) {
+    case PROP_CHANNEL_PROPERTIES:
+      g_value_take_boxed(value, ring_conference_channel_properties(self));
+      break;
+    case PROP_INTERFACES:
+      g_value_set_boxed(value, ring_conference_channel_interfaces);
+      break;
     case PROP_INITIAL_CHANNELS:
       g_value_set_boxed(value, priv->initial_members);
       break;
@@ -1086,7 +1088,6 @@ static void
 ring_conference_channel_class_init(RingConferenceChannelClass *klass)
 {
   GObjectClass *object_class = G_OBJECT_CLASS(klass);
-  TpBaseChannelClass *base_chan_class = TP_BASE_CHANNEL_CLASS (klass);
 
   g_type_class_add_private(klass, sizeof (RingConferenceChannelPrivate));
 
@@ -1095,12 +1096,6 @@ ring_conference_channel_class_init(RingConferenceChannelClass *klass)
   object_class->set_property = ring_conference_channel_set_property;
   object_class->dispose = ring_conference_channel_dispose;
   object_class->finalize = ring_conference_channel_finalize;
-
-  base_chan_class->channel_type = TP_IFACE_CHANNEL_TYPE_STREAMED_MEDIA;
-  base_chan_class->close = (TpBaseChannelCloseFunc) ring_conference_channel_close;
-  base_chan_class->interfaces = ring_conference_channel_interfaces;
-  base_chan_class->target_handle_type = TP_HANDLE_TYPE_NONE;
-  base_chan_class->fill_immutable_properties = ring_conference_channel_fill_immutable_properties;
 
   klass->dbus_properties_class.interfaces =
     ring_conference_channel_dbus_property_interfaces;
@@ -1116,6 +1111,12 @@ ring_conference_channel_class_init(RingConferenceChannelClass *klass)
   tp_group_mixin_class_set_remove_with_reason_func(
     object_class, ring_conference_channel_remove_member_with_reason);
   tp_group_mixin_init_dbus_properties(object_class);
+
+  g_object_class_override_property(
+    object_class, PROP_CHANNEL_PROPERTIES, "channel-properties");
+
+  g_object_class_override_property(
+     object_class, PROP_INTERFACES, "interfaces");
 
   g_object_class_install_property(
     object_class, PROP_INITIAL_CHANNELS,
@@ -1161,14 +1162,11 @@ ring_conference_channel_dbus_property_interfaces[] = {
   { NULL }
 };
 
-static void
-ring_conference_channel_fill_immutable_properties(TpBaseChannel *base,
-  GHashTable *props)
+static GHashTable*
+ring_conference_channel_properties(RingConferenceChannel *self)
 {
-  TP_BASE_CHANNEL_CLASS (ring_conference_channel_parent_class)->fill_immutable_properties (
-      base, props);
-
-  tp_dbus_properties_mixin_fill_properties_hash (G_OBJECT(base), props,
+  return ring_channel_add_properties(
+    self, ring_media_channel_properties(RING_MEDIA_CHANNEL(self)),
     TP_IFACE_CHANNEL_INTERFACE_CONFERENCE, "InitialChannels",
     NULL);
 }
@@ -1269,7 +1267,7 @@ ring_conference_channel_remove_member_with_reason(GObject *iface,
   DEBUG("enter");
 
   selfhandle = tp_base_connection_get_self_handle(
-    tp_base_channel_get_connection(TP_BASE_CHANNEL(self)));
+   TP_BASE_CONNECTION(self->base.connection));
 
   removing = tp_intset_new();
 
@@ -1668,7 +1666,7 @@ ring_conference_channel_close_impl (RingConferenceChannel *self,
       tp_base_channel_destroyed (base);
     }
 
-  return TRUE;
+  return priv->closed = TRUE;
 }
 
 /**
@@ -1786,7 +1784,7 @@ ring_conference_channel_create_streams (RingConferenceChannel *_self,
 
   priv->streams_created = 1;
 
-  baseconn = tp_base_channel_get_connection (TP_BASE_CHANNEL (self));
+  baseconn = self->base.connection;
 
   if (!ring_connection_validate_initial_members (RING_CONNECTION (baseconn),
           priv->initial_members, error))

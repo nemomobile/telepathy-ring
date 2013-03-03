@@ -87,6 +87,7 @@ struct _RingCallChannelPrivate
   char *initial_emergency_service;
 
   TpHandle peer_handle, initial_remote;
+  TpHandle initiator, target;
 
   char *accepted;
 
@@ -127,6 +128,15 @@ struct _RingCallChannelPrivate
 enum
 {
   PROP_NONE,
+  PROP_CHANNEL_PROPERTIES,
+  PROP_INTERFACES,
+
+  PROP_TARGET,
+  PROP_TARGET_ID,
+  PROP_TARGET_TYPE,
+
+  PROP_INITIATOR,
+  PROP_INITIATOR_ID,
 
   PROP_ANON_MODES,
 
@@ -173,6 +183,7 @@ static gboolean ring_call_channel_remote_pending(
 G_DEFINE_TYPE_WITH_CODE(
   RingCallChannel, ring_call_channel, RING_TYPE_MEDIA_CHANNEL,
   G_IMPLEMENT_INTERFACE(RING_TYPE_MEMBER_CHANNEL, NULL);
+  G_IMPLEMENT_INTERFACE(TP_TYPE_SVC_DBUS_PROPERTIES, tp_dbus_properties_mixin_iface_init);
   G_IMPLEMENT_INTERFACE(TP_TYPE_SVC_CHANNEL_INTERFACE_GROUP,
     tp_group_mixin_iface_init);
   G_IMPLEMENT_INTERFACE(TP_TYPE_SVC_CHANNEL_INTERFACE_CALL_STATE,
@@ -191,8 +202,7 @@ const char *ring_call_channel_interfaces[] = {
   NULL
 };
 
-static void ring_call_channel_fill_immutable_properties(TpBaseChannel *base,
-    GHashTable *props);
+static GHashTable *ring_call_channel_properties(RingCallChannel *self);
 
 static void ring_call_channel_update_state(RingMediaChannel *_self,
   guint state, guint causetype, guint cause);
@@ -253,15 +263,22 @@ ring_call_channel_constructed(GObject *object)
 {
   RingCallChannel *self = RING_CALL_CHANNEL(object);
   RingCallChannelPrivate *priv = self->priv;
-  TpBaseChannel *base = TP_BASE_CHANNEL (self);
-  TpBaseConnection *connection = tp_base_channel_get_connection (base);
+  TpBaseConnection *connection = NULL;
+  TpHandleRepoIface *repo;
   TpHandle self_handle;
 
   if (G_OBJECT_CLASS(ring_call_channel_parent_class)->constructed)
     G_OBJECT_CLASS(ring_call_channel_parent_class)->constructed(object);
 
+  connection = TP_BASE_CONNECTION(self->base.connection);
+  repo = tp_base_connection_get_handles(connection, TP_HANDLE_TYPE_CONTACT);
+  if (priv->target)
+      tp_handle_ref(repo, priv->target);
+
+  tp_handle_ref(repo, priv->initiator);
+
   if (priv->peer_handle != 0)
-    g_assert(priv->peer_handle == tp_base_channel_get_target_handle (base));
+    g_assert(priv->peer_handle == priv->target);
 
   self_handle = tp_base_connection_get_self_handle(connection);
 
@@ -279,7 +296,6 @@ ring_call_channel_emit_initial(RingMediaChannel *_self)
   TpGroupMixin *mixin = TP_GROUP_MIXIN(_self);
   RingCallChannel *self = RING_CALL_CHANNEL(_self);
   RingCallChannelPrivate *priv = self->priv;
-  TpBaseChannel *base = TP_BASE_CHANNEL (self);
   TpHandle self_handle = mixin->self_handle;
   TpIntSet *member_set = tp_intset_new();
   TpIntSet *local_pending_set = NULL, *remote_pending_set = NULL;
@@ -287,9 +303,9 @@ ring_call_channel_emit_initial(RingMediaChannel *_self)
   TpChannelGroupChangeReason reason = 0;
   TpChannelGroupFlags add = 0, del = 0;
 
-  tp_intset_add(member_set, tp_base_channel_get_initiator (base));
+  tp_intset_add(member_set, priv->initiator);
 
-  if (!tp_base_channel_is_requested (base)) {
+  if (priv->initiator == priv->target) {
     /* Incoming call */
     message = "Channel created for incoming call";
     reason = TP_CHANNEL_GROUP_CHANGE_REASON_INVITED;
@@ -308,7 +324,7 @@ ring_call_channel_emit_initial(RingMediaChannel *_self)
     /* Outgoing call, but without handle */
     message = "Channel created";
     reason = TP_CHANNEL_GROUP_CHANGE_REASON_NONE;
-    if (tp_base_channel_get_target_handle (base) == 0)
+    if (priv->target == 0)
       add |= TP_CHANNEL_GROUP_FLAG_CAN_ADD;
   }
 
@@ -321,7 +337,7 @@ ring_call_channel_emit_initial(RingMediaChannel *_self)
   tp_group_mixin_change_members(G_OBJECT(self), message,
     member_set, NULL,
     local_pending_set, remote_pending_set,
-    tp_base_channel_get_initiator (base), reason);
+    priv->initiator, reason);
 
   tp_intset_destroy(member_set);
   if (local_pending_set) tp_intset_destroy(local_pending_set);
@@ -336,8 +352,32 @@ ring_call_channel_get_property(GObject *obj,
 {
   RingCallChannel *self = RING_CALL_CHANNEL(obj);
   RingCallChannelPrivate *priv = self->priv;
+  char const *id;
 
   switch (property_id) {
+    case PROP_CHANNEL_PROPERTIES:
+      g_value_take_boxed(value, ring_call_channel_properties(self));
+      break;
+    case PROP_INTERFACES:
+      g_value_set_boxed(value, ring_call_channel_interfaces);
+      break;
+    case PROP_TARGET:
+      g_value_set_uint(value, priv->target);
+      break;
+    case PROP_TARGET_TYPE:
+      g_value_set_uint(value, priv->target ? TP_HANDLE_TYPE_CONTACT : TP_HANDLE_TYPE_NONE);
+      break;
+    case PROP_TARGET_ID:
+      id = ring_connection_inspect_contact(self->base.connection, priv->target);
+      g_value_set_string(value, id);
+      break;
+    case PROP_INITIATOR:
+      g_value_set_uint(value, priv->initiator);
+      break;
+    case PROP_INITIATOR_ID:
+      id = ring_connection_inspect_contact(self->base.connection, priv->initiator);
+      g_value_set_string(value, id);
+      break;
     case PROP_ANON_MODES:
       g_value_set_uint(value, priv->anon_modes);
       break;
@@ -400,11 +440,16 @@ ring_call_channel_set_property(GObject *obj,
 {
   RingCallChannel *self = RING_CALL_CHANNEL(obj);
   RingCallChannelPrivate *priv = self->priv;
-  TpBaseChannel *base = TP_BASE_CHANNEL (self);
 
   switch (property_id) {
     case PROP_ANON_MODES:
       priv->anon_modes = g_value_get_uint(value);
+      break;
+    case PROP_TARGET:
+      priv->target = g_value_get_uint(value);
+      break;
+    case PROP_INITIATOR:
+      priv->initiator = g_value_get_uint(value);
       break;
     case PROP_ORIGINATING:
       priv->originating = g_value_get_boolean(value);
@@ -417,8 +462,7 @@ ring_call_channel_set_property(GObject *obj,
       break;
     case PROP_PEER:
       if (priv->peer_handle == 0) {
-        if (tp_base_channel_get_target_handle (base) == 0 ||
-            tp_base_channel_get_target_handle (base) == g_value_get_uint(value))
+        if (priv->target == 0 || priv->target == g_value_get_uint(value))
           priv->peer_handle = g_value_get_uint(value);
       }
       break;
@@ -436,7 +480,6 @@ ring_call_channel_dispose(GObject *object)
 {
   RingCallChannel *self = RING_CALL_CHANNEL(object);
   RingCallChannelPrivate *priv = self->priv;
-  TpBaseChannel *base = TP_BASE_CHANNEL (object);
 
   if (self->priv->disposed)
     return;
@@ -444,7 +487,7 @@ ring_call_channel_dispose(GObject *object)
 
   if (priv->member.handle) {
     TpHandleRepoIface *repo = tp_base_connection_get_handles(
-      tp_base_channel_get_connection (base), TP_HANDLE_TYPE_CONTACT);
+      (TpBaseConnection*)(self->base.connection), TP_HANDLE_TYPE_CONTACT);
     tp_handle_unref(repo, priv->member.handle);
     priv->member.handle = 0;
   }
@@ -479,7 +522,6 @@ static void
 ring_call_channel_class_init(RingCallChannelClass *klass)
 {
   GObjectClass *object_class = G_OBJECT_CLASS(klass);
-  TpBaseChannelClass *base_chan_class = TP_BASE_CHANNEL_CLASS (klass);
 
   g_type_class_add_private(klass, sizeof (RingCallChannelPrivate));
 
@@ -488,10 +530,6 @@ ring_call_channel_class_init(RingCallChannelClass *klass)
   object_class->set_property = ring_call_channel_set_property;
   object_class->dispose = ring_call_channel_dispose;
   object_class->finalize = ring_call_channel_finalize;
-
-  base_chan_class->interfaces = ring_call_channel_interfaces;
-  base_chan_class->target_handle_type = TP_HANDLE_TYPE_CONTACT;
-  base_chan_class->fill_immutable_properties = ring_call_channel_fill_immutable_properties;
 
   ring_call_channel_implement_media_channel (RING_MEDIA_CHANNEL_CLASS(klass));
 
@@ -508,6 +546,27 @@ ring_call_channel_class_init(RingCallChannelClass *klass)
     NULL);
   tp_group_mixin_class_set_remove_with_reason_func(
     object_class, ring_call_channel_remove_member_with_reason);
+
+  g_object_class_override_property(
+              object_class, PROP_CHANNEL_PROPERTIES, "channel-properties");
+
+  g_object_class_override_property(
+              object_class, PROP_INTERFACES, "interfaces");
+
+  g_object_class_override_property(
+              object_class, PROP_TARGET_TYPE, "handle-type");
+
+  g_object_class_override_property(
+              object_class, PROP_TARGET, "handle");
+
+  g_object_class_override_property(
+              object_class, PROP_TARGET_ID, "handle-id");
+
+  g_object_class_override_property(
+              object_class, PROP_INITIATOR, "initiator");
+
+  g_object_class_override_property(
+              object_class, PROP_INITIATOR_ID, "initiator-id");
 
   g_object_class_install_property(
     object_class, PROP_ANON_MODES, ring_param_spec_anon_modes());
@@ -608,24 +667,23 @@ ring_call_channel_dbus_property_interfaces[] = {
   { NULL }
 };
 
-static void
-ring_call_channel_fill_immutable_properties(TpBaseChannel *base,
-    GHashTable *props)
+static GHashTable*
+ring_call_channel_properties(RingCallChannel *self)
 {
-  RingCallChannel *self = RING_CALL_CHANNEL (base);
-  GObject *obj = (GObject *) self;
+  GHashTable *properties;
 
-  TP_BASE_CHANNEL_CLASS (ring_call_channel_parent_class)->fill_immutable_properties (
-      base, props);
+  properties = ring_media_channel_properties(RING_MEDIA_CHANNEL(self));
 
-  tp_dbus_properties_mixin_fill_properties_hash (obj, props,
+  ring_channel_add_properties(self, properties,
     TP_IFACE_CHANNEL_INTERFACE_SERVICE_POINT, "CurrentServicePoint",
     NULL);
 
   if (!RING_STR_EMPTY(self->priv->initial_emergency_service))
-    tp_dbus_properties_mixin_fill_properties_hash (obj, props,
+    ring_channel_add_properties(self, properties,
       TP_IFACE_CHANNEL_INTERFACE_SERVICE_POINT, "InitialServicePoint",
       NULL);
+
+  return properties;
 }
 
 /* ====================================================================== */
@@ -812,7 +870,6 @@ ring_call_channel_validate_media_handle (gpointer _self,
   DEBUG("enter");
 
   RingCallChannel *self = RING_CALL_CHANNEL(_self);
-  TpBaseChannel *base = TP_BASE_CHANNEL (self);
   TpGroupMixin *mixin = TP_GROUP_MIXIN(self);
   TpHandleRepoIface *repo;
   RingCallChannelPrivate *priv = self->priv;
@@ -823,10 +880,10 @@ ring_call_channel_validate_media_handle (gpointer _self,
   if (handle == 0)
     handle = priv->peer_handle;
   if (handle == 0)
-    handle = tp_base_channel_get_target_handle (base);
+    handle = priv->target;
 
   repo = tp_base_connection_get_handles(
-    tp_base_channel_get_connection(base), TP_HANDLE_TYPE_CONTACT);
+           (TpBaseConnection*)(self->base.connection), TP_HANDLE_TYPE_CONTACT);
 
   if (!tp_handle_is_valid(repo, handle, error))
     return FALSE;
@@ -846,7 +903,7 @@ ring_call_channel_validate_media_handle (gpointer _self,
 
   if (!tp_handle_set_is_member(self->group.members, handle) &&
     !tp_handle_set_is_member(self->group.remote_pending, handle) &&
-    handle != tp_base_channel_get_target_handle (base)) {
+    handle != priv->target) {
     g_set_error(error,
       TP_ERRORS, TP_ERROR_INVALID_ARGUMENT,
       "given handle %u is not a member of the channel",
@@ -987,7 +1044,6 @@ reply_to_modem_call_request_dial(ModemCallService *_service,
 {
   RingCallChannel *self = RING_CALL_CHANNEL(_channel);
   RingCallChannelPrivate *priv = self->priv;
-  TpBaseChannel *base = TP_BASE_CHANNEL (self);
   GError *error0 = NULL;
   TpChannelGroupChangeReason reason;
   char *debug;
@@ -1006,9 +1062,7 @@ reply_to_modem_call_request_dial(ModemCallService *_service,
     manager = modem_request_get_qdata(request, g_type_qname(RING_TYPE_MEDIA_MANAGER));
 
     if (ci)
-      g_object_set(self,
-          "initial-remote", tp_base_channel_get_target_handle (base),
-          NULL);
+      g_object_set(self, "initial-remote", priv->target, NULL);
 
     ring_media_manager_emit_new_channel(manager, channelrequest, self, NULL);
   }
@@ -1308,9 +1362,7 @@ ring_call_channel_request_remote(GObject *iface,
   RingCallChannel *self = RING_CALL_CHANNEL(iface);
   char const *destination;
 
-  destination = ring_connection_inspect_contact(
-    RING_CONNECTION(tp_base_channel_get_connection(TP_BASE_CHANNEL(self))),
-    handle);
+  destination = ring_connection_inspect_contact(self->base.connection, handle);
 
   DEBUG("Trying to add %u=\"%s\" to remote pending", handle, destination);
 
@@ -1781,9 +1833,7 @@ ring_call_channel_get_member_handle(RingCallChannel *self)
   TpHandle owner = priv->peer_handle;
 
   if (handle == 0) {
-    TpHandleRepoIface *repo = tp_base_connection_get_handles(
-      tp_base_channel_get_connection(TP_BASE_CHANNEL(self)),
-      TP_HANDLE_TYPE_CONTACT);
+    TpHandleRepoIface *repo = tp_base_connection_get_handles(self->base.connection, TP_HANDLE_TYPE_CONTACT);
     gpointer context = ring_network_normalization_context();
     char *object_path, *unique, *membername;
 
