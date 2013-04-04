@@ -3,6 +3,7 @@
  * Copyright ©2010 Collabora Ltd.
  * Copyright ©2010 Nokia Corporation
  *   @author Will Thompson <will.thompson@collabora.co.uk>
+ *   @author Tom Swindell <t.swindell@rubyx.co.uk>
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -24,7 +25,9 @@
 
 #include <glib-object.h>
 
-#include "base-call-content.h"
+#include <telepathy-glib/telepathy-glib.h>
+
+#include "ring-connection.h"
 #include "ring-call-stream.h"
 
 typedef struct _RingCallContent RingCallContent;
@@ -32,11 +35,11 @@ typedef struct _RingCallContentClass RingCallContentClass;
 typedef struct _RingCallContentPrivate RingCallContentPrivate;
 
 struct _RingCallContentClass {
-    GabbleBaseCallContentClass parent_class;
+    TpBaseMediaCallContentClass parent_class;
 };
 
 struct _RingCallContent {
-    GabbleBaseCallContent parent;
+    TpBaseMediaCallContent parent;
 
     RingCallContentPrivate *priv;
 };
@@ -48,6 +51,8 @@ RingCallContent *ring_call_content_new (RingConnection *connection,
     TpHandle creator);
 
 RingCallStream *ring_call_content_get_stream (RingCallContent *self);
+
+static void ring_call_content_remove(RingCallContent *self, DBusGMethodInvocation *context);
 
 /* TYPE MACROS */
 #define RING_TYPE_CALL_CONTENT \

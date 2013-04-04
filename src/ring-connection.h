@@ -3,6 +3,7 @@
  *
  * Copyright (C) 2007-2010 Nokia Corporation
  *   @author Pekka Pessi <first.surname@nokia.com>
+ * @author Tom Swindell <t.swindell@rubyx.co.uk>
  *
  * This work is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -23,10 +24,12 @@
 #define RING_CONNECTION_H
 
 #include <glib-object.h>
+
 #include <telepathy-glib/base-connection.h>
 #include <telepathy-glib/base-connection-manager.h>
 #include <telepathy-glib/contacts-mixin.h>
-#include <ring-util.h>
+
+#include "ring-util.h"
 
 G_BEGIN_DECLS
 

@@ -42,8 +42,9 @@ test_ring_LDADD = \
 
 libtpring_la_SOURCES = \
     base-call-channel.h base-call-channel.c \
-    base-call-content.h base-call-content.c \
-    base-call-stream.h base-call-stream.c \
+    ring-call-content.h ring-call-content.c \
+    ring-call-stream.h ring-call-stream.c \
+    ring-call-member.h ring-call-member.c \
     ring-connection-manager.h ring-connection-manager.c \
     ring-protocol.h ring-protocol.c \
     ring-connection.h ring-connection.c \
@@ -57,11 +58,10 @@ libtpring_la_SOURCES = \
     ring-member-channel.h ring-member-channel.c \
     ring-conference-manager.h ring-conference-manager.c \
     ring-conference-channel.h ring-conference-channel.c \
-    ring-call-content.h ring-call-content.c \
-    ring-call-stream.h ring-call-stream.c \
     ring-param-spec.h ring-param-spec.c \
     ring-emergency-service.h ring-emergency-service.c \
-    ring-util.h ring-util.c
+    ring-util.h ring-util.c \
+    util.h util.c
 
 TP_EXTLIB =
 TP_EXTLIB += $(top_builddir)/ring-extensions/libtpextensions.a

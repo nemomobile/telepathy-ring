@@ -3,6 +3,7 @@
  * Copyright ©2010 Collabora Ltd.
  * Copyright ©2010 Nokia Corporation
  *   @author Will Thompson <will.thompson@collabora.co.uk>
+ *   @author Tom Swindell <t.swindell@rubyx.co.uk>
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -35,10 +36,8 @@ struct _RingCallContentPrivate {
 static void implement_call_content (gpointer klass,
     gpointer unused G_GNUC_UNUSED);
 
-G_DEFINE_TYPE_WITH_CODE (RingCallContent, ring_call_content,
-    GABBLE_TYPE_BASE_CALL_CONTENT,
-    G_IMPLEMENT_INTERFACE (RING_TYPE_SVC_CALL_CONTENT, implement_call_content);
-)
+G_DEFINE_TYPE (RingCallContent, ring_call_content,
+    TP_TYPE_BASE_MEDIA_CALL_CONTENT);
 
 static void
 ring_call_content_init (RingCallContent *self)
@@ -52,18 +51,18 @@ ring_call_content_constructed (GObject *object)
 {
   RingCallContent *self = RING_CALL_CONTENT (object);
   RingCallContentPrivate *priv = self->priv;
-  GabbleBaseCallContent *base = GABBLE_BASE_CALL_CONTENT (self);
+  TpBaseCallContent *base = TP_BASE_CALL_CONTENT (self);
   gchar *stream_path;
 
   if (G_OBJECT_CLASS (ring_call_content_parent_class)->constructed != NULL)
     G_OBJECT_CLASS (ring_call_content_parent_class)->constructed (object);
 
   stream_path = g_strdup_printf ("%s/%s",
-      gabble_base_call_content_get_object_path (base), "stream");
+      tp_base_call_content_get_object_path (base), "stream");
   priv->stream = ring_call_stream_new (
-      gabble_base_call_content_get_connection (base), stream_path);
-  gabble_base_call_content_add_stream (base,
-      GABBLE_BASE_CALL_STREAM (priv->stream));
+      RING_CONNECTION(tp_base_call_content_get_connection (base)), stream_path);
+  tp_base_call_content_add_stream (base,
+      TP_BASE_CALL_STREAM (priv->stream));
   g_free (stream_path);
 }
 
@@ -83,6 +82,7 @@ static void
 ring_call_content_class_init (RingCallContentClass *klass)
 {
   GObjectClass *object_class = G_OBJECT_CLASS (klass);
+  TpBaseCallContentClass *base_class = TP_BASE_CALL_CONTENT_CLASS(klass);
 
   object_class->constructed = ring_call_content_constructed;
   object_class->dispose = ring_call_content_dispose;
@@ -115,7 +115,7 @@ ring_call_content_get_stream (RingCallContent *self)
 
 static void
 ring_call_content_remove (
-    RingSvcCallContent *self,
+    RingCallContent *self,
     DBusGMethodInvocation *context)
 {
   /* We could just leave all this out — the base class leaves Remove()

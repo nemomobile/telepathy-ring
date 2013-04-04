@@ -3,6 +3,7 @@
  * Copyright ©2010 Collabora Ltd.
  * Copyright ©2010 Nokia Corporation
  *   @author Will Thompson <will.thompson@collabora.co.uk>
+ * @author Tom Swindell <t.swindell@rubyx.co.uk>
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -26,10 +27,8 @@
 
 static void implement_call_stream (gpointer klass, gpointer unused);
 
-G_DEFINE_TYPE_WITH_CODE (RingCallStream, ring_call_stream,
-    GABBLE_TYPE_BASE_CALL_STREAM,
-    G_IMPLEMENT_INTERFACE (RING_TYPE_SVC_CALL_STREAM, implement_call_stream)
-)
+G_DEFINE_TYPE(RingCallStream, ring_call_stream,
+    TP_TYPE_BASE_MEDIA_CALL_STREAM);
 
 static void
 ring_call_stream_init (RingCallStream *self)
@@ -53,7 +52,7 @@ ring_call_stream_new (RingConnection *connection,
 
 static void
 ring_call_stream_set_sending (
-    RingSvcCallStream *self,
+    RingCallStream *self,
     gboolean send,
     DBusGMethodInvocation *context)
 {
@@ -67,7 +66,7 @@ ring_call_stream_set_sending (
 
 static void
 ring_call_stream_request_receiving (
-    RingSvcCallStream *self,
+    RingCallStream *self,
     TpHandle contact,
     gboolean receive,
     DBusGMethodInvocation *context)

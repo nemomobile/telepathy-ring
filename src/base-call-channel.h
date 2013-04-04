@@ -1,7 +1,8 @@
 /*
- * base-call-channel.h - Header for GabbleBaseCallChannel
+ * base-call-channel.h - Header for RingBaseCallChannel
  * Copyright © 2009–2010 Collabora Ltd.
  * @author Sjoerd Simons <sjoerd.simons@collabora.co.uk>
+ * @author Tom Swindell <t.swindell@rubyx.co.uk>
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -18,87 +19,77 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#ifndef __GABBLE_BASE_CALL_CHANNEL_H__
-#define __GABBLE_BASE_CALL_CHANNEL_H__
+#ifndef __RING_BASE_CALL_CHANNEL_H__
+#define __RING_BASE_CALL_CHANNEL_H__
 
 #include <glib-object.h>
 
-#include <ring-extensions/ring-extensions.h>
+#include <telepathy-glib/telepathy-glib.h>
+#include <telepathy-glib/telepathy-glib-dbus.h>
 
-#include <telepathy-glib/base-channel.h>
-
-#include "base-call-content.h"
+#include "ring-call-content.h"
+#include "ring-call-member.h"
 
 G_BEGIN_DECLS
 
-typedef struct _GabbleBaseCallChannel GabbleBaseCallChannel;
-typedef struct _GabbleBaseCallChannelPrivate GabbleBaseCallChannelPrivate;
-typedef struct _GabbleBaseCallChannelClass GabbleBaseCallChannelClass;
+typedef struct _RingBaseCallChannel RingBaseCallChannel;
+typedef struct _RingBaseCallChannelPrivate RingBaseCallChannelPrivate;
+typedef struct _RingBaseCallChannelClass RingBaseCallChannelClass;
 
-struct _GabbleBaseCallChannelClass {
-    TpBaseChannelClass parent_class;
-
-    gboolean hardware_streaming;
-    gboolean mutable_contents;
-
-    void (*accept) (GabbleBaseCallChannel *self);
-    void (*hangup) (GabbleBaseCallChannel *self,
-      guint reason,
-      const gchar *detailed_reason,
-      const gchar *message);
+struct _RingBaseCallChannelClass {
+    TpBaseMediaCallChannelClass parent_class;
 };
 
-struct _GabbleBaseCallChannel {
-    TpBaseChannel parent;
+struct _RingBaseCallChannel {
+    TpBaseMediaCallChannel parent;
 
-    gboolean initial_audio;
-    gboolean initial_video;
-
-    GabbleBaseCallChannelPrivate *priv;
+    RingBaseCallChannelPrivate *priv;
 };
 
-GType gabble_base_call_channel_get_type (void);
+GType ring_base_call_channel_get_type (void);
 
 /* TYPE MACROS */
-#define GABBLE_TYPE_BASE_CALL_CHANNEL \
-  (gabble_base_call_channel_get_type ())
-#define GABBLE_BASE_CALL_CHANNEL(obj) \
+#define RING_TYPE_BASE_CALL_CHANNEL \
+  (ring_base_call_channel_get_type ())
+#define RING_BASE_CALL_CHANNEL(obj) \
   (G_TYPE_CHECK_INSTANCE_CAST ((obj), \
-   GABBLE_TYPE_BASE_CALL_CHANNEL, GabbleBaseCallChannel))
-#define GABBLE_BASE_CALL_CHANNEL_CLASS(klass) \
+   RING_TYPE_BASE_CALL_CHANNEL, RingBaseCallChannel))
+#define RING_BASE_CALL_CHANNEL_CLASS(klass) \
   (G_TYPE_CHECK_CLASS_CAST((klass), \
-   GABBLE_TYPE_BASE_CALL_CHANNEL, GabbleBaseCallChannelClass))
-#define GABBLE_IS_BASE_CALL_CHANNEL(obj) \
-  (G_TYPE_CHECK_INSTANCE_TYPE((obj), GABBLE_TYPE_BASE_CALL_CHANNEL))
-#define GABBLE_IS_BASE_CALL_CHANNEL_CLASS(klass) \
-  (G_TYPE_CHECK_CLASS_TYPE((klass), GABBLE_TYPE_BASE_CALL_CHANNEL))
-#define GABBLE_BASE_CALL_CHANNEL_GET_CLASS(obj) \
+   RING_TYPE_BASE_CALL_CHANNEL, RingBaseCallChannelClass))
+#define RING_IS_BASE_CALL_CHANNEL(obj) \
+  (G_TYPE_CHECK_INSTANCE_TYPE((obj), RING_TYPE_BASE_CALL_CHANNEL))
+#define RING_IS_BASE_CALL_CHANNEL_CLASS(klass) \
+  (G_TYPE_CHECK_CLASS_TYPE((klass), RING_TYPE_BASE_CALL_CHANNEL))
+#define RING_BASE_CALL_CHANNEL_GET_CLASS(obj) \
   (G_TYPE_INSTANCE_GET_CLASS ((obj), \
-   GABBLE_TYPE_BASE_CALL_CHANNEL, GabbleBaseCallChannelClass))
+   RING_TYPE_BASE_CALL_CHANNEL, RingBaseCallChannelClass))
 
-TpCallState gabble_base_call_channel_get_state (
-  GabbleBaseCallChannel *self);
-void gabble_base_call_channel_set_state (GabbleBaseCallChannel *self,
-  TpCallState state);
+RingCallMember *ring_base_call_channel_ensure_member (
+    RingBaseCallChannel *self,
+    const gchar *jid);
 
-void gabble_base_call_channel_update_flags (GabbleBaseCallChannel *self,
-    TpCallFlags set_flags,
-    TpCallFlags clear_flags);
+void ring_base_call_channel_remove_member (RingBaseCallChannel *self,
+    RingCallMember *member);
 
-gboolean gabble_base_call_channel_update_members (
-    GabbleBaseCallChannel *self,
-    TpHandle contact,
-    TpCallMemberFlags set_flags,
-    TpCallMemberFlags clear_flags,
-    ...) G_GNUC_NULL_TERMINATED;
-gboolean gabble_base_call_channel_remove_members (
-    GabbleBaseCallChannel *self,
-    TpHandle contact,
-    ...) G_GNUC_NULL_TERMINATED;
+RingCallMember *ring_base_call_channel_ensure_member_from_handle (
+    RingBaseCallChannel *self,
+    TpHandle handle);
 
-void gabble_base_call_channel_add_content (GabbleBaseCallChannel *self,
-    GabbleBaseCallContent *content);
+RingCallMember * ring_base_call_channel_get_member_from_handle (
+    RingBaseCallChannel *self,
+    TpHandle handle);
+
+RingCallContent * ring_base_call_channel_add_content (
+    RingBaseCallChannel *self,
+    const gchar *name,
+    TpCallContentDisposition disposition);
+
+void ring_base_call_channel_remove_content (RingBaseCallChannel *self,
+    RingCallContent *content);
+
+GHashTable *ring_base_call_channel_get_members (RingBaseCallChannel *self);
 
 G_END_DECLS
 
-#endif /* #ifndef __GABBLE_BASE_CALL_CHANNEL_H__*/
+#endif /* #ifndef __RING_BASE_CALL_CHANNEL_H__*/

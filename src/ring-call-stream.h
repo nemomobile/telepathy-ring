@@ -3,6 +3,7 @@
  * Copyright ©2010 Collabora Ltd.
  * Copyright ©2010 Nokia Corporation
  *   @author Will Thompson <will.thompson@collabora.co.uk>
+ * @author Tom Swindell <t.swindell@rubyx.co.uk>
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -24,17 +25,24 @@
 
 #include <glib-object.h>
 
-#include "base-call-stream.h"
+#include <telepathy-glib/telepathy-glib.h>
+
+#include "ring-connection.h"
+
+G_BEGIN_DECLS
 
 typedef struct _RingCallStream RingCallStream;
+typedef struct _RingCallStreamPrivate RingCallStreamPrivate;
 typedef struct _RingCallStreamClass RingCallStreamClass;
 
 struct _RingCallStreamClass {
-    GabbleBaseCallStreamClass parent_class;
+    TpBaseMediaCallStreamClass parent_class;
 };
 
 struct _RingCallStream {
-    GabbleBaseCallStream parent;
+    TpBaseMediaCallStream parent;
+
+    RingCallStreamPrivate *priv;
 };
 
 GType ring_call_stream_get_type (void);
@@ -57,5 +65,9 @@ RingCallStream *ring_call_stream_new (RingConnection *connection,
 #define RING_CALL_STREAM_GET_CLASS(obj) \
   (G_TYPE_INSTANCE_GET_CLASS ((obj), RING_TYPE_CALL_STREAM, \
                               RingCallStreamClass))
+
+void ring_call_stream_update_member_states(RingCallStream *self);
+
+G_END_DECLS
 
 #endif /* RING_CALL_STREAM_H */

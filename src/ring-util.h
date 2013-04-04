@@ -3,7 +3,7 @@
  *
  * Copyright (C) 2007-2010 Nokia Corporation
  *   @author Pekka Pessi <first.surname@nokia.com>
- *
+ * @author Tom Swindell <t.swindell@rubyx.co.uk>
  * This work is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
