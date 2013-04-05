@@ -23,7 +23,8 @@
 #define RING_MEDIA_CHANNEL_H
 
 #include <glib-object.h>
-#include <telepathy-glib/group-mixin.h>
+
+#include <telepathy-glib/base-channel.h>
 #include <telepathy-glib/dbus-properties-mixin.h>
 #include <telepathy-glib/svc-channel.h>
 #include <ring-streamed-media-mixin.h>
@@ -43,8 +44,7 @@ G_END_DECLS
 G_BEGIN_DECLS
 
 struct _RingMediaChannelClass {
-  GObjectClass parent_class;
-  TpDBusPropertiesMixinClass dbus_properties_class;
+  TpBaseChannelClass parent_class;
 
   RingStreamedMediaMixinClass streamed_media_class;
 
@@ -55,14 +55,12 @@ struct _RingMediaChannelClass {
 };
 
 struct _RingMediaChannel {
-  GObject parent;
-
-  RingConnection *connection;
+  TpBaseChannel parent;
   RingStreamedMediaMixin streamed_media;
 
   /* Read-only */
   ModemCall *call_instance;
-  char const *nick;
+  char *nick;
 
   RingMediaChannelPrivate *priv;
 };
@@ -131,16 +129,13 @@ void ring_media_channel_set_state(RingMediaChannel *self,
   guint causetype,
   guint cause);
 
-GHashTable *ring_media_channel_properties(RingMediaChannel *self);
-
 void ring_media_channel_dtmf_start_tone(TpSvcChannelInterfaceDTMF *iface,
   guint stream_id,
   guchar event,
-  DBusGMethodInvocation *context);
-
+    DBusGMethodInvocation *context);
 void ring_media_channel_dtmf_stop_tone(TpSvcChannelInterfaceDTMF *iface,
   guint stream_id,
-  DBusGMethodInvocation *context);
+    DBusGMethodInvocation *context);
 
 G_END_DECLS
 

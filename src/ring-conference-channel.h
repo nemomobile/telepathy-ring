@@ -24,6 +24,7 @@
 
 #include <glib-object.h>
 #include <telepathy-glib/base-channel.h>
+#include <telepathy-glib/group-mixin.h>
 
 G_BEGIN_DECLS
 
@@ -39,13 +40,13 @@ G_END_DECLS
 G_BEGIN_DECLS
 
 struct _RingConferenceChannelClass {
-  RingMediaChannelClass parent_class;
+  TpBaseChannelClass parent_class;
   TpGroupMixinClass group_class;
   TpDBusPropertiesMixinClass dbus_properties_class;
 };
 
 struct _RingConferenceChannel {
-  RingMediaChannel base;
+  TpBaseChannel parent;
   TpGroupMixin group;
   RingConferenceChannelPrivate *priv;
   gchar *nick;

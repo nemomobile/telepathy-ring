@@ -69,10 +69,6 @@
 
 struct _RingMediaChannelPrivate
 {
-  TpBaseConnection *connection;
-
-  gchar *object_path;
-
   GQueue requests[1];           /* Requests towards the modem */
 
   uint8_t state;
@@ -83,11 +79,10 @@ struct _RingMediaChannelPrivate
     uint8_t requested;          /* Hold state requested by client */
   } hold;
 
-  unsigned requested:1;
   unsigned initial_audio:1;     /* property */
 
   unsigned disposed:1;
-  unsigned closing:1, closed:1;
+  unsigned closing:1;
   unsigned :0;
 
   ModemRequest *control;
@@ -115,22 +110,8 @@ struct _RingMediaChannelPrivate
 /* properties */
 enum {
   PROP_NONE,
-  /* telepathy-glib properties */
-  PROP_OBJECT_PATH,
-  PROP_CHANNEL_PROPERTIES,
-  PROP_CHANNEL_DESTROYED,
-  PROP_CHANNEL_TYPE,
-  PROP_TARGET,
-  PROP_TARGET_ID,
-  PROP_TARGET_TYPE,
 
   /* DBUs properties */
-  PROP_INTERFACES,
-
-  PROP_REQUESTED,
-  PROP_INITIATOR,
-  PROP_INITIATOR_ID,
-
   PROP_HOLD_STATE,              /* o.f.T.Channel.Interface.Hold */
   PROP_HOLD_REASON,             /* o.f.T.Channel.Interface.Hold */
 
@@ -140,28 +121,25 @@ enum {
 
   /* ring-specific properties */
   PROP_PEER,
-  PROP_CONNECTION,
   PROP_CALL_INSTANCE,
   PROP_TONES,
 
   LAST_PROPERTY
 };
 
-static TpDBusPropertiesMixinIfaceImpl
-ring_media_channel_dbus_property_interfaces[];
-static void ring_media_channel_channel_iface_init(gpointer, gpointer);
+static void ring_media_channel_fill_immutable_properties(TpBaseChannel *base,
+    GHashTable *props);
 static void ring_media_channel_dtmf_iface_init(gpointer, gpointer);
+
 static void ring_channel_hold_iface_init(gpointer, gpointer);
 #if nomore
 static void ring_channel_dial_strings_iface_init(gpointer, gpointer);
 #endif
 
 G_DEFINE_TYPE_WITH_CODE(
-  RingMediaChannel, ring_media_channel, G_TYPE_OBJECT,
+  RingMediaChannel, ring_media_channel, TP_TYPE_BASE_CHANNEL,
   G_IMPLEMENT_INTERFACE(TP_TYPE_SVC_DBUS_PROPERTIES,
     tp_dbus_properties_mixin_iface_init);
-G_IMPLEMENT_INTERFACE(TP_TYPE_SVC_CHANNEL,
-    ring_media_channel_channel_iface_init);
   G_IMPLEMENT_INTERFACE(TP_TYPE_SVC_CHANNEL_INTERFACE_DTMF,
     ring_media_channel_dtmf_iface_init);
   G_IMPLEMENT_INTERFACE(TP_TYPE_SVC_CHANNEL_INTERFACE_HOLD,
@@ -173,8 +151,6 @@ G_IMPLEMENT_INTERFACE(TP_TYPE_SVC_CHANNEL,
 #endif
   G_IMPLEMENT_INTERFACE (TP_TYPE_SVC_CHANNEL_TYPE_STREAMED_MEDIA,
     ring_streamed_media_mixin_iface_init);
-  G_IMPLEMENT_INTERFACE(TP_TYPE_EXPORTABLE_CHANNEL, NULL);
-  G_IMPLEMENT_INTERFACE(TP_TYPE_CHANNEL_IFACE, NULL);
   );
 
 static void ring_media_channel_set_call_instance(RingMediaChannel *self,
@@ -226,16 +202,21 @@ static void
 ring_media_channel_constructed(GObject *object)
 {
   RingMediaChannel *self = RING_MEDIA_CHANNEL(object);
-  RingMediaChannelPrivate *priv = self->priv;
-  TpBaseConnection *connection = TP_BASE_CONNECTION(priv->connection);
-  TpDBusDaemon *bus_daemon = tp_base_connection_get_dbus_daemon(connection);
+  TpBaseChannel *base = TP_BASE_CHANNEL (self);
+  const gchar *object_path;
 
   if (G_OBJECT_CLASS(ring_media_channel_parent_class)->constructed)
     G_OBJECT_CLASS(ring_media_channel_parent_class)->constructed(object);
 
+  object_path = tp_base_channel_get_object_path (base);
+  g_assert(object_path != NULL);
+
+  self->nick = strrchr(object_path, '/');
+  g_assert (self->nick++ != NULL);
+
   DEBUG("(%p) with %s", self, self->nick);
 
-  tp_dbus_daemon_register_object(bus_daemon, priv->object_path, object);
+  tp_base_channel_register (base);
 }
 
 static void
@@ -246,45 +227,10 @@ ring_media_channel_get_property(GObject *obj,
 {
   RingMediaChannel *self = RING_MEDIA_CHANNEL(obj);
   RingMediaChannelPrivate *priv = self->priv;
-  guint initiator;
-  gchar const *id;
 
   switch (property_id) {
-    case PROP_OBJECT_PATH:
-      g_value_set_string(value, priv->object_path);
-      break;
-    case PROP_CHANNEL_DESTROYED:
-      g_value_set_boolean(value, TRUE);
-      break;
-    case PROP_CHANNEL_PROPERTIES:
-      g_value_take_boxed(value, ring_media_channel_properties(self));
-      break;
-    case PROP_CHANNEL_TYPE:
-      g_value_set_static_string(value, TP_IFACE_CHANNEL_TYPE_STREAMED_MEDIA);
-      break;
     case PROP_PEER:
       g_value_set_uint(value, 0);
-      break;
-    case PROP_TARGET:
-      g_value_set_uint(value, 0);
-      break;
-    case PROP_TARGET_TYPE:
-      g_value_set_uint(value, 0);
-      break;
-    case PROP_TARGET_ID:
-      g_value_set_uint(value, 0);
-      break;
-    case PROP_INITIATOR:
-      initiator = tp_base_connection_get_self_handle(priv->connection);
-      g_value_set_uint(value, initiator);
-      break;
-    case PROP_INITIATOR_ID:
-      initiator = tp_base_connection_get_self_handle(priv->connection);
-      id = ring_connection_inspect_contact(RING_CONNECTION(priv->connection), initiator);
-      g_value_set_static_string(value, id);
-      break;
-    case PROP_REQUESTED:
-      g_value_set_boolean(value, priv->requested);
       break;
     case PROP_HOLD_STATE:
       g_value_set_uint(value, priv->hold.state);
@@ -300,9 +246,6 @@ ring_media_channel_get_property(GObject *obj,
       break;
     case PROP_IMMUTABLE_STREAMS:
       g_value_set_boolean(value, TRUE);
-      break;
-    case PROP_CONNECTION:
-      g_value_set_object(value, priv->connection);
       break;
     case PROP_CALL_INSTANCE:
       g_value_set_pointer(value, self->call_instance);
@@ -323,23 +266,9 @@ ring_media_channel_set_property(GObject *obj,
   RingMediaChannelPrivate *priv = self->priv;
 
   switch (property_id) {
-    case PROP_OBJECT_PATH:
-      priv->object_path = g_strdup(value);
-      self->nick = strrchr(priv->object_path, '/');
-      if(!self->nick++) self->nick = "";
-      DEBUG("(%p) with nick '%s", self, self->nick);
-      break;
-    case PROP_CHANNEL_TYPE:
-    case PROP_INITIATOR:
-    case PROP_TARGET:
-    case PROP_TARGET_ID:
-    case PROP_TARGET_TYPE:
     case PROP_PEER:
       /* these property is writable in the interface, but not actually
        * meaningfully changable on this channel, so we do nothing */
-      break;
-    case PROP_REQUESTED:
-      priv->requested = g_value_get_boolean(value);
       break;
     case PROP_HOLD_STATE:
       priv->hold.state = g_value_get_uint(value);
@@ -349,9 +278,6 @@ ring_media_channel_set_property(GObject *obj,
       break;
     case PROP_INITIAL_AUDIO:
       priv->initial_audio = g_value_get_boolean(value);
-      break;
-    case PROP_CONNECTION:
-      priv->connection = g_value_get_object(value);
       break;
     case PROP_CALL_INSTANCE:
       ring_media_channel_set_call_instance (self, g_value_get_pointer (value));
@@ -397,8 +323,7 @@ ring_media_channel_finalize(GObject *object)
 {
   RingMediaChannel *self = RING_MEDIA_CHANNEL(object);
   RingMediaChannelPrivate *priv = self->priv;
-  gchar const *nick = self->nick;
-  gchar *object_path = priv->object_path;
+  gchar *nick = g_strdup (self->nick);
 
   ring_streamed_media_mixin_finalize (object);
 
@@ -406,8 +331,8 @@ ring_media_channel_finalize(GObject *object)
 
   G_OBJECT_CLASS(ring_media_channel_parent_class)->finalize(object);
 
-  DEBUG("(%p) on %s", (gpointer)object, nick);
-  g_free(object_path);
+  DEBUG("(%p) on %s", object, nick);
+  g_free(nick);
 }
 
 /* ====================================================================== */
@@ -417,6 +342,7 @@ static void
 ring_media_channel_class_init(RingMediaChannelClass *klass)
 {
   GObjectClass *object_class = G_OBJECT_CLASS(klass);
+  TpBaseChannelClass *base_chan_class = TP_BASE_CHANNEL_CLASS (klass);
 
   g_type_class_add_private(klass, sizeof (RingMediaChannelPrivate));
 
@@ -426,38 +352,10 @@ ring_media_channel_class_init(RingMediaChannelClass *klass)
   object_class->dispose = ring_media_channel_dispose;
   object_class->finalize = ring_media_channel_finalize;
 
-  g_object_class_override_property(
-    object_class, PROP_OBJECT_PATH, "object-path");
-
-  g_object_class_override_property(
-    object_class, PROP_CHANNEL_PROPERTIES, "channel-properties");
-
-  g_object_class_override_property(
-    object_class, PROP_CHANNEL_DESTROYED, "channel-destroyed");
-
-  g_object_class_override_property(
-    object_class, PROP_CHANNEL_TYPE, "channel-type");
-
-  g_object_class_override_property(
-    object_class, PROP_TARGET_TYPE, "handle-type");
-
-  g_object_class_override_property(
-    object_class, PROP_TARGET, "handle");
-
-  g_object_class_install_property(
-    object_class, PROP_TARGET_ID, ring_param_spec_handle_id(0));
-
-  g_object_class_install_property(
-    object_class, PROP_INTERFACES, ring_param_spec_interfaces());
-
-  g_object_class_install_property(
-    object_class, PROP_REQUESTED, ring_param_spec_requested(G_PARAM_CONSTRUCT_ONLY));
-
-  g_object_class_install_property(
-    object_class, PROP_INITIATOR, ring_param_spec_initiator(0));
-
-  g_object_class_install_property(
-    object_class, PROP_INITIATOR_ID, ring_param_spec_initiator_id(0));
+  base_chan_class->channel_type = TP_IFACE_CHANNEL_TYPE_STREAMED_MEDIA;
+  base_chan_class->close = (TpBaseChannelCloseFunc) ring_media_channel_close;
+  base_chan_class->fill_immutable_properties =
+      ring_media_channel_fill_immutable_properties;
 
   g_object_class_install_property(
     object_class, PROP_HOLD_STATE,
@@ -480,9 +378,6 @@ ring_media_channel_class_init(RingMediaChannelClass *klass)
       TP_LOCAL_HOLD_STATE_REASON_NONE,
       G_PARAM_READWRITE |
       G_PARAM_STATIC_STRINGS));
-
-  g_object_class_install_property(
-    object_class, PROP_CONNECTION, ring_param_spec_connection());
 
   g_object_class_install_property(
     object_class, PROP_PEER,
@@ -548,59 +443,14 @@ ring_media_channel_class_init(RingMediaChannelClass *klass)
  * org.freedesktop.DBus properties
  */
 
-static TpDBusPropertiesMixinPropImpl channel_properties[] = {
-    { "ChannelType", "channel-type", NULL },
-    { "Interfaces", "interfaces", NULL },
-    { "TargetHandle", "handle", NULL },
-    { "TargetID", "handle-id", NULL },
-    { "TargetHandleType", "handle-type", NULL },
-    { "Requested", "requested", NULL },
-    { "InitiatorHandle", "initiator" },
-    { "InitiatorId", "initiator-id" },
-    { NULL }
-};
-
-static TpDBusPropertiesMixinPropImpl media_properties[] = {
-    { "InitialAudio", "initial-audio", NULL },
-    { "InitialVideo", "initial-video", NULL },
-    { NULL }
-};
-
-static TpDBusPropertiesMixinIfaceImpl
-ring_media_channel_dbus_property_interfaces[] = {
-    {
-        TP_IFACE_CHANNEL,
-        tp_dbus_properties_mixin_getter_gobject_properties,
-        NULL,
-        channel_properties,
-    },
-    {
-        TP_IFACE_CHANNEL_TYPE_STREAMED_MEDIA,
-        tp_dbus_properties_mixin_getter_gobject_properties,
-        NULL,
-        media_properties,
-    },
-    { NULL }
-};
-
-GHashTable*
-ring_media_channel_properties(RingMediaChannel *self)
+static void
+ring_media_channel_fill_immutable_properties (TpBaseChannel *base,
+                                              GHashTable *props)
 {
-    return tp_dbus_properties_mixin_make_properties_hash(
-      G_OBJECT(self),
-      TP_IFACE_CHANNEL, "ChannelType",
-      TP_IFACE_CHANNEL, "Interfaces",
-      TP_IFACE_CHANNEL, "TargetHandle",
-      TP_IFACE_CHANNEL, "TargetHandleType",
-      TP_IFACE_CHANNEL, "TargetID",
-      TP_IFACE_CHANNEL, "InitiatorHandle",
-      TP_IFACE_CHANNEL, "InitiatorID",
-      TP_IFACE_CHANNEL, "Requested",
-      TP_IFACE_CHANNEL_TYPE_STREAMED_MEDIA, "InitialAudio",
-      TP_IFACE_CHANNEL_TYPE_STREAMED_MEDIA, "InitialVideo",
-      TP_IFACE_CHANNEL_TYPE_STREAMED_MEDIA, "ImmutableStreams",
-      NULL
-    );
+  TP_BASE_CHANNEL_CLASS (ring_media_channel_parent_class)->
+    fill_immutable_properties (base, props);
+
+  ring_streamed_media_mixin_fill_immutable_properties (base, props);
 }
 
 /* ====================================================================== */
@@ -608,11 +458,12 @@ ring_media_channel_properties(RingMediaChannel *self)
 ModemCallService *
 ring_media_channel_get_call_service (RingMediaChannel *self)
 {
-  RingMediaChannelPrivate *priv = self->priv;
-  TpBaseConnection *base_connection = priv->connection;
+  TpBaseChannel *base = TP_BASE_CHANNEL (self);
+  TpBaseConnection *base_connection;
   RingConnection *connection;
   ModemOface *oface;
 
+  base_connection = tp_base_channel_get_connection (base);
   connection = RING_CONNECTION (base_connection);
   oface = ring_connection_get_modem_interface (connection,
       MODEM_OFACE_CALL_MANAGER);
@@ -667,12 +518,11 @@ ring_media_channel_close(RingMediaChannel *self)
   RingMediaChannelClass *cls = RING_MEDIA_CHANNEL_GET_CLASS(self);
   gboolean ready = TRUE;
 
-  if (priv->closed)
+  if (tp_base_channel_is_destroyed (TP_BASE_CHANNEL (self)))
     return;
 
   if (priv->closing)
     return;
-
   priv->closing = TRUE;
 
   if (priv->playing)
@@ -700,19 +550,17 @@ static gboolean
 ring_media_channel_emit_closed(RingMediaChannel *self)
 {
   RingMediaChannelPrivate *priv = self->priv;
+  TpBaseChannel *base = TP_BASE_CHANNEL (self);
   RingMediaChannelClass *cls = RING_MEDIA_CHANNEL_GET_CLASS(self);
 
   if (priv->close_timer)
     g_source_remove(priv->close_timer), priv->close_timer = 0;
 
-  if (priv->closed)
+  if (tp_base_channel_is_destroyed (TP_BASE_CHANNEL (self)))
     return FALSE;
-
-  priv->closed = TRUE;
 
   if (priv->playing)
     modem_tones_stop(priv->tones, priv->playing);
-
   priv->playing = 0;
 
   cls->close(self, TRUE);
@@ -720,109 +568,12 @@ ring_media_channel_emit_closed(RingMediaChannel *self)
   if (self->call_instance)
     g_object_set(self, "call-instance", NULL, NULL);
 
-  tp_svc_channel_emit_closed((TpSvcChannel*)self);
+  tp_base_channel_destroyed (base);
 
-  DEBUG("emit Closed on %s", self->nick);
+  DEBUG("emitted Closed on %s", self->nick);
 
   return FALSE;
 }
-
-/* ====================================================================== */
-/**
- * Telepathy.Channel DBus interface
- *
- * Close() -> nothing
- * GetChannelType() -> s
- * GetHandle() -> u, u
- * GetInterfaces() -> as
- *
- * Signals:
- * -> Closed(
- */
-
-/** DBus method Close ( ) -> nothing
- *
- * Request that the channel be closed. This is not the case until the Closed
- * signal has been emitted, and depending on the connection manager this may
- * simply remove you from the channel on the server, rather than causing it
- * to stop existing entirely. Some channels such as contact list channels
- * may not be closed.
- */
-void
-ring_media_channel_method_close(TpSvcChannel *iface,
-  DBusGMethodInvocation *context)
-{
-  DEBUG("Close() entered");
-  ring_media_channel_close(RING_MEDIA_CHANNEL(iface));
-  tp_svc_channel_return_from_close(context);
-}
-
-/** DBus method GetChannelType() -> s
- *
- * Returns the interface name for this type of channel.
- */
-static void
-ring_media_channel_method_get_channel_type(TpSvcChannel *iface,
-  DBusGMethodInvocation *context)
-{
-  DEBUG("GetChannelType() entered");
-  gchar *type = NULL;
-  g_object_get(iface, "channel-type", &type, NULL);
-  tp_svc_channel_return_from_get_channel_type(context, type);
-  g_free(type);
-}
-
-/** DBus method GetHandle() -> u, u
- *
- * Returns the handle type and number if this channel represents a
- * communication with a particular contact, room or server-stored list, or
- * zero if it is transient and defined only by its' contents.
- */
-static void
-ring_media_channel_method_get_handle(TpSvcChannel *iface,
-  DBusGMethodInvocation *context)
-{
-  DEBUG("GetHandle() entered");
-  guint type = 0, target = 0;
-  g_object_get(iface, "handle-type", &type, "handle", &target, NULL);
-  tp_svc_channel_return_from_get_handle(context, type, target);
-}
-
-/** DBus method GetInterfaces() -> as
- *
- * Get the optional interfaces implemented by this channel.
- */
-static void
-ring_media_channel_method_get_interfaces(TpSvcChannel *iface,
-  DBusGMethodInvocation *context)
-{
-  DEBUG("GetInterfaces() entered");
-  gchar **interfaces = NULL;
-  g_object_get(iface, "interfaces", &interfaces, NULL);
-  tp_svc_channel_return_from_get_interfaces(
-    context,
-    (char const **)interfaces);
-  g_strfreev(interfaces);
-}
-
-static void
-ring_media_channel_channel_iface_init(gpointer g_iface, gpointer iface_data)
-{
-    TpSvcChannelClass *klass = (TpSvcChannelClass*) g_iface;
-
-#define IMPLEMENT(x) \
-  tp_svc_channel_implement_##x(klass, ring_media_channel_method_##x)
-
-  IMPLEMENT(close);
-  IMPLEMENT(get_channel_type);
-  IMPLEMENT(get_handle);
-  IMPLEMENT(get_interfaces);
-
-#undef IMPLEMENT
-}
-
-/* ====================================================================== */
-
 
 /* ====================================================================== */
 /*
