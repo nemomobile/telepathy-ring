@@ -89,7 +89,7 @@ rm -rf %{buildroot}
 
 %files tests
 %defattr(-,root,root,-)
-%{_libdir}/tests/*
+/opt/tests/%{name}/*
 # >> files tests
 # << files tests
 

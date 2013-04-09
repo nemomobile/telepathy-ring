@@ -39,7 +39,7 @@ SubPackages:
       Group: System/Libraries
       Description: "%{summary}."
       Files:
-        - "%{_libdir}/tests/*"
+        - "/opt/tests/%{name}/*"
 
     - Name: devel
       Summary: Development files for %{name}
