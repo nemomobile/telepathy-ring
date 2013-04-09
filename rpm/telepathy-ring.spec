@@ -51,7 +51,7 @@ Requires:   %{name} = %{version}-%{release}
 
 
 %prep
-%setup -q -n %{name}
+%setup -q -n %{name}-%{version}
 
 # >> setup
 # << setup
@@ -79,23 +79,23 @@ rm -rf %{buildroot}
 
 %files
 %defattr(-,root,root,-)
-# >> files
 %{_datadir}/dbus-1/services/*
 %{_datadir}/telepathy/managers/*
 %{_libexecdir}/*
 %{_libdir}/mission-control-plugins.0/mcp-account-manager-ring.so
 %doc %{_mandir}/man8/telepathy-ring.8.gz
+# >> files
 # << files
 
 %files tests
 %defattr(-,root,root,-)
-# >> files tests
 %{_libdir}/tests/*
+# >> files tests
 # << files tests
 
 %files devel
 %defattr(-,root,root,-)
-# >> files devel
 %{_libdir}/*.a
 %{_includedir}/*
+# >> files devel
 # << files devel

@@ -26,14 +26,25 @@ PkgConfigBR:
     - mission-control-plugins
 Configure: reconfigure
 Builder: make
+Files:
+    - "%{_datadir}/dbus-1/services/*"
+    - "%{_datadir}/telepathy/managers/*"
+    - "%{_libexecdir}/*"
+    - "%{_libdir}/mission-control-plugins.0/mcp-account-manager-ring.so"
+    - "%doc %{_mandir}/man8/telepathy-ring.8.gz"
+
 SubPackages:
     - Name: tests
       Summary: Tests for %{name}
       Group: System/Libraries
       Description: "%{summary}."
+      Files:
+        - "%{_libdir}/tests/*"
 
     - Name: devel
       Summary: Development files for %{name}
       Group: Development/Libraries
       Description: "%{summary}."
-
+      Files:
+        - "%{_libdir}/*.a"
+        - "%{_includedir}/*"
