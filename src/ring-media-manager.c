@@ -1052,8 +1052,6 @@ on_modem_call_created(ModemCallService *call_service,
       "connection", priv->connection,
       "tones", priv->tones,
       "object-path", object_path,
-      "initiator", tp_base_connection_get_self_handle(
-        TP_BASE_CONNECTION(priv->connection)),
       "handle-type", TP_HANDLE_TYPE_CONTACT,
       "handle", handle,
       "peer", handle,
