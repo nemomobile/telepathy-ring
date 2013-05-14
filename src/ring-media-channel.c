@@ -906,9 +906,9 @@ response_to_hold (ModemCall *ci,
       priv->hold.requested = -1;
     }
 
+  ring_update_hold(self, priv->hold.requested, 0);
   g_object_unref (self);
 }
-
 
 static void
 ring_channel_hold_iface_init(gpointer g_iface, gpointer iface_data)
