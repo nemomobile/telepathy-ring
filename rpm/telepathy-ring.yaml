@@ -10,7 +10,6 @@ Sources:
 Description: "%{summary}."
 
 Requires:
-    - telepathy-filesystem
     - ofono
     - telepathy-mission-control
 PkgBR:
