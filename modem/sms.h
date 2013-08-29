@@ -118,6 +118,10 @@ guint64 modem_sms_service_time_connected (ModemSMSService const *self);
 
 gint64 modem_sms_parse_time (gchar const *);
 
+void modem_sms_emit_outgoing(ModemSMSService *self, char *address, char *path);
+void modem_sms_emit_error(ModemSMSService *self, char *address, char *path,
+		GError error);
+
 /* ---------------------------------------------------------------------- */
 
 ModemRequest *modem_sms_set_sc_address (ModemSMSService *self,
