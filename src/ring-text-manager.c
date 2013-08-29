@@ -97,9 +97,9 @@ struct _RingTextManagerPrivate
 
   struct {
     gulong incoming_message, immediate_message;
+    gulong outgoing_sms_complete, outgoing_sms_error;
 #if nomore
     gulong receiving_sms_deliver, receiving_sms_status_report;
-    gulong outgoing_sms_complete, outgoing_sms_error;
 #endif
     gulong status_changed;
   } signals;
@@ -136,18 +136,20 @@ static gboolean tp_asv_get_sms_channel (GHashTable *properties);
 
 static void on_text_channel_closed(RingTextChannel *, RingTextManager *);
 
-#if nomore
-static void on_sms_service_deliver(ModemSMSService *,
-  SMSGDeliver *, gpointer _self);
 static void on_sms_service_outgoing_complete(ModemSMSService *,
   char const *token,
   char const *destination,
   gpointer _self);
+
 static void on_sms_service_outgoing_error(ModemSMSService *,
   char const *token,
   char const *destination,
   GError const *error,
   gpointer _self);
+
+#if nomore
+static void on_sms_service_deliver(ModemSMSService *,
+  SMSGDeliver *, gpointer _self);
 static void on_sms_service_status_report(ModemSMSService *,
   SMSGStatusReport *, gpointer _self);
 static void ring_text_manager_receive_deliver(
@@ -371,10 +373,6 @@ ring_text_manager_connected (RingTextManager *self)
     modem_sms_connect_to_immediate_message (sms,
         on_immediate_message, self);
 
-#if nomore
-  priv->signals.receiving_sms_deliver =
-    modem_sms_connect_to_deliver (sms, on_sms_service_deliver, self);
-
   priv->signals.outgoing_sms_complete =
     modem_sms_connect_to_outgoing_complete (sms,
         on_sms_service_outgoing_complete, self);
@@ -382,6 +380,11 @@ ring_text_manager_connected (RingTextManager *self)
   priv->signals.outgoing_sms_error =
     modem_sms_connect_to_outgoing_error (sms,
         on_sms_service_outgoing_error, self);
+
+#if nomore
+  priv->signals.receiving_sms_deliver =
+    modem_sms_connect_to_deliver (sms, on_sms_service_deliver, self);
+
 
   priv->signals.receiving_sms_status_report =
     modem_sms_connect_to_status_report (sms,
@@ -397,11 +400,11 @@ ring_text_manager_disconnect (RingTextManager *self)
 
   ring_signal_disconnect (sms, &priv->signals.incoming_message);
   ring_signal_disconnect (sms, &priv->signals.immediate_message);
+  ring_signal_disconnect (sms, &priv->signals.outgoing_sms_complete);
+  ring_signal_disconnect (sms, &priv->signals.outgoing_sms_error);
 
 #if nomore
   ring_signal_disconnect (sms, &priv->signals.receiving_sms_deliver);
-  ring_signal_disconnect (sms, &priv->signals.outgoing_sms_complete);
-  ring_signal_disconnect (sms, &priv->signals.outgoing_sms_error);
   ring_signal_disconnect (sms, &priv->signals.receiving_sms_status_report);
 #endif
 
@@ -786,15 +789,6 @@ get_text_channel(RingTextManager *self,
   return channel;
 }
 
-#if nomore
-static void
-on_sms_service_deliver(ModemSMSService *sms_service,
-  SMSGDeliver *deliver,
-  gpointer _self)
-{
-  ring_text_manager_receive_deliver(RING_TEXT_MANAGER(_self), deliver);
-}
-
 static void
 on_sms_service_outgoing_complete(ModemSMSService *service,
   char const *destination,
@@ -821,8 +815,8 @@ on_sms_service_outgoing_complete(ModemSMSService *service,
 
 static void
 on_sms_service_outgoing_error(ModemSMSService *service,
-  char const *token,
   char const *destination,
+  char const *token,
   GError const *error,
   gpointer _self)
 {
@@ -842,6 +836,16 @@ on_sms_service_outgoing_error(ModemSMSService *service,
   if (channel)
     ring_text_channel_outgoing_sms_error(channel, token, error);
 }
+
+#if nomore
+static void
+on_sms_service_deliver(ModemSMSService *sms_service,
+  SMSGDeliver *deliver,
+  gpointer _self)
+{
+  ring_text_manager_receive_deliver(RING_TEXT_MANAGER(_self), deliver);
+}
+
 
 static void
 on_sms_service_status_report(ModemSMSService *sms_service,

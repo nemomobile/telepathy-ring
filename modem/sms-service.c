@@ -27,6 +27,7 @@
 #include "debug.h"
 
 #include "modem/sms.h"
+#include "modem/sms-message.h"
 #include "modem/request-private.h"
 #include "modem/errors.h"
 
@@ -58,10 +59,10 @@ enum
 {
   SIGNAL_INCOMING_MESSAGE,
   SIGNAL_IMMEDIATE_MESSAGE,
-#if nomore
-  SIGNAL_DELIVER,
   SIGNAL_OUTGOING_COMPLETE,
   SIGNAL_OUTGOING_ERROR,
+#if nomore
+  SIGNAL_DELIVER,
   SIGNAL_STATUS_REPORT,
 #endif
   N_SIGNALS
@@ -93,6 +94,8 @@ struct _ModemSMSServicePrivate
 
   GHashTable *received;
 #endif
+
+  GHashTable *pending_outgoing;
 
   unsigned reduced_charset:1;
   unsigned signals:1, :0;
@@ -127,6 +130,11 @@ modem_sms_service_init (ModemSMSService *self)
       NULL, /* Message object stored in hash owns the key */
       g_object_unref);
 #endif
+
+  self->priv->pending_outgoing = g_hash_table_new_full (g_str_hash, g_str_equal,
+      NULL, /* Message object stored in hash owns the key */
+      g_object_unref);
+
 }
 
 static void
@@ -240,6 +248,8 @@ modem_sms_service_finalize (GObject *object)
     g_hash_table_destroy (priv->received);
 #endif
 
+  g_hash_table_destroy (priv->pending_outgoing);
+
   G_OBJECT_CLASS (modem_sms_service_parent_class)->finalize (object);
 }
 
@@ -289,8 +299,8 @@ modem_sms_service_connect (ModemOface *_self)
       CONNECT (on_manager_message_added, "MessageAdded",
           DBUS_TYPE_G_OBJECT_PATH, MODEM_TYPE_DBUS_DICT, G_TYPE_INVALID);
 
-      CONNECT (on_manager_message_added, "MessageRemoved",
-          DBUS_TYPE_G_OBJECT_PATH, MODEM_TYPE_DBUS_DICT, G_TYPE_INVALID);
+      CONNECT (on_manager_message_removed, "MessageRemoved",
+          DBUS_TYPE_G_OBJECT_PATH, G_TYPE_INVALID);
     }
 
   modem_oface_connect_properties (_self, TRUE);
@@ -461,17 +471,6 @@ modem_sms_service_class_init (ModemSMSServiceClass *klass)
         G_TYPE_NONE, 2,
         G_TYPE_STRING, G_TYPE_HASH_TABLE);
 
-#if nomore
-  signals[SIGNAL_DELIVER] =
-    g_signal_new ("deliver",
-        G_OBJECT_CLASS_TYPE (klass),
-        G_SIGNAL_RUN_LAST | G_SIGNAL_DETAILED,
-        0,
-        NULL, NULL,
-        g_cclosure_marshal_VOID__OBJECT,
-        G_TYPE_NONE, 1,
-        G_TYPE_OBJECT);
-
   signals[SIGNAL_OUTGOING_COMPLETE] =
     g_signal_new ("outgoing-complete",
         G_OBJECT_CLASS_TYPE (klass),
@@ -491,6 +490,18 @@ modem_sms_service_class_init (ModemSMSServiceClass *klass)
         _modem__marshal_VOID__STRING_STRING_POINTER,
         G_TYPE_NONE, 3,
         G_TYPE_STRING, G_TYPE_STRING, G_TYPE_POINTER);
+
+#if nomore
+  signals[SIGNAL_DELIVER] =
+    g_signal_new ("deliver",
+        G_OBJECT_CLASS_TYPE (klass),
+        G_SIGNAL_RUN_LAST | G_SIGNAL_DETAILED,
+        0,
+        NULL, NULL,
+        g_cclosure_marshal_VOID__OBJECT,
+        G_TYPE_NONE, 1,
+        G_TYPE_OBJECT);
+
 
   signals[SIGNAL_STATUS_REPORT] =
     g_signal_new ("state-report",
@@ -546,6 +557,24 @@ modem_sms_connect_to_immediate_message (ModemSMSService *self,
       G_CALLBACK (handler), data);
 }
 
+gulong
+modem_sms_connect_to_outgoing_complete (ModemSMSService *self,
+                                       ModemSMSMessageHandler *handler,
+                                       gpointer data)
+{
+  return g_signal_connect (self, "outgoing-complete",
+      G_CALLBACK (handler), data);
+}
+
+gulong
+modem_sms_connect_to_outgoing_error (ModemSMSService *self,
+                                       ModemSMSMessageHandler *handler,
+                                       gpointer data)
+{
+  return g_signal_connect (self, "outgoing-error",
+      G_CALLBACK (handler), data);
+}
+
 /* ------------------------------------------------------------------------- */
 /* modem_sms_service interface */
 
@@ -593,6 +622,30 @@ on_manager_message_removed (DBusGProxy *proxy,
   ModemSMSService *self = MODEM_SMS_SERVICE (user_data);
 
   DEBUG ("%s", path);
+  gpointer obj = g_hash_table_lookup (self->priv->pending_outgoing,
+		  (gpointer)path);
+
+  if (!obj)
+  {
+	  DEBUG("No such message in table");
+	  return;
+  }
+
+  ModemSMSMessage *message = MODEM_SMS_MESSAGE(obj);
+  GValue srr = G_VALUE_INIT;
+  g_value_init (&srr, G_TYPE_BOOLEAN);
+  g_object_get_property(message, "status_report_requested", &srr);
+  if (g_value_get_boolean(&srr))
+  {
+	  DEBUG("Status report requested for this message, not removing now");
+  }
+  else
+  {
+	  DEBUG("Status report requested not for this message, removing now");
+	  g_hash_table_remove (self->priv->pending_outgoing, (gpointer)path);
+	  g_object_unref (message);
+  }
+
 
   (void)self;
 }
@@ -842,8 +895,18 @@ reply_to_send_message (DBusGProxy *proxy,
           G_TYPE_INVALID))
     {
       char const *destination;
-
       destination = modem_request_get_data (request, "destination");
+
+      gpointer message_object = g_object_new( MODEM_TYPE_SMS_MESSAGE,
+    		  "destination", destination,
+    		  "message_token", message_path,
+    		  "message_service", self,
+    		  "status_report_requested", FALSE, /* TODO */
+    		  NULL );
+
+      g_hash_table_insert (self->priv->pending_outgoing, (gpointer)message_path,
+    		  g_object_ref (message_object));
+
     }
 
   callback (self, request, message_path, error, user_data);
@@ -940,4 +1003,12 @@ modem_sms_validate_address (gchar const *address, GError **error)
       "Invalid SMS address \"%s\": %s", address, reason);
 
   return !reason;
+}
+
+void modem_sms_emit_outgoing(ModemSMSService *self, char *address, char *path){
+	  g_signal_emit (self, signals[SIGNAL_OUTGOING_COMPLETE], 0, address, path);
+}
+
+void modem_sms_emit_error(ModemSMSService *self, char *address, char *path, GError error){
+	  g_signal_emit (self, signals[SIGNAL_OUTGOING_ERROR], 0, address, path, &error);
 }
