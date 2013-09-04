@@ -277,6 +277,7 @@ modem_call_service_connect (ModemOface *_self)
 {
   DEBUG ("(%p): enter", _self);
 
+#ifndef DISABLE_CALL_HANDLING
   ModemCallService *self = MODEM_CALL_SERVICE (_self);
   ModemCallServicePrivate *priv = self->priv;
 
@@ -304,6 +305,7 @@ modem_call_service_connect (ModemOface *_self)
   modem_oface_add_connect_request (_self,
       modem_oface_request_managed (_self, "GetCalls",
           reply_to_call_manager_get_calls, NULL));
+#endif
 }
 
 

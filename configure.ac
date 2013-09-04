@@ -57,6 +57,14 @@ if test "x$enable_mc_account_plugin" = "xyes" -a "x$have_mcp" != "xyes"; then
 $MCP_PKG_ERRORS])
 fi
 
+AC_ARG_ENABLE(call-handling,
+  AC_HELP_STRING([--disable-call-handling],[Disable call handling]),,
+  disable_call_handling=yes)
+
+if test "x$disable_call_handling" = "xyes"; then
+  AC_DEFINE([DISABLE_CALL_HANDLIG], [1], [Disable call handling])
+fi
+
 AC_HEADER_STDC
 AC_C_INLINE
 
