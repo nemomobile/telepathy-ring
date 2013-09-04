@@ -227,6 +227,12 @@ modem_service_connect (ModemOface *_self)
           dbus_bus_add_match (bus,
               "type='signal',"
               "sender='org.ofono',"
+              "interface='org.ofono.MessageManager',"
+              "member='StatusReport'",
+              NULL);
+          dbus_bus_add_match (bus,
+              "type='signal',"
+              "sender='org.ofono',"
               "interface='org.ofono.VoiceCallManager',"
               "member='PropertyChanged'",
               NULL);

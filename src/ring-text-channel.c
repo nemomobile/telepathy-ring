@@ -991,29 +991,13 @@ ring_text_channel_outgoing_sms_error(RingTextChannel *self,
   ring_text_channel_delivery_report(self, token, delivery_status, NULL, error);
 }
 
-#if nomore
-
 void
 ring_text_channel_receive_status_report(RingTextChannel *self,
-  gpointer sr)
+		  char const *token,
+		  gboolean success)
 {
-  guint delivery_status;
-
-  if (sms_g_status_report_is_status_completed(sr))
-    delivery_status = TP_DELIVERY_STATUS_DELIVERED;
-  else if (sms_g_status_report_is_status_permanent(sr))
-    delivery_status = TP_DELIVERY_STATUS_PERMANENTLY_FAILED;
-  else if (sms_g_status_report_is_status_temporary(sr))
-    delivery_status = TP_DELIVERY_STATUS_TEMPORARILY_FAILED;
-  else
-    delivery_status = TP_DELIVERY_STATUS_UNKNOWN;
-
-  char const *token = sms_g_status_report_get_delivery_token(sr);
-
-  if (token == NULL)
-    token = sms_g_status_report_get_message_token(sr);
-
-  ring_text_channel_delivery_report(self, token, delivery_status, sr, NULL);
+  guint delivery_status = success ?
+       TP_DELIVERY_STATUS_DELIVERED : TP_DELIVERY_STATUS_PERMANENTLY_FAILED;
+  ring_text_channel_delivery_report(self, token, delivery_status, NULL, NULL);
 }
 
-#endif
