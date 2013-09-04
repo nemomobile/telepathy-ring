@@ -61,9 +61,9 @@ enum
   SIGNAL_IMMEDIATE_MESSAGE,
   SIGNAL_OUTGOING_COMPLETE,
   SIGNAL_OUTGOING_ERROR,
+  SIGNAL_STATUS_REPORT,
 #if nomore
   SIGNAL_DELIVER,
-  SIGNAL_STATUS_REPORT,
 #endif
   N_SIGNALS
 };
@@ -78,6 +78,7 @@ enum
     PROP_SMSC,
     PROP_VALIDITY_PERIOD,
     PROP_REDUCED_CHARSET,
+    PROP_USE_DELIVERY_REPORTS,
     LAST_PROPERTY
   };
 
@@ -95,10 +96,13 @@ struct _ModemSMSServicePrivate
   GHashTable *received;
 #endif
 
+  /* A list of pending MO SMS waiting for a send status
+     and - if requested - a status report */
   GHashTable *pending_outgoing;
 
   unsigned reduced_charset:1;
   unsigned signals:1, :0;
+  gboolean use_delivery_reports;
 };
 
 /* ------------------------------------------------------------------------ */
@@ -113,6 +117,8 @@ static void on_immediate_message (DBusGProxy *, char const *, GHashTable *, gpoi
 static void on_manager_message_added (DBusGProxy *, char const *, GHashTable *,
     gpointer);
 static void on_manager_message_removed (DBusGProxy *, char const *, gpointer);
+static void on_manager_message_status_report (DBusGProxy *, char const *, GHashTable *,
+    gpointer);
 
 /* ------------------------------------------------------------------------ */
 /* GObject interface */
@@ -166,6 +172,10 @@ modem_sms_service_get_property (GObject *object,
       g_value_set_boolean (value, priv->reduced_charset);
       break;
 
+    case PROP_USE_DELIVERY_REPORTS:
+      g_value_set_boolean (value, priv->use_delivery_reports);
+      break;
+
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
       break;
@@ -204,6 +214,10 @@ modem_sms_service_set_property (GObject *object,
 
     case PROP_REDUCED_CHARSET:
       priv->reduced_charset = g_value_get_boolean (value);
+      break;
+
+    case PROP_USE_DELIVERY_REPORTS:
+      priv->use_delivery_reports = g_value_get_boolean (value);
       break;
 
     default:
@@ -264,7 +278,7 @@ static char const *
 modem_sms_service_property_mapper (char const *name)
 {
   if (!strcmp (name, "UseDeliveryReports"))
-    return NULL;
+    return "use-delivery-reports";
   if (!strcmp (name, "ServiceCenterAddress"))
     return "service-centre";
   if (!strcmp (name, "Bearer"))
@@ -301,6 +315,9 @@ modem_sms_service_connect (ModemOface *_self)
 
       CONNECT (on_manager_message_removed, "MessageRemoved",
           DBUS_TYPE_G_OBJECT_PATH, G_TYPE_INVALID);
+
+      CONNECT (on_manager_message_status_report, "StatusReport",
+          G_TYPE_STRING, MODEM_TYPE_DBUS_DICT, G_TYPE_INVALID);
     }
 
   modem_oface_connect_properties (_self, TRUE);
@@ -382,6 +399,8 @@ modem_sms_service_disconnect (ModemOface *_self)
           G_CALLBACK (on_manager_message_added), self);
       dbus_g_proxy_disconnect_signal (proxy, "MessageRemoved",
           G_CALLBACK (on_manager_message_removed), self);
+      dbus_g_proxy_disconnect_signal (proxy, "StatusReport",
+          G_CALLBACK (on_manager_message_status_report), self);
     }
 
 #if nomore
@@ -451,6 +470,13 @@ modem_sms_service_class_init (ModemSMSServiceClass *klass)
           G_PARAM_READWRITE | G_PARAM_CONSTRUCT |
           G_PARAM_STATIC_STRINGS));
 
+  g_object_class_install_property (object_class, PROP_USE_DELIVERY_REPORTS,
+      g_param_spec_boolean ("use-delivery-reports",
+          "Use Delivery Reports",
+          "Use Delivery Reports",
+          FALSE, /* default value */
+          G_PARAM_READWRITE | G_PARAM_CONSTRUCT ));
+
   signals[SIGNAL_IMMEDIATE_MESSAGE] =
     g_signal_new ("immediate-message",
         G_OBJECT_CLASS_TYPE (klass),
@@ -491,20 +517,19 @@ modem_sms_service_class_init (ModemSMSServiceClass *klass)
         G_TYPE_NONE, 3,
         G_TYPE_STRING, G_TYPE_STRING, G_TYPE_POINTER);
 
-#if nomore
-  signals[SIGNAL_DELIVER] =
-    g_signal_new ("deliver",
+  signals[SIGNAL_STATUS_REPORT] =
+    g_signal_new ("state-report",
         G_OBJECT_CLASS_TYPE (klass),
         G_SIGNAL_RUN_LAST | G_SIGNAL_DETAILED,
         0,
         NULL, NULL,
-        g_cclosure_marshal_VOID__OBJECT,
-        G_TYPE_NONE, 1,
-        G_TYPE_OBJECT);
+        NULL,
+        G_TYPE_NONE, 3,
+        G_TYPE_STRING, G_TYPE_STRING, G_TYPE_BOOLEAN);
 
-
-  signals[SIGNAL_STATUS_REPORT] =
-    g_signal_new ("state-report",
+#if nomore
+  signals[SIGNAL_DELIVER] =
+    g_signal_new ("deliver",
         G_OBJECT_CLASS_TYPE (klass),
         G_SIGNAL_RUN_LAST | G_SIGNAL_DETAILED,
         0,
@@ -575,6 +600,15 @@ modem_sms_connect_to_outgoing_error (ModemSMSService *self,
       G_CALLBACK (handler), data);
 }
 
+gulong
+modem_sms_connect_to_status_report (ModemSMSService *self,
+                                       ModemSMSMessageHandler *handler,
+                                       gpointer data)
+{
+  return g_signal_connect (self, "state-report",
+      G_CALLBACK (handler), data);
+}
+
 /* ------------------------------------------------------------------------- */
 /* modem_sms_service interface */
 
@@ -616,18 +650,18 @@ on_manager_message_added (DBusGProxy *proxy,
 
 static void
 on_manager_message_removed (DBusGProxy *proxy,
-                            char const *path,
+                            char const *token,
                             gpointer user_data)
 {
   ModemSMSService *self = MODEM_SMS_SERVICE (user_data);
 
-  DEBUG ("%s", path);
+  DEBUG ("%s", token);
   gpointer obj = g_hash_table_lookup (self->priv->pending_outgoing,
-		  (gpointer)path);
+		  (gpointer)token);
 
   if (!obj)
   {
-	  DEBUG("No such message in table");
+	    DEBUG("No pending message with token %s, ignore", token);
 	  return;
   }
 
@@ -635,36 +669,61 @@ on_manager_message_removed (DBusGProxy *proxy,
   GValue srr = G_VALUE_INIT;
   g_value_init (&srr, G_TYPE_BOOLEAN);
   g_object_get_property(message, "status_report_requested", &srr);
-  if (g_value_get_boolean(&srr))
+  if (!g_value_get_boolean(&srr))
   {
-	  DEBUG("Status report requested for this message, not removing now");
+    /* No status report requested, remove message now from pending list */
+    g_hash_table_remove (self->priv->pending_outgoing, (gpointer)token);
+    g_object_unref (message);
   }
-  else
-  {
-	  DEBUG("Status report requested not for this message, removing now");
-	  g_hash_table_remove (self->priv->pending_outgoing, (gpointer)path);
-	  g_object_unref (message);
-  }
-
-
-  (void)self;
 }
 
-/* FIXME: something for Ofono... */
-#if nomore
-static char *
-modem_sms_generate_token (void)
+static void
+on_manager_message_status_report (DBusGProxy *proxy,
+                     char const *token,
+                     GHashTable *dict,
+                     gpointer user_data)
 {
-  char *token;
-  uuid_t uu;
+  ModemSMSService *self = MODEM_SMS_SERVICE (user_data);
+  gpointer value;
+  int delivered = 0;
+  value = g_hash_table_lookup (dict, "Delivered");
+  if (value)
+  {
+    delivered = g_value_get_boolean(value);
+  }
+  DEBUG ("Received status report for message %s, delivery success: %d",
+      token, delivered);
 
-  token = g_new (gchar, 37);
-  uuid_generate_random (uu);
-  uuid_unparse_lower (uu, token);
+  gpointer obj = g_hash_table_lookup (self->priv->pending_outgoing,
+      (gpointer)token);
+  if (!obj)
+  {
+    DEBUG("No pending message with token %s, ignore", token);
+    return;
+  }
 
-  return token;
+  ModemSMSMessage *message = MODEM_SMS_MESSAGE(obj);
+  GValue srr = G_VALUE_INIT;
+  g_value_init (&srr, G_TYPE_BOOLEAN);
+  g_object_get_property(message, "status_report_requested", &srr);
+  if (!g_value_get_boolean(&srr))
+  {
+    DEBUG("Status report not requested for message with token %s, ignore",
+        token);
+    return;
+  }
+
+  GValue destination = G_VALUE_INIT;
+  char* dest_string;
+  g_value_init (&destination, G_TYPE_STRING);
+  g_object_get_property(message, "destination", &destination);
+  dest_string = g_value_get_string(&destination);
+  g_signal_emit (self, signals[SIGNAL_STATUS_REPORT], 0, dest_string,
+      token, delivered);
+
+  g_hash_table_remove (self->priv->pending_outgoing, (gpointer)token);
+  g_object_unref (message);
 }
-#endif
 
 static void
 dump_message_dict (GHashTable *dict)
@@ -893,21 +952,27 @@ reply_to_send_message (DBusGProxy *proxy,
   if (dbus_g_proxy_end_call (proxy, call, &error,
           DBUS_TYPE_G_OBJECT_PATH, &message_path,
           G_TYPE_INVALID))
-    {
-      char const *destination;
-      destination = modem_request_get_data (request, "destination");
+  {
+    char const *destination;
+    destination = modem_request_get_data (request, "destination");
 
-      gpointer message_object = g_object_new( MODEM_TYPE_SMS_MESSAGE,
-    		  "destination", destination,
-    		  "message_token", message_path,
-    		  "message_service", self,
-    		  "status_report_requested", FALSE, /* TODO */
-    		  NULL );
+    GValue srr = G_VALUE_INIT;
+    g_value_init (&srr, G_TYPE_BOOLEAN);
+    g_object_get_property(self, "use-delivery-reports", &srr);
+    gboolean srr_bool = g_value_get_boolean(&srr);
+    DEBUG("Status report requested for this message: %d", srr_bool);
 
-      g_hash_table_insert (self->priv->pending_outgoing, (gpointer)message_path,
-    		  g_object_ref (message_object));
+    gpointer message_object = g_object_new( MODEM_TYPE_SMS_MESSAGE,
+        "destination", destination,
+        "message_token", message_path,
+        "message_service", self,
+        "status_report_requested", srr_bool,
+        NULL );
 
-    }
+    g_hash_table_insert (self->priv->pending_outgoing, (gpointer)message_path,
+        g_object_ref (message_object));
+
+  }
 
   callback (self, request, message_path, error, user_data);
 

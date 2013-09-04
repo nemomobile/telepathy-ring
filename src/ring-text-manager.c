@@ -98,8 +98,9 @@ struct _RingTextManagerPrivate
   struct {
     gulong incoming_message, immediate_message;
     gulong outgoing_sms_complete, outgoing_sms_error;
+    gulong receiving_sms_status_report;
 #if nomore
-    gulong receiving_sms_deliver, receiving_sms_status_report;
+    gulong receiving_sms_deliver;
 #endif
     gulong status_changed;
   } signals;
@@ -147,11 +148,20 @@ static void on_sms_service_outgoing_error(ModemSMSService *,
   GError const *error,
   gpointer _self);
 
+static void on_sms_service_status_report(ModemSMSService *,
+  char const *destination,
+  char const *token,
+  gboolean const *success,
+  gpointer _self);
+
+static void ring_text_manager_receive_status_report(RingTextManager *self,
+  char const *destination,
+  char const *token,
+  gboolean const *success);
+
 #if nomore
 static void on_sms_service_deliver(ModemSMSService *,
   SMSGDeliver *, gpointer _self);
-static void on_sms_service_status_report(ModemSMSService *,
-  SMSGStatusReport *, gpointer _self);
 static void ring_text_manager_receive_deliver(
   RingTextManager *, SMSGDeliver *);
 static void ring_text_manager_receive_status_report(
@@ -381,14 +391,14 @@ ring_text_manager_connected (RingTextManager *self)
     modem_sms_connect_to_outgoing_error (sms,
         on_sms_service_outgoing_error, self);
 
+  priv->signals.receiving_sms_status_report =
+    modem_sms_connect_to_status_report (sms,
+        on_sms_service_status_report, self);
+
 #if nomore
   priv->signals.receiving_sms_deliver =
     modem_sms_connect_to_deliver (sms, on_sms_service_deliver, self);
 
-
-  priv->signals.receiving_sms_status_report =
-    modem_sms_connect_to_status_report (sms,
-        on_sms_service_status_report, self);
 #endif
 }
 
@@ -402,10 +412,12 @@ ring_text_manager_disconnect (RingTextManager *self)
   ring_signal_disconnect (sms, &priv->signals.immediate_message);
   ring_signal_disconnect (sms, &priv->signals.outgoing_sms_complete);
   ring_signal_disconnect (sms, &priv->signals.outgoing_sms_error);
+  ring_signal_disconnect (sms, &priv->signals.receiving_sms_status_report);
 
 #if nomore
   ring_signal_disconnect (sms, &priv->signals.receiving_sms_deliver);
-  ring_signal_disconnect (sms, &priv->signals.receiving_sms_status_report);
+  ring_signal_disconnect (sms, &priv->signals.outgoing_sms_complete);
+  ring_signal_disconnect (sms, &priv->signals.outgoing_sms_error);
 #endif
 
   if (priv->sms_service)
@@ -837,6 +849,17 @@ on_sms_service_outgoing_error(ModemSMSService *service,
     ring_text_channel_outgoing_sms_error(channel, token, error);
 }
 
+static void
+on_sms_service_status_report(ModemSMSService *sms_service,
+  char const *destination,
+  char const *token,
+  gboolean const *success,
+  gpointer _self)
+{
+  ring_text_manager_receive_status_report(
+    RING_TEXT_MANAGER(_self), destination, token, success);
+}
+
 #if nomore
 static void
 on_sms_service_deliver(ModemSMSService *sms_service,
@@ -847,17 +870,30 @@ on_sms_service_deliver(ModemSMSService *sms_service,
 }
 
 
-static void
-on_sms_service_status_report(ModemSMSService *sms_service,
-  SMSGStatusReport *status_report,
-  gpointer _self)
-{
-  ring_text_manager_receive_status_report(
-    RING_TEXT_MANAGER(_self), status_report);
-}
 #endif
 
 /* ---------------------------------------------------------------------- */
+
+static void
+ring_text_manager_receive_status_report(RingTextManager *self,
+		  char const *destination,
+		  char const *token,
+		  gboolean const *success)
+{
+  RingTextManagerPrivate *priv = self->priv;
+  RingTextChannel *channel;
+
+  if (priv->cstatus != TP_CONNECTION_STATUS_CONNECTED) {
+    /* Uh-oh */
+    DEBUG("not yet connected, ignoring");
+    return;
+  }
+
+  channel = get_text_channel(self, destination, 0, 0);
+
+  if (channel)
+    ring_text_channel_receive_status_report(channel, token, success);
+}
 
 #if nomore
 static void
@@ -890,28 +926,6 @@ ring_text_manager_receive_deliver(RingTextManager *self,
     ring_text_channel_receive_deliver(channel, deliver);
 }
 
-static void
-ring_text_manager_receive_status_report(RingTextManager *self,
-  SMSGStatusReport *status_report)
-{
-  RingTextManagerPrivate *priv = self->priv;
-  RingTextChannel *channel;
-
-  char const *recipient = sms_g_status_report_get_recipient(status_report);
-
-  DEBUG("SMS-STATUS_REPORT for %s", recipient);
-
-  if (priv->cstatus != TP_CONNECTION_STATUS_CONNECTED) {
-    /* Uh-oh */
-    DEBUG("not yet connected, ignoring");
-    return;
-  }
-
-  channel = get_text_channel(self, recipient, 0, 0);
-
-  if (channel)
-    ring_text_channel_receive_status_report(channel, status_report);
-}
 #endif
 
 static char *
