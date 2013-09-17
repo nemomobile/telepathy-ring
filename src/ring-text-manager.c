@@ -950,13 +950,13 @@ receive_text (RingTextManager *self,
 {
   char const *sent;
   char *token;
-  gint64 message_sent;
+  gint64 message_sent = 0;
   gint64 message_received = (gint64) time(NULL);
 
   sent = tp_asv_get_string (info, "SentTime");
   if (sent)
     message_sent = modem_sms_parse_time (sent);
-  else
+  if (!message_sent)
     message_sent = message_received;
 
   token = generate_token ();

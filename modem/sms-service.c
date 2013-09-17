@@ -624,12 +624,11 @@ modem_sms_service_time_connected (ModemSMSService const *self)
 gint64
 modem_sms_parse_time (gchar const *s)
 {
-  struct tm tm = { };
-  char *rest;
-
-  rest = strptime (s, "%Y-%m-%dT%H:%M:%S%z", &tm);
-
-  return (gint64) mktime (&tm);
+  GTimeVal val;
+  if (g_time_val_from_iso8601(s, &val))
+      return val.tv_sec;
+  else
+      return 0;
 }
 
 
