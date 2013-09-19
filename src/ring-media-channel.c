@@ -3,6 +3,7 @@
  *
  * Copyright (C) 2007-2010 Nokia Corporation
  *   @author Pekka Pessi <first.surname@nokia.com>
+ * Copyright (C) 2013 Jolla Ltd
  *
  * This work is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -611,15 +612,15 @@ ring_media_channel_dtmf_start_tone(TpSvcChannelInterfaceDTMF *iface,
   DEBUG("(%u, %u) on %s", stream_id, event, self->nick);
 
   if (stream_id == 0 /* XXXX || priv->audio->id != stream_id */) {
-    g_set_error(&error, TP_ERRORS, TP_ERROR_INVALID_ARGUMENT,
+    g_set_error(&error, TP_ERROR, TP_ERROR_INVALID_ARGUMENT,
       "invalid stream id %u", stream_id);
   }
   else if (event >= 16) {
-    g_set_error(&error, TP_ERRORS, TP_ERROR_INVALID_ARGUMENT,
+    g_set_error(&error, TP_ERROR, TP_ERROR_INVALID_ARGUMENT,
       "event %u is not a known DTMF event", event);
   }
   else if (self->call_instance == NULL) {
-    g_set_error(&error, TP_ERRORS, TP_ERROR_DISCONNECTED,
+    g_set_error(&error, TP_ERROR, TP_ERROR_DISCONNECTED,
       "Channel is not connected");
   }
   else {
@@ -649,7 +650,7 @@ ring_media_channel_dtmf_start_tone(TpSvcChannelInterfaceDTMF *iface,
       return;
     }
 
-    g_set_error(&error, TP_ERRORS, TP_ERROR_NETWORK_ERROR,
+    g_set_error(&error, TP_ERROR, TP_ERROR_NETWORK_ERROR,
       "Failed to send request to modem");
   }
 
@@ -708,11 +709,11 @@ ring_media_channel_dtmf_stop_tone(TpSvcChannelInterfaceDTMF *iface,
   DEBUG("(%u) on %s", stream_id, self->nick);
 
   if (ring_streamed_media_mixin_is_audio_stream (iface, stream_id)) {
-    g_set_error(&error, TP_ERRORS, TP_ERROR_INVALID_ARGUMENT,
+    g_set_error(&error, TP_ERROR, TP_ERROR_INVALID_ARGUMENT,
       "invalid stream id %u", stream_id);
   }
   else if (self->call_instance == NULL) {
-    g_set_error(&error, TP_ERRORS, TP_ERROR_DISCONNECTED,
+    g_set_error(&error, TP_ERROR, TP_ERROR_DISCONNECTED,
       "Channel is not connected");
   }
   else {
@@ -728,7 +729,7 @@ ring_media_channel_dtmf_stop_tone(TpSvcChannelInterfaceDTMF *iface,
       return;
     }
 
-    g_set_error(&error, TP_ERRORS, TP_ERROR_NETWORK_ERROR,
+    g_set_error(&error, TP_ERROR, TP_ERROR_NETWORK_ERROR,
       "Failed to send request to modem");
   }
 
@@ -790,7 +791,7 @@ void get_hold_state(TpSvcChannelInterfaceHold *iface,
   if (self->call_instance == NULL)
     {
       GError *error = NULL;
-      g_set_error(&error, TP_ERRORS, TP_ERROR_DISCONNECTED,
+      g_set_error(&error, TP_ERROR, TP_ERROR_DISCONNECTED,
           "Channel is not connected");
       dbus_g_method_return_error(context, error);
       g_error_free(error);
@@ -834,7 +835,7 @@ void request_hold (TpSvcChannelInterfaceHold *iface,
 
   if (instance == NULL)
     {
-      g_set_error(&error, TP_ERRORS, TP_ERROR_DISCONNECTED,
+      g_set_error(&error, TP_ERROR, TP_ERROR_DISCONNECTED,
           "Channel is not connected");
     }
   else if (state == priv->hold.state || next == priv->hold.state)
@@ -845,13 +846,13 @@ void request_hold (TpSvcChannelInterfaceHold *iface,
     }
   else if (priv->state != expect)
     {
-      g_set_error (&error, TP_ERRORS, TP_ERROR_NOT_AVAILABLE,
+      g_set_error (&error, TP_ERROR, TP_ERROR_NOT_AVAILABLE,
           "Invalid call state %s",
           modem_call_get_state_name(priv->state));
     }
   else if (priv->control)
     {
-      g_set_error (&error, TP_ERRORS, TP_ERROR_NOT_AVAILABLE,
+      g_set_error (&error, TP_ERROR, TP_ERROR_NOT_AVAILABLE,
           "Call control operation pending");
     }
   else
@@ -1048,19 +1049,19 @@ cancel_dial_string(RTComTpSvcChannelInterfaceDialStrings *iface,
   DEBUG("(%u) for %s", id, self->nick);
 
   if (id != priv->audio->id) {
-    g_set_error(&error, TP_ERRORS, TP_ERROR_INVALID_ARGUMENT,
+    g_set_error(&error, TP_ERROR, TP_ERROR_INVALID_ARGUMENT,
       "Invalid stream");
   }
   else if (priv->audio->state != TP_MEDIA_STREAM_STATE_CONNECTED) {
-    g_set_error(&error, TP_ERRORS, TP_ERROR_NOT_AVAILABLE,
+    g_set_error(&error, TP_ERROR, TP_ERROR_NOT_AVAILABLE,
       "Stream is not connected");
   }
   else if (!priv->dial.string) {
-    g_set_error(&error, TP_ERRORS, TP_ERROR_NOT_AVAILABLE,
+    g_set_error(&error, TP_ERROR, TP_ERROR_NOT_AVAILABLE,
       "Already sending a dial string");
   }
   else if (modem_call_stop_dtmf(self->call_instance, NULL, NULL) < 0) {
-    g_set_error(&error, TP_ERRORS, TP_ERROR_NOT_AVAILABLE,
+    g_set_error(&error, TP_ERROR, TP_ERROR_NOT_AVAILABLE,
       "Channel error");
   }
   else {
@@ -1178,23 +1179,23 @@ ring_media_channel_send_dialstring(RingMediaChannel *self,
   (void)pause;
 
   if (ring_streamed_media_mixin_is_audio_stream (self, id)) {
-    g_set_error(error, TP_ERRORS, TP_ERROR_INVALID_ARGUMENT,
+    g_set_error(error, TP_ERROR, TP_ERROR_INVALID_ARGUMENT,
       "Invalid stream");
     return FALSE;
   }
   else if (self->call_instance == NULL ||
       !ring_streamed_media_mixin_is_stream_connected (self, id)) {
-    g_set_error(error, TP_ERRORS, TP_ERROR_NOT_AVAILABLE,
+    g_set_error(error, TP_ERROR, TP_ERROR_NOT_AVAILABLE,
       "Channel is not connected");
     return FALSE;
   }
   else if (priv->dial.string) {
-    g_set_error(error, TP_ERRORS, TP_ERROR_NOT_AVAILABLE,
+    g_set_error(error, TP_ERROR, TP_ERROR_NOT_AVAILABLE,
       "Already sending a dial string");
     return FALSE;
   }
   else if (modem_call_send_dtmf(self->call_instance, dialstring, NULL, NULL) < 0) {
-    g_set_error(error, TP_ERRORS, TP_ERROR_INVALID_ARGUMENT,
+    g_set_error(error, TP_ERROR, TP_ERROR_INVALID_ARGUMENT,
       "Bad dial string");
     return FALSE;
   }
@@ -1265,8 +1266,23 @@ on_modem_call_state(ModemCall *ci,
   ModemCallState state,
   RingMediaChannel *self)
 {
+  guint causetype = 0;
+  guint cause = 0;
+
+  if (state == MODEM_CALL_STATE_DISCONNECTED) {
+    GValue causetype_value = G_VALUE_INIT;
+    g_value_init (&causetype_value, G_TYPE_UINT);
+    g_object_get_property(ci, "causetype", &causetype_value);
+    causetype = g_value_get_uint(&causetype_value);
+    GValue cause_value = G_VALUE_INIT;
+    g_value_init (&cause_value, G_TYPE_UINT);
+    g_object_get_property(ci, "cause", &cause_value);
+    cause = g_value_get_uint(&cause_value);
+    DEBUG("Call disconnected: causetype=%d, cause=%d", causetype, cause);
+  }
+
   ring_media_channel_set_state(
-    RING_MEDIA_CHANNEL(self), state, 0, 0);
+    RING_MEDIA_CHANNEL(self), state, causetype, cause);
 }
 
 void

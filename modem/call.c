@@ -4,6 +4,7 @@
  * Copyright (C) 2008 Nokia Corporation
  *   @author Pekka Pessi <first.surname@nokia.com>
  *   @author Lassi Syrjala <first.surname@nokia.com>
+ * Copyright (C) 2013 Jolla Ltd
  *
  * This work is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -104,6 +105,7 @@ static guint call_signals[N_SIGNALS];
 
 static void on_notify_ofono_state (ModemCall *, GParamSpec *, gpointer);
 static void reply_to_instance_request (DBusGProxy *, DBusGProxyCall *, void *);
+static void on_disconnect_reason (DBusGProxy *, char const *, gpointer);
 
 #if nomore /* Ofono does not provide this information */
 static void on_on_hold (DBusGProxy *, gboolean onhold, ModemCall*);
@@ -344,6 +346,14 @@ modem_call_connect (ModemOface *_self)
   /* CallAdded gives us initial properties */
   modem_oface_connect_properties (_self, FALSE);
 
+  /* Additionally, listen to 'DisconnectReason' signal*/
+  ModemCall *self = MODEM_CALL (_self);
+  DBusGProxy *proxy = modem_oface_dbus_proxy (_self);
+  dbus_g_proxy_add_signal (proxy, "DisconnectReason",
+	  G_TYPE_STRING, G_TYPE_INVALID);
+  dbus_g_proxy_connect_signal (proxy, "DisconnectReason",
+	  G_CALLBACK (on_disconnect_reason), self, NULL);
+
   g_signal_connect (_self, "notify::ofono-state",
       G_CALLBACK(on_notify_ofono_state), _self);
 }
@@ -427,7 +437,7 @@ modem_call_class_init (ModemCallClass *klass)
       g_param_spec_uint ("causetype",
           "Call cause type",
           "Source of the latest state transition",
-          0, MODEM_CALL_CAUSE_TYPE_UNKNOWN, 0,
+          0, MODEM_CALL_CAUSE_TYPE_REMOTE, 0,
           G_PARAM_READWRITE |
           G_PARAM_STATIC_STRINGS));
 
@@ -707,6 +717,21 @@ modem_call_state_from_ofono_state (const char *state)
     return MODEM_CALL_STATE_DISCONNECTED;
 
   return MODEM_CALL_STATE_INVALID;
+}
+
+ModemCallState
+modem_call_cause_type_from_ofono_disconnect_reason (const char *reason)
+{
+  if (G_UNLIKELY (!reason))
+    return MODEM_CALL_CAUSE_TYPE_UNKNOWN;
+  else if (!strcmp (reason, "network"))
+    return MODEM_CALL_CAUSE_TYPE_NETWORK;
+  else if (!strcmp (reason, "local"))
+    return MODEM_CALL_CAUSE_TYPE_LOCAL;
+  else if (!strcmp (reason, "remote"))
+    return MODEM_CALL_CAUSE_TYPE_REMOTE;
+
+  return MODEM_CALL_CAUSE_TYPE_UNKNOWN;
 }
 
 static void
@@ -1329,3 +1354,28 @@ modem_call_error_tone (GError *error)
 
   return TONES_EVENT_SPECIAL_INFORMATION;
 }
+
+
+static void
+on_disconnect_reason (DBusGProxy *proxy,
+                      char const *reason,
+                      gpointer user_data)
+{
+  ModemCall *self = MODEM_CALL(user_data);
+  ModemCallCauseType causetype =
+      modem_call_cause_type_from_ofono_disconnect_reason(reason);
+
+  guint cause = MODEM_CALL_ERROR_RELEASE_BY_USER;
+  if (causetype == MODEM_CALL_CAUSE_TYPE_NETWORK) {
+    /*
+     * TODO: Get the exact disconnect cause from modem
+     * (not possible with current oFono API)
+     */
+    cause = MODEM_CALL_NET_ERROR_NETW_OUT_OF_ORDER;
+  }
+
+  /* Save the disconnect reason; a state signal will follow shortly */
+  g_object_set (self, "cause", cause, NULL);
+  g_object_set (self, "causetype", causetype, NULL);
+}
+
