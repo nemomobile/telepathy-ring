@@ -235,6 +235,10 @@ static void on_manager_call_removed (DBusGProxy *proxy,
     char const *path,
     gpointer user_data);
 
+static void on_manager_call_forwarded (DBusGProxy *proxy,
+    char const *type,
+    gpointer user_data);
+
 static char const *
 modem_call_service_property_mapper (char const *name)
 {
@@ -296,6 +300,9 @@ modem_call_service_connect (ModemOface *_self)
       CONNECT (proxy, on_manager_call_removed, "CallRemoved",
           DBUS_TYPE_G_OBJECT_PATH, G_TYPE_INVALID);
 
+      CONNECT (proxy, on_manager_call_forwarded, "Forwarded",
+          G_TYPE_STRING, G_TYPE_INVALID);
+
 #undef CONNECT
     }
 
@@ -332,6 +339,8 @@ modem_call_service_disconnect (ModemOface *_self)
           G_CALLBACK (on_manager_call_added), self);
       dbus_g_proxy_disconnect_signal (DBUS_PROXY (self), "CallRemoved",
           G_CALLBACK (on_manager_call_removed), self);
+      dbus_g_proxy_disconnect_signal (DBUS_PROXY (self), "Forwarded",
+          G_CALLBACK (on_manager_call_forwarded), self);
     }
 
   for (g_hash_table_iter_init (iter, priv->instances);
@@ -616,6 +625,39 @@ on_manager_call_removed (DBusGProxy *proxy,
   if (ci)
     {
       modem_call_service_disconnect_instance (self, ci);
+    }
+}
+
+static void
+on_manager_call_forwarded (DBusGProxy *proxy,
+                         char const *type,
+                         gpointer user_data)
+{
+  DEBUG ("%s", type);
+
+  ModemCallService *self = MODEM_CALL_SERVICE (user_data);
+  ModemCall *ci = NULL;
+  GHashTableIter iter[1];
+
+  g_hash_table_iter_init (iter, self->priv->instances);
+  while (g_hash_table_iter_next (iter, NULL, (gpointer)&ci))
+    {
+      ModemCallState state;
+      g_object_get (ci, "state", &state, NULL);
+
+      if (state == MODEM_CALL_STATE_INCOMING && strcmp(type, "incoming") == 0) 
+        {
+          break;
+        }
+      else if (state == MODEM_CALL_STATE_DIALING && strcmp(type, "outgoing") == 0) 
+        {
+          break;
+        }
+    }
+
+  if (ci)
+    {
+      g_signal_emit_by_name (ci, "forwarded");
     }
 }
 
