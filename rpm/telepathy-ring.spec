@@ -10,13 +10,14 @@ Name:       telepathy-ring
 %define keepstatic 1
 
 Summary:    GSM connection manager for the Telepathy framework
-Version:    2.2.1
+Version:    2.3.0
 Release:    2
 Group:      System/Libraries
 License:    LGPLv2.1
 URL:        https://github.com/nemomobile/telepathy-ring/
-Source0:    %{name}-%{version}.tar.bz2
+Source0:    %{name}-%{version}.tar.gz
 Source100:  telepathy-ring.yaml
+Requires:   telepathy-filesystem
 Requires:   ofono
 Requires:   telepathy-mission-control
 BuildRequires:  pkgconfig(glib-2.0)
@@ -56,10 +57,9 @@ Requires:   %{name} = %{version}-%{release}
 
 %build
 # >> build pre
-mkdir m4 || true
 # << build pre
 
-%reconfigure --disable-call-handling
+%reconfigure 
 make %{?jobs:-j%jobs}
 
 # >> build post

@@ -1,15 +1,16 @@
 Name: telepathy-ring
 Summary: GSM connection manager for the Telepathy framework
-Version: 2.2.1
+Version: 2.3.0
 Release: 2
 Group: System/Libraries
 License: LGPLv2.1
 URL: https://github.com/nemomobile/telepathy-ring/
 Sources:
-    - "%{name}-%{version}.tar.bz2"
+    - "%{name}-%{version}.tar.gz"
 Description: "%{summary}."
 
 Requires:
+    - telepathy-filesystem
     - ofono
     - telepathy-mission-control
 PkgBR:

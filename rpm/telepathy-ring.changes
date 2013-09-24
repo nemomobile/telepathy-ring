@@ -1,6 +1,9 @@
 * Mon Apr 15 2013 Tom Swindell <tom.swindell@jollamobile.com> - 2.3.0
 - Updated ring media manager properties specification
 
+* Thu Apr 04 2013 Tom Swindell <t.swindell@rubyx.co.uk> - 2.3.0
+- Updated telepathy class interfaces for call handling.
+
 * Wed Dec 05 2012 John Brooks <john.brooks@jollamobile.com> - 2.2.1
 - Added always_dispatch flag for account to stay connected when not online
 
