@@ -80,6 +80,8 @@ struct _ModemCallServicePrivate
 
   char **emergency_numbers;
 
+  gchar *forwarded;
+
   ModemCall *active, *hold;
 
   unsigned user_connection:1;   /* Do we have in-band connection? */
@@ -149,6 +151,8 @@ modem_call_service_init (ModemCallService *self)
 
   self->priv->instances = g_hash_table_new_full (
       g_str_hash, g_str_equal, NULL, g_object_unref);
+
+  self->priv->forwarded = NULL;
 }
 
 static void
@@ -213,6 +217,12 @@ modem_call_service_finalize (GObject *object)
 
   ModemCallService *self = MODEM_CALL_SERVICE (object);
   ModemCallServicePrivate *priv = self->priv;
+
+  if (priv->forwarded)
+    {
+      g_free(priv->forwarded);
+      priv->forwarded = NULL;
+    }
 
   g_strfreev (priv->emergency_numbers), priv->emergency_numbers = NULL;
 
@@ -547,16 +557,30 @@ modem_call_service_ensure_instance (ModemCallService *self,
       DEBUG ("emit \"incoming\" (\"%s\" (%p), \"%s\")",
           modem_call_get_name (ci), ci, remote);
       g_signal_emit (self, signals[SIGNAL_INCOMING], 0, ci, remote);
+      if (priv->forwarded && !strcmp(priv->forwarded, "incoming"))
+        {
+          g_signal_emit_by_name (ci, "forwarded");
+        }
     }
   else if (g_queue_is_empty (priv->dialing.queue))
     {
       DEBUG ("emit \"created\" (\"%s\" (%p), \"%s\")",
           modem_call_get_name (ci), ci, remote);
       g_signal_emit (self, signals[SIGNAL_CREATED], 0, ci, remote);
+      if (priv->forwarded && !strcmp(priv->forwarded, "outgoing"))
+        {
+          g_signal_emit_by_name (ci, "forwarded");
+        }
     }
   else {
     g_queue_push_tail (priv->dialing.created, ci);
   }
+
+  if (priv->forwarded)
+    {
+      g_free(priv->forwarded);
+      priv->forwarded = NULL;
+    }
 
   return ci;
 }
@@ -658,6 +682,10 @@ on_manager_call_forwarded (DBusGProxy *proxy,
   if (ci)
     {
       g_signal_emit_by_name (ci, "forwarded");
+    }
+  else
+    {
+      self->priv->forwarded = g_strdup(type);
     }
 }
 
