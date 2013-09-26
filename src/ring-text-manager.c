@@ -1003,7 +1003,7 @@ on_immediate_message (ModemSMSService *sms,
   sender = tp_asv_get_string (info, "Sender");
   g_return_if_fail (sender != NULL);
 
-  channel = get_text_channel (self, sender, 0, 0);
+  channel = get_text_channel (self, sender, TRUE, 0);
   g_return_if_fail (channel != NULL);
 
   receive_text (self, channel, message, info, 0);
