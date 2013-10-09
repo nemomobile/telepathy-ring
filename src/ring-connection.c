@@ -249,7 +249,6 @@ ring_connection_dispose(GObject *object)
     g_object_unref(self->priv->sim);
 
   G_OBJECT_CLASS(ring_connection_parent_class)->dispose(object);
-  g_assert(self->parent.self_handle == 0);  /* unref'd by base class */
 }
 
 void
