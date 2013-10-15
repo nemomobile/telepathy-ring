@@ -119,8 +119,6 @@ static void on_connection_status_changed (TpBaseConnection *conn,
     guint status, guint reason,
     RingTextManager *self);
 
-static void foreach_dispose (gpointer, gpointer, gpointer);
-
 static gboolean ring_text_requestotron(RingTextManager *self,
   gpointer request,
   GHashTable *properties,
@@ -213,8 +211,7 @@ ring_text_manager_dispose(GObject *object)
 
   ring_text_manager_disconnect (self);
 
-  g_hash_table_foreach (priv->channels, foreach_dispose, NULL);
-  g_hash_table_remove_all (priv->channels);
+  tp_clear_pointer (&self->priv->channels, g_hash_table_unref);
 
   G_OBJECT_CLASS(ring_text_manager_parent_class)->dispose(object);
 }
@@ -227,7 +224,6 @@ ring_text_manager_finalize(GObject *object)
 
   /* Free any data held directly by the object here */
   g_free(priv->smsc);
-  g_hash_table_destroy (priv->channels);
 
   G_OBJECT_CLASS(ring_text_manager_parent_class)->finalize(object);
 }
@@ -434,18 +430,6 @@ on_connection_status_changed (TpBaseConnection *conn,
   if (status == TP_CONNECTION_STATUS_DISCONNECTED)
     {
       ring_text_manager_dispose (G_OBJECT (self));
-    }
-}
-
-static void
-foreach_dispose (gpointer key,
-                 gpointer _channel,
-                 gpointer user_data)
-{
-  /* Ensure "closed" has been emitted */
-  if (!tp_base_channel_is_destroyed (_channel))
-    {
-      g_object_run_dispose (_channel);
     }
 }
 
