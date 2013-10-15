@@ -117,10 +117,32 @@ AC_CHECK_LIB([mlocknice], [mln_lock_data],,
 AC_SUBST([testdir],'/opt/tests/telepathy-ring')
 AC_SUBST([includemodemdir],'${includedir}/modem-glib')
 
+dnl check for a version of python that can run the twisted tests
+AC_MSG_CHECKING([for Python with Twisted])
+for TEST_PYTHON in python2.5 python2.6 python; do
+  AS_IF([$TEST_PYTHON -c "from sys import version_info; import dbus, dbus.mainloop.glib; raise SystemExit(version_info < (2, 5, 0, 'final', 0))" >/dev/null 2>&1],
+    [
+    AS_IF([$TEST_PYTHON -c "import twisted.internet.reactor" >/dev/null 2>&1],
+      [
+      AM_CONDITIONAL([WANT_TWISTED_TESTS], [true])
+      break
+      ],
+      [TEST_PYTHON=no])
+    ])
+done
+AC_MSG_RESULT([$TEST_PYTHON])
+AC_SUBST(TEST_PYTHON)
+AM_CONDITIONAL([WANT_TWISTED_TESTS], test xno != x$TEST_PYTHON)
+
 AC_CONFIG_FILES([Makefile])
-AC_CONFIG_FILES([modem/Makefile modem/tests/Makefile \
-	         src/Makefile tests/Makefile docs/Makefile \
-		 scripts/Makefile \
-                 tools/Makefile ring-extensions/Makefile \
+AC_CONFIG_FILES([modem/Makefile \
+                 modem/tests/Makefile \
+                 src/Makefile tests/Makefile \
+                 tests/twisted/Makefile \
+                 tests/twisted/tools/Makefile \
+                 docs/Makefile \
+                 scripts/Makefile \
+                 tools/Makefile \
+                 ring-extensions/Makefile \
                  mc-plugin/Makefile])
 AC_OUTPUT

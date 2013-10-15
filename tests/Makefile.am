@@ -1,3 +1,5 @@
+SUBDIRS = twisted
+
 AM_CFLAGS = $(ERROR_CFLAGS) \
 	@GLIB_CFLAGS@ @DBUS_CFLAGS@ \
 	-I$(top_srcdir) @CHECK_CFLAGS@
