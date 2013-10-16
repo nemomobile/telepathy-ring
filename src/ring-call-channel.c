@@ -227,6 +227,9 @@ static void on_modem_call_state_mo_release(RingCallChannel *, guint causetype, g
 static void on_modem_call_state_mt_release(RingCallChannel *, guint causetype, guint cause);
 static void on_modem_call_state_terminated(RingCallChannel *, guint causetype, guint cause);
 
+void reply_to_hangup (ModemCall *call_instance, ModemRequest *request, GError *error, gpointer user_data);
+
+
 static void ring_call_channel_released(RingCallChannel *self,
   TpHandle actor, TpChannelGroupChangeReason reason, char const *message,
   GError *error, char const *debug);
@@ -1293,7 +1296,8 @@ ring_call_channel_remove_member_with_reason(GObject *iface,
     priv->release.message = g_strdup(message ? message : "Call released");
     priv->release.actor = mixin->self_handle;
     priv->release.reason = reason;
-    modem_call_request_release(self->base.call_instance, NULL, NULL);
+
+    modem_call_request_release(self->base.call_instance, reply_to_hangup, NULL);
   }
   else {
     /* Remove handle from set */
@@ -1389,6 +1393,23 @@ reply_to_answer (ModemCall *call_instance,
                  gpointer user_data)
 {
   DEBUG ("%s: %s", (char *)user_data, error ? error->message : "ok");
+
+  g_free (user_data);
+}
+
+void
+reply_to_hangup (ModemCall *call_instance,
+                 ModemRequest *request,
+                 GError *error,
+                 gpointer user_data)
+{
+  DEBUG ("%s", (char *)user_data, error ? error->message : "ok");
+
+  if (error) {
+    sleep(1);
+    DEBUG("Error in hangup, retry once");
+    modem_call_request_release(call_instance, NULL, NULL);
+  }
 
   g_free (user_data);
 }
@@ -1856,7 +1877,7 @@ ring_member_channel_release(RingMemberChannel *iface,
   priv->release.actor = TP_GROUP_MIXIN(iface)->self_handle;
   priv->release.reason = reason;
 
-  modem_call_request_release(self->base.call_instance, NULL, NULL);
+  modem_call_request_release(self->base.call_instance, reply_to_hangup, NULL);
 
   return TRUE;
 }
