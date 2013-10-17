@@ -679,11 +679,13 @@ ring_media_channel_dtmf_start_tone_replied(ModemCall *call_instance,
 
     priv->dtmf.digit = dtmf;
 
+#if 0 /* No local DTMF playback (handled by UI) */
     if (event) {
       ring_media_channel_play_tone(self,
         event - ring_media_channel_dtmf_events,
         -6, 20000);
     }
+#endif
 
     tp_svc_channel_interface_dtmf_return_from_start_tone(context);
   }
@@ -1451,7 +1453,9 @@ on_modem_call_dtmf_tone(ModemCall *call_instance,
     return;
 
   if (0 <= tone && tone <= 14) {
+#if 0 /* No local DTMF playback (handled by UI) */
     ring_media_channel_play_tone(RING_MEDIA_CHANNEL(self), tone, -6, 2000);
+#endif
   }
   else {
     ring_media_channel_stop_playing(RING_MEDIA_CHANNEL(self), FALSE);
@@ -1474,9 +1478,7 @@ ring_media_channel_play_tone(RingMediaChannel *self,
   if (priv->closing)
     return;
 
-  if (1)
-    /* XXX - no tones so far */
-    return;
+  DEBUG("play tone %d for %u ms at %d dBm0", tone, duration, volume);
 
   if ((tone >= 0 && !modem_tones_is_playing(priv->tones, 0))
     || priv->playing) {
