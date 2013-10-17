@@ -694,8 +694,10 @@ ring_call_channel_update_state(RingMediaChannel *_self,
       ring_media_channel_stop_playing(RING_MEDIA_CHANNEL(self), TRUE);
       break;
     case MODEM_CALL_STATE_ALERTING:
+#if 0 /* No local alert tone (use in-band audio) */
       ring_media_channel_play_tone(RING_MEDIA_CHANNEL(self),
         TONES_EVENT_RINGING, 0, 0);
+#endif
       break;
     case MODEM_CALL_STATE_DISCONNECTED:
       ring_call_channel_play_error_tone(self, state, causetype, cause);
