@@ -758,15 +758,15 @@ ring_call_channel_play_error_tone(RingCallChannel *self,
 
   event_tone = modem_call_event_tone(state, causetype, cause);
 
-#if nomore
-  if (state == MODEM_CALL_STATE_MT_RELEASE &&
+  if (state == MODEM_CALL_STATE_DISCONNECTED &&
+    causetype == MODEM_CALL_CAUSE_TYPE_REMOTE &&
     event_tone != TONES_STOP && event_tone != TONES_NONE) {
     TpGroupMixin *mixin = TP_GROUP_MIXIN(self);
-    if (tp_handle_set_size(mixin->local_pending))
+    if (tp_handle_set_size(mixin->local_pending)) {
       /* Case remote end drops call before it is accepted */
       event_tone = TONES_NONE;
+    }
   }
-#endif
 
   hold = TP_LOCAL_HOLD_STATE_UNHELD;
   g_object_get(self, "hold-state", &hold, NULL);
