@@ -1,0 +1,29 @@
+#!/bin/sh
+
+cd "@abs_top_builddir@/tests/twisted/tools"
+
+export RING_DEBUG=all RING_HTFU=seriously
+G_MESSAGES_DEBUG=all
+export G_MESSAGES_DEBUG
+ulimit -c unlimited
+exec >> ring-testing.log 2>&1
+
+if test -n "$RING_TEST_VALGRIND"; then
+        export G_DEBUG=${G_DEBUG:+"${G_DEBUG},"}gc-friendly
+        export G_SLICE=always-malloc
+        RING_WRAPPER="valgrind --leak-check=full --num-callers=20"
+        RING_WRAPPER="$RING_WRAPPER --show-reachable=yes"
+        RING_WRAPPER="$RING_WRAPPER --gen-suppressions=all"
+        RING_WRAPPER="$RING_WRAPPER --child-silent-after-fork=yes"
+        RING_WRAPPER="$RING_WRAPPER --suppressions=@abs_top_srcdir@/tests/twisted/tools/tp-glib.supp"
+elif test -n "$RING_TEST_REFDBG"; then
+        if test -z "$REFDBG_OPTIONS" ; then
+                export REFDBG_OPTIONS="btnum=10"
+        fi
+        if test -z "$RING_WRAPPER" ; then
+                RING_WRAPPER="refdbg"
+        fi
+fi
+
+export G_DEBUG=fatal-warnings" ${G_DEBUG}"
+exec @abs_top_builddir@/libtool --mode=execute $RING_WRAPPER @abs_top_builddir@/src/telepathy-ring

@@ -40,3 +40,11 @@ tags
 /configure.lineno
 /modem/_gen
 /src/test-ring
+
+tests/twisted/config.py
+tests/twisted/ring-twisted-tests.list
+tests/twisted/run-test.sh
+tests/twisted/tools/exec-with-log.sh
+tests/twisted/tools/org.freedesktop.Telepathy.ConnectionManager.ring.service
+tests/twisted/tools/ring-testing.log
+tests/twisted/tools/tmp-session-bus.conf

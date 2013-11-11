@@ -1,0 +1,51 @@
+To run all tests:
+
+  make check
+
+== Twisted tests ==
+
+To run all Twisted tests:
+
+  make check-twisted
+
+To run an individual Twisted test:
+
+  make -C tests/twisted check-twisted TWISTED_TESTS=connect/connect-success.py
+
+or:
+
+  cd tests/twisted
+  sh tools/with-session-bus.sh --config-file=tools/servicedir-uninstalled/tmp-session-bus.conf \
+        -- python connect/test-success.py
+
+To run with debug information:
+
+  make -C tests/twisted check-twisted TWISTED_TESTS=connect/test-success.py \
+        CHECK_TWISTED_VERBOSE=1
+
+or:
+
+  cd tests/twisted
+  sh tools/with-session-bus.sh --config-file=tools/servicedir-uninstalled/tmp-session-bus.conf \
+        -- python connect/test-success.py -v
+
+To debug an individual test you can set one of the following env variable:
+
+  * RING_TEST_VALGRIND : to run Ring inside valgrind. The report is
+    added to tools/ring-testing.log.
+        export RING_TEST_VALGRIND=1
+
+  * RING_TEST_REFDBG : to run Ring inside refdbg. The report is written
+    to tools/refdbg.log. You can change RING_WRAPPER to use an alternative
+    refdbg and change REFDBG_OPTIONS to set your own parameters. Example:
+        export RING_TEST_REFDBG=1
+        export RING_WRAPPER="/path/to/refdbg"
+        export REFDBG_OPTIONS="btnum=16"
+
+  * RING_WRAPPER="nemiver" : to run Ring inside the graphical debugger
+    nemiver. You'll be able to set up breakpoints; then hit the "continue"
+    button to launch Ring.
+
+  * RING_TEST_BUSTLE : to run bustle-dbus-monitor in the temporary
+    bus daemon. The logs are saved to tools/*bustle-logs.
+        export RING_TEST_BUSTLE=1
