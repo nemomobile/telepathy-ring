@@ -391,9 +391,9 @@ modem_sms_service_disconnect (ModemOface *_self)
     {
       priv->signals = FALSE;
 
-      dbus_g_proxy_disconnect_signal (proxy, "IncomingMessage",
-          G_CALLBACK (on_immediate_message), self);
       dbus_g_proxy_disconnect_signal (proxy, "ImmediateMessage",
+          G_CALLBACK (on_immediate_message), self);
+      dbus_g_proxy_disconnect_signal (proxy, "IncomingMessage",
           G_CALLBACK (on_incoming_message), self);
       dbus_g_proxy_disconnect_signal (proxy, "MessageAdded",
           G_CALLBACK (on_manager_message_added), self);
