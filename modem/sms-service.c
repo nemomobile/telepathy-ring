@@ -667,7 +667,7 @@ on_manager_message_removed (DBusGProxy *proxy,
   ModemSMSMessage *message = MODEM_SMS_MESSAGE(obj);
   GValue srr = G_VALUE_INIT;
   g_value_init (&srr, G_TYPE_BOOLEAN);
-  g_object_get_property(message, "status_report_requested", &srr);
+  g_object_get_property(obj, "status_report_requested", &srr);
   if (!g_value_get_boolean(&srr))
   {
     /* No status report requested, remove message now from pending list */
@@ -704,7 +704,7 @@ on_manager_message_status_report (DBusGProxy *proxy,
   ModemSMSMessage *message = MODEM_SMS_MESSAGE(obj);
   GValue srr = G_VALUE_INIT;
   g_value_init (&srr, G_TYPE_BOOLEAN);
-  g_object_get_property(message, "status_report_requested", &srr);
+  g_object_get_property(obj, "status_report_requested", &srr);
   if (!g_value_get_boolean(&srr))
   {
     DEBUG("Status report not requested for message with token %s, ignore",
@@ -713,9 +713,9 @@ on_manager_message_status_report (DBusGProxy *proxy,
   }
 
   GValue destination = G_VALUE_INIT;
-  char* dest_string;
+  const char* dest_string;
   g_value_init (&destination, G_TYPE_STRING);
-  g_object_get_property(message, "destination", &destination);
+  g_object_get_property(obj, "destination", &destination);
   dest_string = g_value_get_string(&destination);
   g_signal_emit (self, signals[SIGNAL_STATUS_REPORT], 0, dest_string,
       token, delivered);
