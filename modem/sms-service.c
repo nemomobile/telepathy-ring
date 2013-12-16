@@ -28,6 +28,7 @@
 
 #include "modem/sms.h"
 #include "modem/sms-message.h"
+#include "modem/sms-history.h"
 #include "modem/request-private.h"
 #include "modem/errors.h"
 
@@ -117,8 +118,6 @@ static void on_immediate_message (DBusGProxy *, char const *, GHashTable *, gpoi
 static void on_manager_message_added (DBusGProxy *, char const *, GHashTable *,
     gpointer);
 static void on_manager_message_removed (DBusGProxy *, char const *, gpointer);
-static void on_manager_message_status_report (DBusGProxy *, char const *, GHashTable *,
-    gpointer);
 
 /* ------------------------------------------------------------------------ */
 /* GObject interface */
@@ -541,6 +540,9 @@ modem_sms_service_class_init (ModemSMSServiceClass *klass)
 #endif
 
   g_type_class_add_private (klass, sizeof (ModemSMSServicePrivate));
+
+  modem_oface_register_type(MODEM_TYPE_SMS_HISTORY);
+
 }
 
 /* ---------------------------------------------------------------------- */
@@ -676,7 +678,7 @@ on_manager_message_removed (DBusGProxy *proxy,
   }
 }
 
-static void
+void
 on_manager_message_status_report (DBusGProxy *proxy,
                      char const *token,
                      GHashTable *dict,

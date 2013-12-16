@@ -44,9 +44,9 @@ modem_HEADERS += call.h tones.h
 
 libmodem_glib_la_SOURCES += call-service.c call.c tones.c
 
-modem_HEADERS += sms.h sms-message.h
+modem_HEADERS += sms.h sms-message.h sms-history.h
 
-libmodem_glib_la_SOURCES += sms-service.c sms-message.c
+libmodem_glib_la_SOURCES += sms-service.c sms-message.c sms-history.c
 
 modem_HEADERS += sim.h
 
