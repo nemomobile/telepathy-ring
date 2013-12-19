@@ -28,6 +28,7 @@
 
 #include "modem/sms.h"
 #include "modem/sms-message.h"
+#include "modem/sms-history.h"
 #include "modem/request-private.h"
 #include "modem/errors.h"
 
@@ -117,8 +118,6 @@ static void on_immediate_message (DBusGProxy *, char const *, GHashTable *, gpoi
 static void on_manager_message_added (DBusGProxy *, char const *, GHashTable *,
     gpointer);
 static void on_manager_message_removed (DBusGProxy *, char const *, gpointer);
-static void on_manager_message_status_report (DBusGProxy *, char const *, GHashTable *,
-    gpointer);
 
 /* ------------------------------------------------------------------------ */
 /* GObject interface */
@@ -541,6 +540,9 @@ modem_sms_service_class_init (ModemSMSServiceClass *klass)
 #endif
 
   g_type_class_add_private (klass, sizeof (ModemSMSServicePrivate));
+
+  modem_oface_register_type(MODEM_TYPE_SMS_HISTORY);
+
 }
 
 /* ---------------------------------------------------------------------- */
@@ -667,7 +669,7 @@ on_manager_message_removed (DBusGProxy *proxy,
   ModemSMSMessage *message = MODEM_SMS_MESSAGE(obj);
   GValue srr = G_VALUE_INIT;
   g_value_init (&srr, G_TYPE_BOOLEAN);
-  g_object_get_property(message, "status_report_requested", &srr);
+  g_object_get_property(obj, "status_report_requested", &srr);
   if (!g_value_get_boolean(&srr))
   {
     /* No status report requested, remove message now from pending list */
@@ -676,7 +678,7 @@ on_manager_message_removed (DBusGProxy *proxy,
   }
 }
 
-static void
+void
 on_manager_message_status_report (DBusGProxy *proxy,
                      char const *token,
                      GHashTable *dict,
@@ -704,7 +706,7 @@ on_manager_message_status_report (DBusGProxy *proxy,
   ModemSMSMessage *message = MODEM_SMS_MESSAGE(obj);
   GValue srr = G_VALUE_INIT;
   g_value_init (&srr, G_TYPE_BOOLEAN);
-  g_object_get_property(message, "status_report_requested", &srr);
+  g_object_get_property(obj, "status_report_requested", &srr);
   if (!g_value_get_boolean(&srr))
   {
     DEBUG("Status report not requested for message with token %s, ignore",
@@ -713,9 +715,9 @@ on_manager_message_status_report (DBusGProxy *proxy,
   }
 
   GValue destination = G_VALUE_INIT;
-  char* dest_string;
+  const char* dest_string;
   g_value_init (&destination, G_TYPE_STRING);
-  g_object_get_property(message, "destination", &destination);
+  g_object_get_property(obj, "destination", &destination);
   dest_string = g_value_get_string(&destination);
   g_signal_emit (self, signals[SIGNAL_STATUS_REPORT], 0, dest_string,
       token, delivered);

@@ -122,6 +122,9 @@ void modem_sms_emit_outgoing(ModemSMSService *self, char *address, char *path);
 void modem_sms_emit_error(ModemSMSService *self, char *address, char *path,
 		GError error);
 
+void on_manager_message_status_report (DBusGProxy *, char const *, GHashTable *,
+    gpointer);
+
 /* ---------------------------------------------------------------------- */
 
 ModemRequest *modem_sms_set_sc_address (ModemSMSService *self,
