@@ -4,6 +4,7 @@
  * Copyright (C) 2008-2010 Nokia Corporation
  *   @author Pekka Pessi <first.surname@nokia.com>
  *   @author Lassi Syrjala <first.surname@nokia.com>
+ * Copyright (C) 2013-2014 Jolla Ltd
  *
  * This work is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -115,9 +116,8 @@ static void modem_sms_incoming_deliver (ModemSMSService *self,
 
 static void on_incoming_message (DBusGProxy *, char const *, GHashTable *, gpointer);
 static void on_immediate_message (DBusGProxy *, char const *, GHashTable *, gpointer);
-static void on_manager_message_added (DBusGProxy *, char const *, GHashTable *,
-    gpointer);
 static void on_manager_message_removed (DBusGProxy *, char const *, gpointer);
+static void add_pending_message (char const *, GHashTable *, gpointer);
 
 /* ------------------------------------------------------------------------ */
 /* GObject interface */
@@ -309,9 +309,6 @@ modem_sms_service_connect (ModemOface *_self)
       CONNECT (on_incoming_message, "IncomingMessage",
           G_TYPE_STRING, MODEM_TYPE_DBUS_DICT, G_TYPE_INVALID);
 
-      CONNECT (on_manager_message_added, "MessageAdded",
-          DBUS_TYPE_G_OBJECT_PATH, MODEM_TYPE_DBUS_DICT, G_TYPE_INVALID);
-
       CONNECT (on_manager_message_removed, "MessageRemoved",
           DBUS_TYPE_G_OBJECT_PATH, G_TYPE_INVALID);
 
@@ -321,6 +318,7 @@ modem_sms_service_connect (ModemOface *_self)
 
   modem_oface_connect_properties (_self, TRUE);
 
+  /* read pending MO SMS from oFono's TX queue */
   modem_oface_add_connect_request (_self,
       modem_oface_request_managed (_self, "GetMessages",
           reply_to_sms_manager_get_messages, NULL));
@@ -347,7 +345,7 @@ reply_to_sms_manager_get_messages (ModemOface *_self,
           char const *path = g_value_get_boxed (va->values + 0);
           GHashTable *properties = g_value_get_boxed (va->values + 1);
 
-          on_manager_message_added (NULL, path, properties, self);
+          add_pending_message (path, properties, self);
         }
     }
 
@@ -394,8 +392,6 @@ modem_sms_service_disconnect (ModemOface *_self)
           G_CALLBACK (on_immediate_message), self);
       dbus_g_proxy_disconnect_signal (proxy, "IncomingMessage",
           G_CALLBACK (on_incoming_message), self);
-      dbus_g_proxy_disconnect_signal (proxy, "MessageAdded",
-          G_CALLBACK (on_manager_message_added), self);
       dbus_g_proxy_disconnect_signal (proxy, "MessageRemoved",
           G_CALLBACK (on_manager_message_removed), self);
       dbus_g_proxy_disconnect_signal (proxy, "StatusReport",
@@ -637,19 +633,6 @@ modem_sms_parse_time (gchar const *s)
 /* ------------------------------------------------------------------------- */
 
 static void
-on_manager_message_added (DBusGProxy *proxy,
-                          char const *path,
-                          GHashTable *properties,
-                          gpointer user_data)
-{
-  ModemSMSService *self = MODEM_SMS_SERVICE (user_data);
-
-  DEBUG ("%s", path);
-
-  (void)self;
-}
-
-static void
 on_manager_message_removed (DBusGProxy *proxy,
                             char const *token,
                             gpointer user_data)
@@ -740,6 +723,30 @@ dump_message_dict (GHashTable *dict)
       DEBUG ("%s = %s", key, s);
       g_free (s);
     }
+}
+
+static void
+add_pending_message (char const *message_path,
+                     GHashTable *properties,
+                     gpointer user_data)
+{
+  ModemSMSService *self = MODEM_SMS_SERVICE (user_data);
+
+  DEBUG ("%s", message_path);
+  /*
+   * Some fields are not known when reading from oFono's TX queue. Use a
+   * destination address that is valid but unlikely to match an existing
+   * one, and don't wait for status reports.
+   */
+  gpointer message_object = g_object_new( MODEM_TYPE_SMS_MESSAGE,
+      "destination", "00000000000000000000",
+      "message_token", message_path,
+      "message_service", self,
+      "status_report_requested", FALSE,
+      NULL );
+
+  g_hash_table_insert (self->priv->pending_outgoing, (gpointer)message_path,
+      g_object_ref (message_object));
 }
 
 #if nomore
