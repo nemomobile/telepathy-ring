@@ -135,10 +135,6 @@ static void on_modem_call_created(ModemCallService *call_service,
   char const *destination,
   RingMediaManager *self);
 
-static void on_modem_call_user_connection(ModemCallService *call_service,
-  gboolean active,
-  RingMediaManager *self);
-
 static void on_modem_call_removed (ModemCallService *, ModemCall *,
     RingMediaManager *);
 
@@ -161,7 +157,7 @@ struct _RingMediaManagerPrivate
 
   struct {
     gulong incoming, created, removed;
-    gulong emergency_numbers, joined, user_connection;
+    gulong emergency_numbers, joined;
     gulong status_changed;
   } signals;
 
@@ -351,10 +347,6 @@ ring_media_manager_connected (RingMediaManager *self)
     g_signal_connect(priv->call_service, "removed",
       G_CALLBACK(on_modem_call_removed), self);
 
-  priv->signals.user_connection =
-    g_signal_connect(priv->call_service, "user-connection",
-      G_CALLBACK(on_modem_call_user_connection), self);
-
   priv->signals.emergency_numbers =
     g_signal_connect(priv->call_service, "notify::emergency-numbers",
       G_CALLBACK(on_modem_call_emergency_numbers_changed), self);
@@ -370,7 +362,6 @@ ring_media_manager_disconnect(RingMediaManager *self)
 
   ring_signal_disconnect (priv->call_service, &priv->signals.incoming);
   ring_signal_disconnect (priv->call_service, &priv->signals.created);
-  ring_signal_disconnect (priv->call_service, &priv->signals.user_connection);
   ring_signal_disconnect (priv->call_service, &priv->signals.emergency_numbers);
 
   g_hash_table_foreach (priv->channels, foreach_dispose, NULL);
@@ -1081,14 +1072,4 @@ on_modem_call_removed (ModemCallService *call_service,
   channel = modem_call_get_handler (modem_call);
   if (channel)
     g_object_set (channel, "call-instance", NULL, NULL);
-}
-/* ---------------------------------------------------------------------- */
-
-static void
-on_modem_call_user_connection(ModemCallService *call_service,
-  gboolean active,
-  RingMediaManager *self)
-{
-  DEBUG("user-connection %s", active ? "attached" : "detached");
-  modem_tones_user_connection(RING_MEDIA_MANAGER(self)->priv->tones, active);
 }

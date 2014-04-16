@@ -57,7 +57,6 @@ enum
 {
   SIGNAL_INCOMING,
   SIGNAL_CREATED,
-  SIGNAL_USER_CONNECTION,
   SIGNAL_REMOVED,
   N_SIGNALS
 };
@@ -84,8 +83,6 @@ struct _ModemCallServicePrivate
 
   ModemCall *active, *hold;
 
-  unsigned user_connection:1;   /* Do we have in-band connection? */
-
   unsigned signals :1;
   unsigned :0;
 };
@@ -105,12 +102,6 @@ static ModemCall *modem_call_service_ensure_instance (ModemCallService *self,
 static ModemRequestCallNotify modem_call_request_dial_reply;
 
 static ModemRequestCallNotify modem_call_conference_request_reply;
-
-#if nomore
-static void on_user_connection (DBusGProxy *proxy,
-    gboolean attached,
-    ModemCallService *self);
-#endif
 
 static void on_modem_call_state (ModemCall *, ModemCallState,
     ModemCallService *);
@@ -425,15 +416,6 @@ modem_call_service_class_init (ModemCallServiceClass *klass)
         _modem__marshal_VOID__OBJECT,
         G_TYPE_NONE, 1,
         MODEM_TYPE_CALL);
-
-  signals[SIGNAL_USER_CONNECTION] =
-    g_signal_new ("user-connection", G_OBJECT_CLASS_TYPE (klass),
-        G_SIGNAL_RUN_LAST | G_SIGNAL_DETAILED,
-        0,
-        NULL, NULL,
-        g_cclosure_marshal_VOID__BOOLEAN,
-        G_TYPE_NONE, 1,
-        G_TYPE_BOOLEAN);
 
   DEBUG ("leave");
 }
@@ -868,21 +850,6 @@ modem_call_get_valid_emergency_urn (char const *urn)
 }
 
 /* ---------------------------------------------------------------------- */
-
-#if nomore
-static void
-on_user_connection (DBusGProxy *proxy,
-                    gboolean attached,
-                    ModemCallService *self)
-{
-  DEBUG ("(%p, %d, %p): enter", proxy, attached, self);
-
-  MODEM_CALL_SERVICE (self)->priv->user_connection = attached;
-
-  g_signal_emit (self, signals[SIGNAL_USER_CONNECTION], 0,
-      attached);
-}
-#endif
 
 static void request_notify_cancel (gpointer data);
 

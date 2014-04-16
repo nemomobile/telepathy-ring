@@ -102,12 +102,7 @@ RingMediaChannel class. Currently only RingCallChannels are using the tone
 generation.
 
 The error tones are generated while the call is in 'released' state
-until the call enters the 'terminated' state. The tone generation is
-suppressed while the network generates the tone (user-connection).
-If the network-generated tone is very short (less than half the nominal tone
-duration usually determined by ring_call_channel_play_error_tone()),
-the error tone is played by the tone generator service after the network closes
-the speech traffic channel.
+until the call enters the 'terminated' state. 
 
 
 TEXT CHANNELS

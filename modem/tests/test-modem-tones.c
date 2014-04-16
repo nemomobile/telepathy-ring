@@ -69,7 +69,6 @@ START_TEST(test_modem_tones)
   fail_if(volume != -63);
 
   modem_tones_stop(tones, 0);
-  modem_tones_user_connection(tones, 0);
 
   fail_if(0 > (event = modem_call_event_tone(MODEM_CALL_STATE_ALERTING, 0, 0)));
   fail_if(!(playing = modem_tones_start(tones, event, 0)));

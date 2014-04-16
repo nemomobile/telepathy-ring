@@ -102,8 +102,6 @@ int modem_tones_playing_event(ModemTones const *self, guint playing);
 
 void modem_tones_stop(ModemTones *, guint source);
 
-void modem_tones_user_connection(ModemTones *self, gboolean user_connection);
-
 G_END_DECLS
 
 #endif /* #ifndef _MODEM_TONES_H_ */
