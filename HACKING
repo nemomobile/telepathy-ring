@@ -104,6 +104,8 @@ generation.
 The error tones are generated while the call is in 'released' state
 until the call enters the 'terminated' state. 
 
+An alerting tone is played if the network is known not to generate the
+tone (i.e. if there is no user connection, see 3GPP 24.008 sect. 5.2.1.5).
 
 TEXT CHANNELS
 =============
