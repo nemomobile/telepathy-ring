@@ -4,7 +4,7 @@
  *
  * Copyright (C) 2007-2009 Nokia Corporation
  *   @author Pekka Pessi <first.surname@nokia.com>
- * Copyright (C) 2013 Jolla Ltd
+ * Copyright (C) 2013-14 Jolla Ltd
  *
  * This work is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -677,6 +677,16 @@ ring_call_channel_close(RingMediaChannel *_self, gboolean immediately)
   return TRUE;
 }
 
+static gboolean
+ring_call_channel_alert_tone_needed(RingCallChannel *self)
+{
+    ModemCallService *call_service = ring_media_channel_get_call_service (self);
+    GValue alert = G_VALUE_INIT;
+    g_value_init (&alert, G_TYPE_BOOLEAN);
+    g_object_get_property(call_service, "alert-tone-needed", &alert);
+    return g_value_get_boolean(&alert);
+}
+
 static void
 ring_call_channel_update_state(RingMediaChannel *_self,
   guint state, guint causetype, guint cause)
@@ -694,10 +704,11 @@ ring_call_channel_update_state(RingMediaChannel *_self,
       ring_media_channel_stop_playing(RING_MEDIA_CHANNEL(self), TRUE);
       break;
     case MODEM_CALL_STATE_ALERTING:
-#if 0 /* No local alert tone (use in-band audio) */
-      ring_media_channel_play_tone(RING_MEDIA_CHANNEL(self),
-        TONES_EVENT_RINGING, 0, 0);
-#endif
+      if (ring_call_channel_alert_tone_needed(self)) {
+        DEBUG ("play local alert tone (no in-band audio)");
+        ring_media_channel_play_tone (RING_MEDIA_CHANNEL(self),
+          TONES_EVENT_RINGING, 0, 0);
+      }
       break;
     case MODEM_CALL_STATE_DISCONNECTED:
       ring_call_channel_play_error_tone(self, state, causetype, cause);

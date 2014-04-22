@@ -54,7 +54,6 @@ struct _ModemTonesPrivate
 
   GQueue stop_requests[1];
 
-  unsigned user_connection:1;
   unsigned dispose_has_run:2;
 };
 
@@ -188,12 +187,6 @@ static void reply_to_stop_tone(DBusGProxy *proxy,
   DBusGProxyCall *call,
   void *_request);
 
-static gboolean modem_tones_suppress(int event)
-{
-  return event < 0 ||
-    (event > TONES_EVENT_DTMF_D && event < TONES_EVENT_RADIO_PATH_ACK);
-}
-
 guint
 modem_tones_start_full(ModemTones *self,
   int event,
@@ -241,18 +234,15 @@ modem_tones_start_full(ModemTones *self,
 
   g_timer_start(priv->timer);
 
-  DEBUG("%scalling StartEventTone(%u, %d, %u) with %u",
-    priv->user_connection ? "not " : "",
+  DEBUG("calling StartEventTone(%u, %d, %u) with %u",
     priv->event, priv->evolume, priv->duration, priv->playing);
 
-  if (!priv->user_connection || !modem_tones_suppress(priv->event)) {
-    dbus_g_proxy_call_no_reply(priv->proxy,
-      "StartEventTone",
-      G_TYPE_UINT, priv->event,
-      G_TYPE_INT, priv->evolume,
-      G_TYPE_UINT, priv->duration,
-      G_TYPE_INVALID);
-  }
+  dbus_g_proxy_call_no_reply(priv->proxy,
+    "StartEventTone",
+    G_TYPE_UINT, priv->event,
+    G_TYPE_INT, priv->evolume,
+    G_TYPE_UINT, priv->duration,
+    G_TYPE_INVALID);
 
   return priv->playing;
 }
@@ -369,42 +359,4 @@ reply_to_stop_tone(DBusGProxy *proxy,
   g_queue_remove(self->priv->stop_requests, _request);
 
   notify(self, source, data);
-}
-
-void
-modem_tones_user_connection(ModemTones *self,
-  gboolean user_connection)
-{
-  ModemTonesPrivate *priv = self->priv;
-
-  user_connection = !!user_connection;
-
-  DEBUG("(%p, %u)", self, user_connection);
-
-  g_return_if_fail(self);
-  g_return_if_fail(!self->priv->dispose_has_run);
-
-  self->priv->user_connection = user_connection;
-
-  if (user_connection) {
-    if (priv->playing)
-      dbus_g_proxy_call_no_reply(priv->proxy,
-        "StopTone",
-        G_TYPE_INVALID);
-  }
-  else {
-    if (priv->playing && priv->duration &&
-      modem_tones_suppress(priv->event)) {
-      double should_have_been_playing = g_timer_elapsed(priv->timer, NULL);
-
-      if (1000.0 * priv->duration > 2 * should_have_been_playing) {
-        dbus_g_proxy_call_no_reply(priv->proxy,
-          "StartEventTone",
-          G_TYPE_UINT, priv->event,
-          G_TYPE_INT, priv->evolume,
-          G_TYPE_UINT, priv->duration - (guint)(should_have_been_playing * 1000.0),
-          G_TYPE_INVALID);
-      }
-    }
-  }
 }
