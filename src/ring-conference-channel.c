@@ -1747,7 +1747,7 @@ ring_conference_channel_release(RingConferenceChannel *self,
 
   ring_util_group_change_members(self,
     NULL, removed, NULL, NULL,
-    reason ? "change-reason" : "", G_TYPE_UINT, reason,
+    "change-reason", G_TYPE_UINT, reason,
     message ? "message" : "", G_TYPE_STRING, message,
     dbus_error ? "error" : "", G_TYPE_STRING, dbus_error,
     "debug-message", G_TYPE_STRING, debug,
