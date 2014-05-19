@@ -1007,6 +1007,7 @@ on_modem_call_created(ModemCallService *call_service,
   TpHandleRepoIface *repo;
   RingCallChannel *channel;
   TpHandle handle;
+  TpHandle initiator;
   char const *sos;
   GError *error = NULL;
 
@@ -1034,6 +1035,9 @@ on_modem_call_created(ModemCallService *call_service,
     return;
   }
 
+  initiator = tp_base_connection_get_self_handle(
+    TP_BASE_CONNECTION(priv->connection));
+
   sos = modem_call_get_emergency_service(priv->call_service, destination);
 
   char *object_path = ring_media_manager_new_object_path(self, "created");
@@ -1045,6 +1049,7 @@ on_modem_call_created(ModemCallService *call_service,
       "object-path", object_path,
       "handle-type", TP_HANDLE_TYPE_CONTACT,
       "handle", handle,
+      "initiator-handle", initiator,
       "peer", handle,
       "requested", TRUE,
       "initial-remote", handle,
