@@ -98,6 +98,7 @@ struct _RingCallChannelPrivate
     TpHandle actor;
     TpChannelGroupChangeReason reason;
     guchar causetype, cause;
+    guint retry_source, retry_count;
   } release;
 
   struct {
@@ -449,6 +450,10 @@ ring_call_channel_dispose(GObject *object)
       tp_base_channel_get_connection (base), TP_HANDLE_TYPE_CONTACT);
     tp_handle_unref(repo, priv->member.handle);
     priv->member.handle = 0;
+  }
+  if (priv->release.retry_source) {
+    g_source_remove(priv->release.retry_source);
+    priv->release.retry_source = 0;
   }
 
   ((GObjectClass *)ring_call_channel_parent_class)->dispose(object);
@@ -1309,8 +1314,9 @@ ring_call_channel_remove_member_with_reason(GObject *iface,
     priv->release.message = g_strdup(message ? message : "Call released");
     priv->release.actor = mixin->self_handle;
     priv->release.reason = reason;
+    priv->release.retry_count = 0;
 
-    modem_call_request_release(self->base.call_instance, reply_to_hangup, NULL);
+    modem_call_request_release(self->base.call_instance, reply_to_hangup, self);
   }
   else {
     /* Remove handle from set */
@@ -1399,6 +1405,18 @@ ring_call_channel_remote_pending(RingCallChannel *self,
   return done;
 }
 
+gboolean
+retry_modem_call_request_release(gpointer user_data)
+{
+  RingCallChannel *self = RING_CALL_CHANNEL(user_data);
+  RingCallChannelPrivate *priv = self->priv;
+
+  priv->release.retry_source = 0;
+  modem_call_request_release(self->base.call_instance, reply_to_hangup, self);
+
+  return FALSE;
+}
+
 void
 reply_to_answer (ModemCall *call_instance,
                  ModemRequest *request,
@@ -1416,15 +1434,23 @@ reply_to_hangup (ModemCall *call_instance,
                  GError *error,
                  gpointer user_data)
 {
-  DEBUG ("%s", (char *)user_data, error ? error->message : "ok");
+  RingCallChannel *self = RING_CALL_CHANNEL(user_data);
+  RingCallChannelPrivate *priv = self->priv;
+  DEBUG ("%s", error ? error->message : "ok");
 
   if (error) {
-    sleep(1);
-    DEBUG("Error in hangup, retry once");
-    modem_call_request_release(call_instance, NULL, NULL);
+    if (error->code == MODEM_OFONO_ERROR_IN_PROGRESS && priv->release.retry_count <= 5) {
+      /* retry for up to 32s, increasing delay each time */
+      int delay = (1 << priv->release.retry_count);
+      ring_message("Error in hangup %s, retry %d in %ds",
+                   error->message, priv->release.retry_count, delay);
+      priv->release.retry_source = g_timeout_add_seconds(delay,
+                                                         retry_modem_call_request_release, self);
+      ++priv->release.retry_count;
+    } else {
+      ring_message("Error in hangup, giving up %s", error->message);
+    }
   }
-
-  g_free (user_data);
 }
 
 gboolean
@@ -1889,8 +1915,9 @@ ring_member_channel_release(RingMemberChannel *iface,
   priv->release.message = g_strdup(message ? message : "Call Released");
   priv->release.actor = TP_GROUP_MIXIN(iface)->self_handle;
   priv->release.reason = reason;
+  priv->release.retry_count = 0;
 
-  modem_call_request_release(self->base.call_instance, reply_to_hangup, NULL);
+  modem_call_request_release(self->base.call_instance, reply_to_hangup, self);
 
   return TRUE;
 }
