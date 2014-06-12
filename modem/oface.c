@@ -186,7 +186,8 @@ modem_oface_finalize (GObject *object)
   DEBUG ("enter");
 
   /* Free any data held directly by the object here */
-  g_object_unref (self->priv->proxy);
+  if (self->priv->proxy)
+    g_object_unref (self->priv->proxy);
   g_clear_error (&self->priv->connecting.error);
 
   G_OBJECT_CLASS (modem_oface_parent_class)->finalize (object);

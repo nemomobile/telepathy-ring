@@ -451,16 +451,7 @@ START_TEST(free_assumptions)
   array = g_ptr_array_new();
   fail_if(g_ptr_array_free(array, FALSE) != NULL);
 
-  g_message("Expect some CRITICAL warnings from (process:%u)",
-    (unsigned)getpid());
-
-  fail_if(g_ptr_array_free(NULL, TRUE) != NULL);
-  fail_if(g_ptr_array_free(NULL, FALSE) != NULL);
-
-  g_object_unref(NULL);
   mark_point();
-
-  fail_if(g_object_ref(NULL) != NULL);
 
   array = g_ptr_array_new();
 
@@ -477,10 +468,6 @@ START_TEST(free_assumptions)
   g_strfreev((char **)g_ptr_array_free(array, FALSE));
 
   g_clear_error(&error);
-  g_error_free(NULL);
-
-  g_message("CRITICAL warnings from (process:%u) end here",
-    (unsigned)getpid());
 }
 END_TEST
 
