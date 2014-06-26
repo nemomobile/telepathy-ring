@@ -151,7 +151,8 @@ modem_sms_message_finalize (GObject *object)
   ModemSMSMessage *self = MODEM_SMS_MESSAGE (object);
   g_free (self->destination);
   g_free (self->message_token);
-  g_object_unref (self->message_proxy);
+  if (self->message_proxy)
+    g_object_unref (self->message_proxy);
   G_OBJECT_CLASS (modem_sms_message_parent_class)->finalize (object);
 }
 
