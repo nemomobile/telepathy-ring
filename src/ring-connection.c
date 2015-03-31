@@ -1006,27 +1006,6 @@ ring_connection_bind_modem (RingConnection *self,
       TP_CONNECTION_STATUS_REASON_REQUESTED);
 }
 
-static gboolean
-ring_connection_connecting_timeout (gpointer _self)
-{
-  RingConnection *self = RING_CONNECTION (_self);
-  TpBaseConnection *base = TP_BASE_CONNECTION (_self);
-  RingConnectionPrivate *priv = self->priv;
-
-  DEBUG ("enter");
-
-  priv->connecting_source = 0;
-
-  if (base->status != TP_CONNECTION_STATUS_DISCONNECTED)
-    {
-      tp_base_connection_change_status (base,
-          TP_CONNECTION_STATUS_DISCONNECTED,
-          TP_CONNECTION_STATUS_REASON_NETWORK_ERROR);
-    }
-
-  return FALSE;
-}
-
 static void
 ring_connection_imsi_added (ModemService *modems,
                             Modem *modem,
@@ -1133,9 +1112,6 @@ ring_connection_start_connecting(TpBaseConnection *base,
   g_assert(base->status == TP_INTERNAL_CONNECTION_STATUS_NEW);
 
   error = NULL;
-
-  priv->connecting_source = g_timeout_add_seconds (30,
-      ring_connection_connecting_timeout, self);
 
   manager = modem_service ();
 
