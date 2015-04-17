@@ -106,6 +106,7 @@ static guint call_signals[N_SIGNALS];
 static void on_notify_ofono_state (ModemCall *, GParamSpec *, gpointer);
 static void reply_to_instance_request (DBusGProxy *, DBusGProxyCall *, void *);
 static void on_disconnect_reason (DBusGProxy *, char const *, gpointer);
+static void on_propertychanged (DBusGProxy *, char const *, GValue *, gpointer);
 
 #if nomore /* Ofono does not provide this information */
 static void on_on_hold (DBusGProxy *, gboolean onhold, ModemCall*);
@@ -353,6 +354,10 @@ modem_call_connect (ModemOface *_self)
 	  G_TYPE_STRING, G_TYPE_INVALID);
   dbus_g_proxy_connect_signal (proxy, "DisconnectReason",
 	  G_CALLBACK (on_disconnect_reason), self, NULL);
+  dbus_g_proxy_add_signal (proxy, "PropertyChanged",
+	  G_TYPE_STRING, G_TYPE_INVALID);
+  dbus_g_proxy_connect_signal (proxy, "PropertyChanged",
+	  G_CALLBACK (on_propertychanged), self, NULL);
 
   g_signal_connect (_self, "notify::ofono-state",
       G_CALLBACK(on_notify_ofono_state), _self);
@@ -534,7 +539,6 @@ modem_call_class_init (ModemCallClass *klass)
         g_cclosure_marshal_VOID__VOID,
         G_TYPE_NONE, 0);
 
-  /* XXX: not implemented */
   call_signals[SIGNAL_ON_HOLD] =
     g_signal_new ("on-hold", G_OBJECT_CLASS_TYPE (klass),
         G_SIGNAL_RUN_LAST | G_SIGNAL_DETAILED,
@@ -1377,5 +1381,16 @@ on_disconnect_reason (DBusGProxy *proxy,
   /* Save the disconnect reason; a state signal will follow shortly */
   g_object_set (self, "cause", cause, NULL);
   g_object_set (self, "causetype", causetype, NULL);
+}
+
+static void
+on_propertychanged (DBusGProxy *proxy,
+		char const *property, 
+		GValue *value,
+		gpointer user_data)
+{
+  if (!strcmp (property, "RemoteHeld")) {
+    g_signal_emit (self, call_signals[SIGNAL_ON_HOLD], 0, g_value_get_boolean (value));
+  }  
 }
 
