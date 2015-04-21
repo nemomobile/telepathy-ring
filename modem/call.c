@@ -1389,6 +1389,8 @@ on_propertychanged (DBusGProxy *proxy,
 		GValue *value,
 		gpointer user_data)
 {
+  ModemCall *self = MODEM_CALL(user_data);
+
   if (!strcmp (property, "RemoteHeld")) {
     g_signal_emit (self, call_signals[SIGNAL_ON_HOLD], 0, g_value_get_boolean (value));
   }  
