@@ -74,6 +74,8 @@ PKG_CHECK_MODULES([CHECK], [check >= 0.9.4])
 
 PKG_CHECK_MODULES([DBUS], [dbus-1 >= 0.60, dbus-glib-1 >= 0.88])
 
+PKG_CHECK_MODULES([NGF], [libngf0 >= 0.24])
+
 PKG_CHECK_MODULES([UUID], [uuid])
 
 AS_AC_EXPAND(DATADIR, ${datadir})

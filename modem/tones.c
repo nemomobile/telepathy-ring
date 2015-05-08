@@ -29,6 +29,10 @@
 #include "modem/errors.h"
 
 #include <dbus/dbus-glib.h>
+#include <dbus/dbus.h>
+
+#include <libngf/ngf.h>
+#include <libngf/proplist.h>
 
 #include <string.h>
 
@@ -36,13 +40,14 @@ G_DEFINE_TYPE(ModemTones, modem_tones, G_TYPE_OBJECT);
 
 struct _ModemTonesPrivate
 {
-  DBusGProxy *proxy;
+  DBusGConnection *connection;
   GTimer *timer;
 
-  int volume;
-  guint source;
+  NgfClient *ngf;
+  uint32_t event_id;
 
-  guint playing;
+  int volume;
+
   int event;
   int evolume;
   guint duration;
@@ -52,23 +57,66 @@ struct _ModemTonesPrivate
   ModemTonesStoppedNotify *notify;
   gpointer data;
 
-  GQueue stop_requests[1];
+  GHashTable *notify_map;
 
   unsigned dispose_has_run:2;
 };
+
+struct _ModemNotifyData
+{
+  uint32_t event_id;
+  ModemTonesStoppedNotify *notify;
+  ModemTones *modem;
+  gpointer data;
+};
+
+typedef struct _ModemNotifyData ModemNotifyData;
+
+static void
+ngf_callback(NgfClient *client, uint32_t id, NgfEventState state, void *userdata)
+{
+  ModemTones *self = (ModemTones*) userdata;
+  ModemNotifyData *notify_data = NULL;
+
+  switch (state) {
+    /* Both FAILED and COMPLETED mean that the event isn't playing anymore.
+     * So with both cases check if tone user wants to be notified. */
+    case NGF_EVENT_FAILED:
+      DEBUG("NGFD event failed.");
+      /* fall through */
+    case NGF_EVENT_COMPLETED:
+      notify_data = g_hash_table_lookup(self->priv->notify_map, &id);
+      break;
+
+    case NGF_EVENT_PLAYING:
+      break;
+
+    case NGF_EVENT_PAUSED:
+      break;
+
+  }
+
+  if (notify_data) {
+    notify_data->notify(self, notify_data->event_id, notify_data->data);
+    g_hash_table_remove(self->priv->notify_map, &id);
+  }
+}
 
 static void
 modem_tones_init(ModemTones *self)
 {
   self->priv = G_TYPE_INSTANCE_GET_PRIVATE(
     self, MODEM_TYPE_TONES, ModemTonesPrivate);
+  self->priv->connection = dbus_g_bus_get(DBUS_BUS_SYSTEM, NULL);
   self->priv->timer = g_timer_new();
-  self->priv->proxy =
-    dbus_g_proxy_new_for_name(dbus_g_bus_get(DBUS_BUS_SYSTEM, NULL),
-      "com.Nokia.Telephony.Tones",
-      "/com/Nokia/Telephony/Tones",
-      "com.Nokia.Telephony.Tones");
-  g_queue_init(self->priv->stop_requests);
+  self->priv->ngf = ngf_client_create(NGF_TRANSPORT_DBUS,
+                                      dbus_g_connection_get_connection(self->priv->connection));
+  ngf_client_set_callback(self->priv->ngf, ngf_callback, self);
+  self->priv->event_id = 0;
+  self->priv->notify_map = g_hash_table_new_full(g_int_hash,
+                                                 g_int_equal,
+                                                 NULL,
+                                                 g_free);
 }
 
 static void
@@ -82,11 +130,7 @@ modem_tones_dispose(GObject *object)
   priv->dispose_has_run = 1;
   modem_tones_stop(self, 0);
   priv->dispose_has_run = 2;
-  while (!g_queue_is_empty(priv->stop_requests)) {
-    modem_request_cancel(g_queue_pop_head(priv->stop_requests));
-  }
-  g_assert(!priv->playing);
-  g_object_run_dispose(G_OBJECT(priv->proxy));
+  g_assert(!priv->event_id);
 
   if (G_OBJECT_CLASS(modem_tones_parent_class)->dispose)
     G_OBJECT_CLASS(modem_tones_parent_class)->dispose(object);
@@ -98,8 +142,10 @@ modem_tones_finalize(GObject *object)
   ModemTones *self = MODEM_TONES(object);
   ModemTonesPrivate *priv = self->priv;
 
-  g_object_unref(priv->proxy);
   g_timer_destroy(priv->timer);
+  ngf_client_destroy(priv->ngf);
+  g_hash_table_destroy(priv->notify_map);
+  dbus_g_connection_unref(priv->connection);
 
   memset(priv, 0, (sizeof *priv));
 
@@ -183,9 +229,6 @@ modem_tones_class_init(ModemTonesClass *klass)
 
 static gboolean modem_tones_timeout(gpointer _self);
 static void modem_tones_timeout_removed(gpointer _self);
-static void reply_to_stop_tone(DBusGProxy *proxy,
-  DBusGProxyCall *call,
-  void *_request);
 
 guint
 modem_tones_start_full(ModemTones *self,
@@ -196,6 +239,7 @@ modem_tones_start_full(ModemTones *self,
   gpointer data)
 {
   ModemTonesPrivate *priv = self->priv;
+  NgfProplist *proplist;
 
   g_return_val_if_fail(!priv->dispose_has_run, 0);
 
@@ -216,10 +260,6 @@ modem_tones_start_full(ModemTones *self,
   if (event < 0)
     return 0;
 
-  if (priv->source == 0)
-    priv->source++;
-
-  priv->playing = priv->source++;
   priv->event = event;
   priv->evolume = volume;
   priv->duration = duration;
@@ -234,17 +274,29 @@ modem_tones_start_full(ModemTones *self,
 
   g_timer_start(priv->timer);
 
-  DEBUG("calling StartEventTone(%u, %d, %u) with %u",
-    priv->event, priv->evolume, priv->duration, priv->playing);
+  proplist = ngf_proplist_new();
 
-  dbus_g_proxy_call_no_reply(priv->proxy,
-    "StartEventTone",
-    G_TYPE_UINT, priv->event,
-    G_TYPE_INT, priv->evolume,
-    G_TYPE_UINT, priv->duration,
-    G_TYPE_INVALID);
+  if (event > TONES_EVENT_DTMF_D)
+    ngf_proplist_set_as_unsigned(proplist, "tonegen.pattern", event);
+  else
+    ngf_proplist_set_as_unsigned(proplist, "tonegen.value", event);
 
-  return priv->playing;
+  ngf_proplist_set_as_integer(proplist, "tonegen.dbm0", volume);
+
+  if (duration > 0)
+    ngf_proplist_set_as_unsigned(proplist, "tonegen.duration", duration);
+
+  if (event > TONES_EVENT_DTMF_D)
+    priv->event_id = ngf_client_play_event(priv->ngf, "indicator", proplist);
+  else
+    priv->event_id = ngf_client_play_event(priv->ngf, "dtmf", proplist);
+
+  ngf_proplist_free(proplist);
+
+  DEBUG("called StartEventTone(%u, %d, %u) with %u",
+    priv->event, priv->evolume, priv->duration, priv->event_id);
+
+  return priv->event_id;
 }
 
 guint
@@ -260,9 +312,9 @@ modem_tones_is_playing(ModemTones const *self, guint playing)
 {
   double played;
 
-  if (!MODEM_IS_TONES(self) || !self->priv->playing)
+  if (!MODEM_IS_TONES(self) || !self->priv->event_id)
     return 0;
-  if (playing != 0 && playing != self->priv->playing)
+  if (playing != 0 && playing != self->priv->event_id)
     return 0;
 
   played = 1000 * g_timer_elapsed(self->priv->timer, NULL) + 0.5;
@@ -278,9 +330,9 @@ modem_tones_is_playing(ModemTones const *self, guint playing)
 int
 modem_tones_playing_event(ModemTones const *self, guint playing)
 {
-  if (!MODEM_IS_TONES(self) || !self->priv->playing)
+  if (!MODEM_IS_TONES(self) || !self->priv->event_id)
     return TONES_NONE;
-  if (playing != 0 && playing != self->priv->playing)
+  if (playing != 0 && playing != self->priv->event_id)
     return TONES_NONE;
   return self->priv->event;
 }
@@ -299,64 +351,51 @@ modem_tones_timeout_removed(gpointer _self)
   MODEM_TONES(_self)->priv->timeout = 0;
 }
 
+static gboolean
+stop_cb(gpointer userdata)
+{
+    ModemNotifyData *notify_data = (ModemNotifyData *) userdata;
+
+    ngf_client_stop_event(notify_data->modem->priv->ngf, notify_data->event_id);
+
+    return FALSE;
+}
+
 void
 modem_tones_stop(ModemTones *self,
-  guint source)
+  guint event_id)
 {
   ModemTonesPrivate *priv;
   ModemTonesStoppedNotify *notify;
   gpointer data;
   ModemRequest *stopping;
 
-  DEBUG("(%p, %u)", self, source);
+  DEBUG("(%p, %u)", self, event_id);
 
   g_return_if_fail(self);
   priv = self->priv;
   g_return_if_fail(priv->dispose_has_run <= 1);
 
-  if (!priv->playing)
+  if (!priv->event_id)
     return;
-  if (source && priv->playing != source)
+  if (event_id && priv->event_id != event_id)
     return;
   if (priv->timeout)
     g_source_remove(priv->timeout);
   g_assert(priv->timeout == 0);
 
-  source = priv->playing, priv->playing = 0;
+  event_id = priv->event_id, priv->event_id = 0;
   notify = priv->notify; data = priv->data;
   priv->notify = NULL, priv->data = NULL;
 
   if (notify) {
-    stopping = modem_request_with_timeout(
-      self, priv->proxy, "StopTone",
-      reply_to_stop_tone,
-      G_CALLBACK(notify), data, 5000,
-      G_TYPE_INVALID);
-    g_queue_push_tail(priv->stop_requests, stopping);
-    modem_request_add_data(stopping, "modem-tones-stop-source",
-      GUINT_TO_POINTER(source));
+    ModemNotifyData *notify_data = g_new0(ModemNotifyData, 1);
+    notify_data->event_id = event_id;
+    notify_data->notify = notify;
+    notify_data->modem = self;
+    notify_data->data = data;
+
+    g_hash_table_insert(priv->notify_map, &notify_data->event_id, notify_data);
+    g_timeout_add_seconds(5, stop_cb, notify_data);
   }
-}
-
-static void
-reply_to_stop_tone(DBusGProxy *proxy,
-  DBusGProxyCall *call,
-  void *_request)
-{
-  ModemRequest *request = _request;
-  ModemTones *self = modem_request_object(request);
-  ModemTonesStoppedNotify *notify = modem_request_callback(request);
-  guint source = GPOINTER_TO_UINT(
-    modem_request_get_data(request, "modem-tones-stop-source"));
-  gpointer data = modem_request_user_data(request);
-
-  GError *error = NULL;
-
-  if (!dbus_g_proxy_end_call(proxy, call, &error, G_TYPE_INVALID)) {
-    g_error_free(error);
-  }
-
-  g_queue_remove(self->priv->stop_requests, _request);
-
-  notify(self, source, data);
 }
