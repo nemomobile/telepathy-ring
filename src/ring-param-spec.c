@@ -30,7 +30,7 @@ GParamSpec *ring_param_spec_imsi(guint flags)
   return
     g_param_spec_string("imsi",
       "IMSI",
-      "Internation Mobile Subscriber Identifer",
+      "International Mobile Subscriber Identity",
       "", /* default value */
       flags | G_PARAM_READABLE | G_PARAM_STATIC_STRINGS);
 }

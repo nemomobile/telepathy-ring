@@ -279,7 +279,7 @@ modem_sim_service_class_init (ModemSIMServiceClass *klass)
   g_object_class_install_property (object_class, PROP_IMSI,
       g_param_spec_string ("imsi",
           "IMSI",
-          "Internation Mobile Subscriber Identity",
+          "International Mobile Subscriber Identity",
           "", /* default value */
           G_PARAM_READWRITE | G_PARAM_CONSTRUCT |
           G_PARAM_STATIC_STRINGS));
