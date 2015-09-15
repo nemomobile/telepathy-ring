@@ -76,6 +76,7 @@ enum
   PROP_CALL_SERVICE,
   PROP_ANON_MODES,
   PROP_CAPABILITY_FLAGS,
+  PROP_IMSI,
   N_PROPS
 };
 
@@ -148,6 +149,7 @@ struct _RingMediaManagerPrivate
   RingConnection *connection;
   guint anon_modes;
   guint capability_flags;
+  char *imsi;
 
   /* Hash by object path */
   GHashTable *channels;
@@ -214,6 +216,8 @@ ring_media_manager_finalize(GObject *object)
   RingMediaManager *self = RING_MEDIA_MANAGER(object);
   RingMediaManagerPrivate *priv = self->priv;
 
+  g_free(priv->imsi);
+
   g_object_unref (priv->tones);
   g_hash_table_destroy (priv->channels);
 }
@@ -239,6 +243,9 @@ ring_media_manager_get_property(GObject *object,
       break;
     case PROP_CAPABILITY_FLAGS:
       g_value_set_uint(value, priv->capability_flags);
+      break;
+    case PROP_IMSI:
+      g_value_set_string(value, priv->imsi ? priv->imsi : "");
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID(object, property_id, pspec);
@@ -274,6 +281,11 @@ ring_media_manager_set_property(GObject *object,
       priv->capability_flags = g_value_get_uint(value) &
         RING_MEDIA_CHANNEL_CAPABILITY_FLAGS;
       break;
+
+    case PROP_IMSI:
+      priv->imsi = g_value_dup_string(value);
+      break;
+
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID(object, property_id, pspec);
   }
@@ -307,6 +319,9 @@ ring_media_manager_class_init(RingMediaManagerClass *klass)
   g_object_class_install_property(object_class, PROP_CAPABILITY_FLAGS,
     ring_param_spec_type_specific_capability_flags(G_PARAM_CONSTRUCT,
       RING_MEDIA_CHANNEL_CAPABILITY_FLAGS));
+
+  g_object_class_install_property(object_class, PROP_IMSI,
+    ring_param_spec_imsi(G_PARAM_WRITABLE | G_PARAM_CONSTRUCT));
 }
 
 /* ---------------------------------------------------------------------- */
@@ -878,6 +893,7 @@ ring_media_manager_outgoing_call(RingMediaManager *self,
       "initial-audio", initial_audio,
       "anon-modes", priv->anon_modes,
       "initial-emergency-service", emergency,
+      "imsi", priv->imsi,
       NULL);
 
   g_free(object_path);
@@ -988,6 +1004,7 @@ on_modem_call_incoming(ModemCallService *call_service,
       "anon-modes", priv->anon_modes,
       "call-instance", modem_call,
       "terminating", TRUE,
+      "imsi", priv->imsi,
       NULL);
 
   g_free(object_path);
@@ -1058,6 +1075,7 @@ on_modem_call_created(ModemCallService *call_service,
       "call-instance", modem_call,
       "originating", TRUE,
       sos ? "initial-emergency-service" : NULL, sos,
+      "imsi", priv->imsi,
       NULL);
 
   g_free(object_path);

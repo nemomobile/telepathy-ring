@@ -74,6 +74,7 @@ enum
   PROP_SMS_SERVICE,
   PROP_CAPABILITY_FLAGS,      /**< Channel-type-specific capabilities */
   PROP_SMSC,                  /**< SMSC address */
+  PROP_IMSI,                  /**< IMSI */
   PROP_SMS_VALID,             /**< SMS validity period in seconds */
   PROP_SMS_REDUCED_CHARSET,   /**< SMS reduced character set */
   N_PROPS
@@ -83,6 +84,7 @@ struct _RingTextManagerPrivate
 {
   RingConnection *connection;
   char *smsc;
+  char *imsi;
   guint sms_valid;
   guint capability_flags;
 
@@ -224,6 +226,7 @@ ring_text_manager_finalize(GObject *object)
 
   /* Free any data held directly by the object here */
   g_free(priv->smsc);
+  g_free(priv->imsi);
 
   G_OBJECT_CLASS(ring_text_manager_parent_class)->finalize(object);
 }
@@ -246,6 +249,9 @@ ring_text_manager_get_property(GObject *object,
       break;
     case PROP_SMSC:
       g_value_set_string(value, priv->smsc ? priv->smsc : "");
+      break;
+    case PROP_IMSI:
+      g_value_set_string(value, priv->imsi ? priv->imsi : "");
       break;
     case PROP_SMS_VALID:
       g_value_set_uint(value, priv->sms_valid);
@@ -286,6 +292,9 @@ ring_text_manager_set_property(GObject *object,
       if (priv->sms_service)
         g_object_set(priv->sms_service, "service-centre", priv->smsc, NULL);
       break;
+    case PROP_IMSI:
+      priv->imsi = g_value_dup_string(value);
+      break;
     case PROP_SMS_VALID:
       priv->sms_valid = g_value_get_uint(value);
       if (priv->sms_service)
@@ -325,6 +334,8 @@ ring_text_manager_class_init(RingTextManagerClass *klass)
       PROP_SMS_SERVICE, ring_param_spec_sms_service (0));
   g_object_class_install_property(
     object_class, PROP_SMSC, ring_param_spec_smsc());
+  g_object_class_install_property(
+    object_class, PROP_IMSI, ring_param_spec_imsi(G_PARAM_WRITABLE | G_PARAM_CONSTRUCT));
   g_object_class_install_property(
     object_class, PROP_SMS_VALID, ring_param_spec_sms_valid());
   g_object_class_install_property(
@@ -690,6 +701,7 @@ ring_text_manager_request(RingTextManager *self,
       "initiator-handle", initiator,
       "requested", request != NULL,
       "sms-flash", class0,
+      "imsi", self->priv->imsi,
       NULL);
   g_free(object_path);
 
@@ -781,6 +793,8 @@ get_text_channel(RingTextManager *self,
 
   if (channel == NULL)
     tp_handle_unref(repo, handle);
+  else if (self->priv->imsi)
+    g_object_set(channel, "imsi", self->priv->imsi, NULL);
 
   return channel;
 }

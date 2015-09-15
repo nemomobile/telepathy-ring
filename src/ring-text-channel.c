@@ -82,6 +82,7 @@ enum
 
   PROP_SMS_FLASH,
   PROP_SMS_CHANNEL,
+  PROP_IMSI,
 
   N_PROPS
 };
@@ -89,6 +90,7 @@ enum
 struct _RingTextChannelPrivate
 {
   char *destination;
+  char *imsi;
 
   GQueue sending[1];
 
@@ -228,6 +230,9 @@ ring_text_channel_get_property(GObject *object,
     case PROP_SMS_CHANNEL:
       g_value_set_boolean (value, TRUE);
       break;
+    case PROP_IMSI:
+      g_value_set_string(value, priv->imsi ? priv->imsi : "");
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
       break;
@@ -247,6 +252,10 @@ ring_text_channel_set_property(GObject *object,
   {
     case PROP_SMS_FLASH:
       priv->sms_flash = g_value_get_boolean(value);
+      break;
+
+    case PROP_IMSI:
+      priv->imsi = g_value_dup_string(value);
       break;
 
     default:
@@ -274,6 +283,7 @@ ring_text_channel_finalize(GObject *object)
   RingTextChannelPrivate *priv = self->priv;
 
   g_free(priv->destination), priv->destination = NULL;
+  g_free(priv->imsi), priv->imsi = NULL;
 
   while (!g_queue_is_empty(priv->sending))
     modem_request_cancel(g_queue_pop_head(priv->sending));
@@ -334,6 +344,9 @@ ring_text_channel_class_init(RingTextChannelClass *klass)
           G_PARAM_READABLE |
           G_PARAM_STATIC_STRINGS));
 
+  g_object_class_install_property(
+    object_class, PROP_IMSI, ring_param_spec_imsi(G_PARAM_WRITABLE | G_PARAM_CONSTRUCT));
+
   ring_text_base_channel_class_init (klass);
 
   if (properties_initialized)
@@ -370,6 +383,9 @@ static void
 ring_text_channel_fill_immutable_properties (TpBaseChannel *base,
                                              GHashTable *properties)
 {
+  RingTextChannel *self = RING_TEXT_CHANNEL (base);
+  GValue *value = 0;
+
   TpBaseChannelClass *base_class =
     TP_BASE_CHANNEL_CLASS (ring_text_channel_parent_class);
 
@@ -387,6 +403,11 @@ ring_text_channel_fill_immutable_properties (TpBaseChannel *base,
       TP_IFACE_CHANNEL_INTERFACE_SMS, "SMSChannel",
 #endif
       NULL);
+
+  if (!RING_STR_EMPTY(self->priv->imsi)) {
+    value = tp_g_value_slice_new_string (self->priv->imsi);
+    g_hash_table_insert (properties, g_strdup ("SubscriberIdentity"), value);
+  }
 }
 
 static void
@@ -710,6 +731,9 @@ ring_text_channel_receive_deliver(RingTextChannel *self,
 
   tp_message_set_string(msg, 0, "sms-service-centre", sms_g_deliver_get_smsc(sms));
 
+  if (self->priv->imsi)
+    tp_message_set_string(msg, 0, "subscriber-identity", self->priv->imsi);
+
 #if nomore
   {
     char *mwi_type = NULL;
@@ -844,6 +868,9 @@ ring_text_channel_receive_text (RingTextChannel *self,
       tp_message_set_uint32 (msg, 0, "sms-class", sms_class);
     }
 
+  if (self->priv->imsi)
+    tp_message_set_string (msg, 0, "subscriber-identity", self->priv->imsi);
+
   tp_message_set_string (msg, 1, "content-type", text_plain);
   tp_message_set_string (msg, 1, "type", text_plain);
   tp_message_set_string (msg, 1, "content", message);
@@ -876,6 +903,9 @@ ring_text_channel_delivery_report(RingTextChannel *self,
 
   if (delivery_status != TP_DELIVERY_STATUS_UNKNOWN)
     tp_message_set_uint32(msg, 0, "delivery-status", delivery_status);
+
+  if (self->priv->imsi)
+    tp_message_set_string(msg, 0, "subscriber-identity", self->priv->imsi);
 
   if (sr) {
 #if nomore

@@ -868,13 +868,18 @@ ring_connection_create_channel_managers(TpBaseConnection *base)
   RingConnection *self = RING_CONNECTION(base);
   RingConnectionPrivate *priv = self->priv;
   GPtrArray *channel_managers = g_ptr_array_sized_new(2);
+  const char *imsi_string = 0;
 
   DEBUG("enter");
+
+  if (priv->sim)
+      imsi_string = modem_sim_get_imsi(priv->sim);
 
   priv->media =
     g_object_new(RING_TYPE_MEDIA_MANAGER,
         "connection", self,
         "anon-modes", priv->anon_modes,
+        "imsi", imsi_string,
         NULL);
   g_ptr_array_add(channel_managers, priv->media);
 
@@ -888,6 +893,7 @@ ring_connection_create_channel_managers(TpBaseConnection *base)
     g_object_new(RING_TYPE_TEXT_MANAGER,
       "connection", self,
       "sms-service-centre", priv->smsc,
+      "imsi", imsi_string,
       "sms-validity-period", priv->sms_valid,
       "sms-reduced-charset", priv->sms_reduced_charset,
       NULL);
@@ -923,6 +929,7 @@ ring_connection_modem_interface_added (Modem *modem,
 {
   RingConnection *self = RING_CONNECTION (_self);
   RingConnectionPrivate *priv = self->priv;
+  const char *imsi_string = 0;
 
   DEBUG ("enter with %s of %s",
       modem_oface_interface (oface), modem_oface_object_path (oface));
@@ -930,6 +937,14 @@ ring_connection_modem_interface_added (Modem *modem,
   if (MODEM_IS_SIM_SERVICE (oface))
     {
       g_object_set (self, "sim-service", oface, NULL);
+
+      if (priv->sim)
+        imsi_string = modem_sim_get_imsi(priv->sim);
+
+      if (priv->text)
+          g_object_set(priv->text, "imsi", imsi_string, NULL);
+      if (priv->media)
+          g_object_set(priv->media, "imsi", imsi_string, NULL);
 
       if (priv->imsi)
         {

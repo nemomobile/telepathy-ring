@@ -86,6 +86,7 @@ struct _RingCallChannelPrivate
   char *dial2nd;
   char *emergency_service;
   char *initial_emergency_service;
+  char *imsi;
 
   TpHandle peer_handle, initial_remote;
 
@@ -138,6 +139,7 @@ enum
   /* ring-specific properties */
   PROP_EMERGENCY_SERVICE,
   PROP_INITIAL_EMERGENCY_SERVICE,
+  PROP_IMSI,
 
   PROP_TERMINATING,
   PROP_ORIGINATING,
@@ -380,6 +382,9 @@ ring_call_channel_get_property(GObject *obj,
     case PROP_EMERGENCY_SERVICE:
       g_value_set_string(value, priv->emergency_service);
       break;
+    case PROP_IMSI:
+      g_value_set_string(value, priv->imsi);
+      break;
     case PROP_INITIAL_EMERGENCY_SERVICE:
       g_value_set_string(value, priv->initial_emergency_service);
       break;
@@ -417,6 +422,9 @@ ring_call_channel_set_property(GObject *obj,
       break;
     case PROP_INITIAL_EMERGENCY_SERVICE:
       priv->initial_emergency_service = g_value_dup_string(value);
+      break;
+    case PROP_IMSI:
+      priv->imsi = g_value_dup_string(value);
       break;
     case PROP_PEER:
       if (priv->peer_handle == 0) {
@@ -468,6 +476,7 @@ ring_call_channel_finalize(GObject *object)
 
   tp_group_mixin_finalize(object);
 
+  g_free(priv->imsi);
   g_free(priv->emergency_service);
   g_free(priv->initial_emergency_service);
   g_free(priv->dial2nd);
@@ -542,6 +551,15 @@ ring_call_channel_class_init(RingCallChannelClass *klass)
       "Emergency service associated with this channel",
       "",
       G_PARAM_READABLE | G_PARAM_STATIC_STRINGS));
+
+  g_object_class_install_property(
+    object_class, PROP_IMSI,
+    g_param_spec_string("imsi",
+      "IMSI",
+      "International Mobile Subscriber Identity",
+      "",
+      G_PARAM_READWRITE | G_PARAM_CONSTRUCT |
+      G_PARAM_STATIC_STRINGS));
 
   g_object_class_install_property(
     object_class, PROP_INITIAL_EMERGENCY_SERVICE,
@@ -621,6 +639,7 @@ ring_call_channel_fill_immutable_properties(TpBaseChannel *base,
 {
   RingCallChannel *self = RING_CALL_CHANNEL (base);
   GObject *obj = (GObject *) self;
+  GValue *value = 0;
 
   TP_BASE_CHANNEL_CLASS (ring_call_channel_parent_class)->fill_immutable_properties (
       base, props);
@@ -633,6 +652,11 @@ ring_call_channel_fill_immutable_properties(TpBaseChannel *base,
     tp_dbus_properties_mixin_fill_properties_hash (obj, props,
       TP_IFACE_CHANNEL_INTERFACE_SERVICE_POINT, "InitialServicePoint",
       NULL);
+
+  if (!RING_STR_EMPTY(self->priv->imsi)) {
+    value = tp_g_value_slice_new_string (self->priv->imsi);
+    g_hash_table_insert (props, g_strdup ("SubscriberIdentity"), value);
+  }
 }
 
 /* ====================================================================== */
